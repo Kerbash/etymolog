@@ -25,6 +25,7 @@ export default function LogogramMain() {
 
                 {/* SVG Drawing Canvas */}
                 <HoverToolTip
+                    className={sizing.fitContent}
                     content={"Draw your script character or logogram here"}
                 >
                     <SvgDrawerInput
