@@ -1,0 +1,200 @@
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bitcount+Prop+Single:wght@400&text=Nochi&display=swap');
+
+:root {
+    /* ===d=========================================
+       SEMANTIC COLOR TOKENS (Theme-agnostic names)
+       These are what you use in your components
+       ============================================ */
+
+    /* Page Background */
+    --page-background-primary: hsl(27, 53%, 3%);
+    --page-background-secondary: hsl(27, 48%, 12%);
+
+    /* Backgrounds */
+    --bg-primary: var(--light-bg-primary);
+    --bg-secondary: var(--light-bg-secondary);
+    --bg-tertiary: var(--light-bg-tertiary);
+
+    /* Text colors */
+    --text-primary: var(--light-text-primary);
+    --text-secondary: var(--light-text-secondary);
+    --text-primary-muted: var(--light-text-muted);
+
+    /* Surfaces (cards, modals, etc) */
+    --surface-base: var(--light-surface-base);
+    --surface-raised: var(--light-surface-raised);
+    --surface-overlay: var(--light-surface-overlay);
+
+    /* Borders */
+    --border-primary: var(--light-border-primary);
+    --border-secondary: var(--light-border-secondary);
+
+    /* Interactive states */
+    --interactive-base: var(--light-interactive-base);
+    --interactive-hover: var(--light-interactive-hover);
+    --interactive-active: var(--light-interactive-active);
+
+    /* Status colors (same in both themes) */
+    --status-success: rgb(145, 180, 120);
+    --status-warning: rgb(225, 195, 120);
+    --status-error: rgb(200, 120, 85);
+    --status-info: rgb(100, 150, 200);
+
+    /* Bad Good colors for status */
+    --status-good: rgb(100, 200, 100);
+    --status-bad: rgb(154, 0, 0);
+
+    /* Status backgrounds */
+    --status-success-bg: rgba(145, 180, 120, 0.1);
+    --status-warning-bg: rgba(225, 195, 120, 0.1);
+    --status-error-bg: rgba(200, 120, 85, 0.1);
+    --status-info-bg: rgba(100, 150, 200, 0.1);
+
+
+    /* ============================================
+       LIGHT THEME VALUES - Warm Earth Tones
+       ============================================ */
+
+    /* Light backgrounds */
+    --light-bg-primary: rgb(204, 189, 169);
+    --light-bg-secondary: rgb(147, 135, 119);
+    --light-bg-tertiary: rgb(81, 57, 29);
+
+    /* Light text */
+    --light-text-primary: rgb(146, 124, 87);
+    --light-text-secondary: black;
+    --light-text-muted: rgb(190, 171, 140);
+
+    /* Light surfaces */
+    --light-surface-base: rgb(92, 70, 40);
+    --light-surface-raised: rgb(91, 69, 40);
+    --light-surface-overlay: rgb(90, 68, 40);
+
+    /* Light borders */
+    --light-border-primary: rgb(113, 100, 84);
+    --light-border-secondary: rgb(108, 81, 49);
+
+    /* Light interactive */
+    --light-interactive-base: rgb(22, 26, 30);
+    --light-interactive-hover: rgb(22, 26, 30);
+    --light-interactive-active: rgb(22, 26, 30);
+
+
+    /* ============================================
+       DARK THEME VALUES - Cool Dark Blues
+       ============================================ */
+
+    /* Dark backgrounds */
+    --dark-bg-primary: rgba(1, 13, 16, 0.8);
+    --dark-bg-secondary: rgba(1, 13, 16, 0.8);
+    --dark-bg-tertiary: rgb(35, 45, 48);
+
+    /* Dark text */
+    --dark-text-primary: rgba(255, 255, 255, 0);
+    --dark-text-secondary: rgb(189, 179, 122);
+    --dark-text-muted: rgb(134, 129, 77);
+
+    /* Dark surfaces */
+    --dark-surface-base: rgb(25, 37, 36);
+    --dark-surface-raised: rgb(35, 47, 46);
+    --dark-surface-overlay: rgba(35, 47, 46, 0.95);
+
+    /* Dark borders */
+    --dark-border-primary: rgba(189, 179, 122, 0.3);
+    --dark-border-secondary: rgba(189, 179, 122, 0.15);
+
+    /* Dark interactive */
+    --dark-interactive-base: rgb(189, 179, 122);
+    --dark-interactive-hover: rgb(226, 217, 177);
+    --dark-interactive-active: rgb(134, 129, 77);
+
+    /* ============================================
+       LAYOUT & UTILITY VARIABLES
+       ============================================ */
+
+    --page-background-decor-radius: 0px;
+    --page-background-decor-spacing: 5dvw;
+    --page-background-decore-opacity: 0.5;
+
+    --max-content-width: 1200px;
+    --content-padding: 1rem;
+
+    /* UTILITY COLORS */
+    --red: #ff4444;
+    --green: #32ff7e;
+    --blue: #3b82f6;
+    --yellow: #f3f34d;
+    --purple: #9b59b6;
+    --orange: #ff6700;
+    --pink: #ff6b9d;
+    --teal: #4ecdc4;
+    --cyan: #00ffff;
+    --white: #ffffff;
+    --black: #000000;
+}
+
+/* ============================================
+   DARK MODE SWITCH
+   ============================================ */
+[data-theme="dark"] {
+    --bg-primary: var(--dark-bg-primary);
+    --bg-secondary: var(--dark-bg-secondary);
+    --bg-tertiary: var(--dark-bg-tertiary);
+
+    --text-primary: var(--dark-text-primary);
+    --text-secondary: var(--dark-text-secondary);
+    --text-primary-muted: var(--dark-text-muted);
+
+    --surface-base: var(--dark-surface-base);
+    --surface-raised: var(--dark-surface-raised);
+    --surface-overlay: var(--dark-surface-overlay);
+
+    --border-primary: var(--dark-border-primary);
+    --border-secondary: var(--dark-border-secondary);
+
+    --interactive-base: var(--dark-interactive-base);
+    --interactive-hover: var(--dark-interactive-hover);
+    --interactive-active: var(--dark-interactive-active);
+}
+
+/* BODY =========================================================== */
+
+body {
+    font-size: 16px;
+
+    margin: 0;
+    padding: 0;
+
+    color: var(--text-primary);
+    background-color: var(--bg-primary);
+
+    height: 100dvh;
+    width: 100dvw;
+    position: relative;
+    overflow: hidden; /* prevent scrollbars; fixed the background */
+}
+
+/* GLOBAL STYLES =========================================================== */
+* {
+    font-family: 'Chakra Petch', system-ui, Avenir, Helvetica, Arial, sans-serif;
+}
+
+/* put this in your global reset */
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    margin: 0;
+
+    font-weight: normal;
+    color: var(--text-primary);
+}
+
+button {
+    color: inherit;
+    border: none;
+    background: none;
+    cursor: pointer;
+}
