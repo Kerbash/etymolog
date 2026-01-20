@@ -1,7 +1,7 @@
 import {SmartForm, useSmartForm} from "smart-form/smartForm";
 import LabelShiftTextInput from "smart-form/input/fancy/redditStyle/labelShiftTextInput/labelShiftTextInput.tsx";
+import LabelShiftTextCustomKeyboardInput, {IPA_CHARACTERS} from "smart-form/input/fancy/redditStyle/labelShiftTextCustomKeyboardInput";
 import SvgDrawerInput from "smart-form/input/basic/svgDrawerInput/svgDrawerInput.tsx";
-import BasicCustomKeyboardTextInput, {IPA_CHARACTERS} from "smart-form/input/basic/basicCustomKeyboardTextInput";
 import HoverToolTip from "cyber-components/interactable/information/hoverToolTip/hoverToolTip.tsx";
 import classNames from "classnames";
 import {flex, sizing} from "utils-styles";
@@ -38,11 +38,10 @@ export default function LogogramMain() {
                     className={classNames(sizing.parentWidth)}
                     content={"The pronunciation using the International Phonetic Alphabet (IPA)"}
                 >
-                    <BasicCustomKeyboardTextInput
-                        registerField={registerField}
-                        name="pronunciation"
+                    <LabelShiftTextCustomKeyboardInput
+                        displayName="Pronunciation"
                         characters={IPA_CHARACTERS}
-                        placeholder="Click to enter IPA pronunciation"
+                        {...registerField("pronunciation", {})}
                     />
                 </HoverToolTip>
 
