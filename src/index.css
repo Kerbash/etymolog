@@ -58,17 +58,17 @@
 
     /* Light backgrounds */
     --light-bg-primary: rgb(204, 189, 169);
-    --light-bg-secondary: rgb(147, 135, 119);
-    --light-bg-tertiary: rgb(81, 57, 29);
+    --light-bg-secondary: rgb(74, 54, 28);
+    --light-bg-tertiary: rgba(255, 255, 255, 0);
 
     /* Light text */
-    --light-text-primary: rgb(146, 124, 87);
-    --light-text-secondary: black;
+    --light-text-primary: rgb(251, 223, 173);
+    --light-text-secondary: #e1ab77;
     --light-text-muted: rgb(190, 171, 140);
 
     /* Light surfaces */
-    --light-surface-base: rgb(92, 70, 40);
-    --light-surface-raised: rgb(91, 69, 40);
+    --light-surface-base: rgba(0, 0, 0, 0);
+    --light-surface-raised: rgb(74, 52, 27);
     --light-surface-overlay: rgb(90, 68, 40);
 
     /* Light borders */
@@ -76,9 +76,9 @@
     --light-border-secondary: rgb(108, 81, 49);
 
     /* Light interactive */
-    --light-interactive-base: rgb(22, 26, 30);
-    --light-interactive-hover: rgb(22, 26, 30);
-    --light-interactive-active: rgb(22, 26, 30);
+    --light-interactive-base: rgb(45, 19, 0);
+    --light-interactive-hover: rgb(91, 43, 9);
+    --light-interactive-active: rgb(255, 210, 176);
 
 
     /* ============================================
