@@ -1,4 +1,4 @@
-import {flex, sizing, template} from "utils-styles";
+import {sizing, template} from "utils-styles";
 
 import './App.css'
 
@@ -6,6 +6,8 @@ import Background from "./components/background/background.tsx";
 
 import classNames from "classnames";
 import TabContainer, {tabContainerBorderStyle} from "cyber-components/container/tabContainer/tabContainer.tsx";
+import LexiconMain from "./components/tabs/lexicon/main.tsx";
+import LogogramMain from "./components/tabs/logogram/main.tsx";
 
 function App() {
     return (
@@ -17,16 +19,13 @@ function App() {
                 className={classNames(sizing.parentSize)}
                 id={'tabs'}
                 contentContainerProps={{
-                    className: classNames(tabContainerBorderStyle, sizing.paddingM, flex.flexGrow)
+                    className: classNames(tabContainerBorderStyle, sizing.paddingM)
                 }}
                 sections={[
                     {
                         id: 'lexicon',
                         toggle: 'Lexicon',
-                        content:
-                            <div>
-                                Etymology Content
-                            </div>
+                        content: <LexiconMain/>
                     },
                     {
                         id: 'part-of-speech',
@@ -35,6 +34,12 @@ function App() {
                             <div>
                                 Dictionary Content
                             </div>
+                    },
+                    {
+                        id: 'logogram',
+                        toggle: 'Logogram',
+                        content:
+                            <LogogramMain/>
                     }
                 ]}
             />
