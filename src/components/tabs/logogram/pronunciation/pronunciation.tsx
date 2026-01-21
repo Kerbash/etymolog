@@ -1,5 +1,5 @@
 import {SmartForm, useSmartForm} from "smart-form/smartForm";
-import PronunciationTableInput from "smart-form/input/fancy/redditStyle/pronunciationTableInput";
+import PronunciationTableInput from "../../../form/customInput/pronunciationTableInput";
 
 export default function PronunciationForm() {
     const {registerField, registerForm} = useSmartForm();

@@ -1,0 +1,217 @@
+/* pronunciationTableInput.module.scss */
+.pronunciationTableInput {
+    --table-border: var(--border-secondary, #ccc);
+    --table-background: var(--surface-base, #fff);
+    --button-add: var(--green, #28a745);
+    --button-remove: var(--red, #dc3545);
+    --button-disabled: var(--text-primary-muted, #999);
+
+    width: 100%;
+}
+
+.tableContainer {
+    display: flex;
+    flex-direction: column;
+}
+
+.addButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    padding: 0;
+    background-color: var(--button-add);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: background-color 0.2s ease, opacity 0.2s ease, transform 0.1s ease;
+    margin: 0 auto;
+
+    &:hover:not(:disabled) {
+        opacity: 0.9;
+        transform: scale(1.05);
+    }
+
+    &:active:not(:disabled) {
+        transform: scale(0.95);
+    }
+
+    &:disabled {
+        background-color: var(--button-disabled);
+        cursor: not-allowed;
+        opacity: 0.6;
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--button-add);
+        outline-offset: 2px;
+    }
+}
+
+.pronunciationTable {
+    width: 100%;
+    border-collapse: collapse;
+    background-color: var(--table-background);
+    border: 1px solid var(--table-border);
+    border-radius: 4px;
+    overflow: hidden;
+
+    thead {
+        background-color: rgba(0, 0, 0, 0.03);
+
+        th {
+            text-align: left;
+            padding: 0.75rem;
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: var(--text-primary);
+            border-bottom: 2px solid var(--table-border);
+
+            &:last-child {
+                width: 60px;
+                text-align: center;
+                padding: 0.5rem;
+            }
+        }
+    }
+
+    tbody {
+        tr {
+            border-bottom: 1px solid var(--table-border);
+
+            &:last-child {
+                border-bottom: none;
+            }
+
+            &:hover {
+                background-color: rgba(0, 0, 0, 0.02);
+            }
+
+            td {
+                padding: 0.5rem;
+                vertical-align: middle;
+
+                &:first-child {
+                    width: 60%;
+                }
+
+                &:nth-child(2) {
+                    width: 30%;
+                    text-align: center;
+                }
+
+                &:last-child {
+                    width: 10%;
+                    text-align: center;
+                }
+            }
+        }
+    }
+}
+
+.textInput {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--table-border);
+    border-radius: 4px;
+    font-size: 0.9rem;
+    background-color: var(--table-background);
+    color: var(--text-primary, inherit);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+
+    &:focus {
+        outline: none;
+        border-color: var(--border-primary, #007bff);
+        box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.1);
+    }
+
+    &::placeholder {
+        color: var(--text-primary-muted, #999);
+        opacity: 0.7;
+    }
+}
+
+.checkbox {
+    width: 1.25rem;
+    height: 1.25rem;
+    cursor: pointer;
+    accent-color: var(--border-primary, #007bff);
+}
+
+.removeButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    background-color: transparent;
+    color: var(--button-remove);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+
+    &:hover:not(:disabled) {
+        background-color: var(--button-remove);
+        color: white;
+    }
+
+    &:active:not(:disabled) {
+        transform: scale(0.9);
+    }
+
+    &:disabled {
+        color: var(--button-disabled);
+        cursor: not-allowed;
+        opacity: 0.4;
+
+        &:hover {
+            background-color: transparent;
+        }
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--button-remove);
+        outline-offset: 2px;
+    }
+}
+
+// Responsive design for smaller screens
+@media (max-width: 768px) {
+    .pronunciationTable {
+        thead {
+            th {
+                padding: 0.5rem;
+                font-size: 0.85rem;
+            }
+        }
+
+        tbody {
+            tr {
+                td {
+                    padding: 0.4rem;
+
+                    &:first-child {
+                        width: 55%;
+                    }
+
+                    &:nth-child(2) {
+                        width: 30%;
+                    }
+
+                    &:last-child {
+                        width: 15%;
+                    }
+                }
+            }
+        }
+    }
+
+    .removeButton {
+        width: 1.75rem;
+        height: 1.75rem;
+    }
+}
