@@ -14,42 +14,6 @@
     flex-direction: column;
 }
 
-.addButton {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 2.5rem;
-    height: 2.5rem;
-    padding: 0;
-    background-color: var(--button-add);
-    color: white;
-    border: none;
-    border-radius: 50%;
-    cursor: pointer;
-    transition: background-color 0.2s ease, opacity 0.2s ease, transform 0.1s ease;
-    margin: 0 auto;
-
-    &:hover:not(:disabled) {
-        opacity: 0.9;
-        transform: scale(1.05);
-    }
-
-    &:active:not(:disabled) {
-        transform: scale(0.95);
-    }
-
-    &:disabled {
-        background-color: var(--button-disabled);
-        cursor: not-allowed;
-        opacity: 0.6;
-    }
-
-    &:focus-visible {
-        outline: 2px solid var(--button-add);
-        outline-offset: 2px;
-    }
-}
-
 .pronunciationTable {
     width: 100%;
     border-collapse: collapse;

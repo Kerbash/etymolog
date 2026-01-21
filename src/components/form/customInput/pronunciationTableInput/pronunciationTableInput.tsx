@@ -6,6 +6,8 @@ import React, { forwardRef, useCallback, useEffect, useId, useImperativeHandle, 
 import type { registerFieldReturnType } from "smart-form/types";
 import { translationMapHelper } from "utils-func/localization";
 import SvgIcon from "cyber-components/graphics/decor/svgIcon/svgIcon";
+import IconButton from "cyber-components/interactable/buttons/iconButton/iconButton.tsx";
+import HoverToolTip from "cyber-components/interactable/information/hoverToolTip/hoverToolTip.tsx";
 
 /** Translation keys -------------------------------------- */
 
@@ -163,15 +165,17 @@ export const PronunciationTableInput = forwardRef((
                             <th>{t("pronunciationLabel")}</th>
                             <th>{t("useInAutoSpellingLabel")}</th>
                             <th>
-                                <button
-                                    type="button"
-                                    onClick={handleAddRow}
-                                    className={styles.addButton}
-                                    disabled={maxRows ? rows.length >= maxRows : false}
-                                    title={t("addPronunciation")}
-                                >
-                                    <SvgIcon iconName="plus-lg" size="1.2rem" />
-                                </button>
+                                <HoverToolTip content={"Add a new pronunciation entry"}>
+                                    <IconButton
+                                        iconName={'plus-circle'}
+                                        onClick={handleAddRow}
+                                        title={t("addPronunciation")}
+                                        className={styles.addButton}
+                                        iconSize={'1.5em'}
+                                        iconColor={'var(--green)'}
+                                        themeType={'bounce'}
+                                    />
+                                </HoverToolTip>
                             </th>
                         </tr>
                     </thead>
