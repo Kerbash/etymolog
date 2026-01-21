@@ -10,15 +10,8 @@ import TextInputValidatorFactory from "smart-form/commonValidatorFactory/textVal
 import IconButton from "cyber-components/interactable/buttons/iconButton/iconButton.tsx";
 import {PronunciationTableInput} from "../../../form/customInput/pronunciationTableInput";
 
-const exampleSyllableStructure = {
-    // Primary constituents
-    onset: "Onset",
-    nucleus: "Nucleus",
-    coda: "Coda"
-}
-
 export default function NewLogogramForm() {
-    const {registerField, registerForm} = useSmartForm({mode: "onChange"});
+    const {registerField, unregisterField, registerForm, isFormValid} = useSmartForm({mode: "onChange"});
     // create the form
     const formProps = registerForm("logogramForm", {
         submitFunc: async (formData) => {
@@ -29,7 +22,12 @@ export default function NewLogogramForm() {
     });
 
     return (
-        <SmartForm {...formProps}>
+        <SmartForm 
+            {...formProps} 
+            registerField={registerField} 
+            unregisterField={unregisterField}
+            isFormValid={isFormValid}
+        >
             <h2 className={graphic.underlineHighlightColorPrimary}>
                 New Logogram
             </h2>
