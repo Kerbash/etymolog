@@ -15,9 +15,9 @@ export default function PronunciationForm() {
                 />
             </HoverToolTip>
 
-            <HoverToolTip content={"Is a logogram/pictogram (Will not be used to spell out words)"}>
+            <HoverToolTip content={"Use in auto-spelling"}>
                 <BasicCheckbox
-                    displayName={"Is a pictogram/logogram"}
+                    displayName={"Use in auto-spelling"}
                     {...registerField("isLogogram", {})}
                 />
             </HoverToolTip>

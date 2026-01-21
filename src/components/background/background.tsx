@@ -13,7 +13,7 @@ export default function Background({
                                        children
                                    }: BackgroundProps) {
     return (
-        <div
+        <BackgroundComponent
             className={classNames(
                 sizing.parentWidth,
                 sizing.paddingL,
@@ -23,6 +23,6 @@ export default function Background({
             )}
         >
                 {children}
-        </div>
+        </BackgroundComponent>
     )
 }

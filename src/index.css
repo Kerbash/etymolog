@@ -8,8 +8,8 @@
        ============================================ */
 
     /* Page Background */
-    --page-background-primary: hsl(27, 53%, 3%);
-    --page-background-secondary: hsl(27, 48%, 12%);
+    --page-background-primary: #fff6dd;
+    --page-background-secondary: #fffaf8;
 
     /* Backgrounds */
     --bg-primary: var(--light-bg-primary);
