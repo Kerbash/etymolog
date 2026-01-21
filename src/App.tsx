@@ -8,6 +8,7 @@ import classNames from "classnames";
 import TabContainer, {tabContainerBorderStyle} from "cyber-components/container/tabContainer/tabContainer.tsx";
 import LexiconMain from "./components/tabs/lexicon/main.tsx";
 import LogogramMain from "./components/tabs/logogram/main.tsx";
+import GraphotacticMain from "./components/tabs/graphotactic/main.tsx";
 
 function App() {
     return (
@@ -36,10 +37,16 @@ function App() {
                             </div>
                     },
                     {
-                        id: 'logogram',
-                        toggle: 'Logogram',
+                        id: 'script-maker',
+                        toggle: 'Script Maker',
                         content:
                             <LogogramMain/>
+                    },
+                    {
+                        id: 'graphotactic',
+                        toggle: 'Graphotactic',
+                        content:
+                            <GraphotacticMain/>
                     }
                 ]}
             />

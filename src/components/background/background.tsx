@@ -13,13 +13,16 @@ export default function Background({
                                        children
                                    }: BackgroundProps) {
     return (
-        <BackgroundComponent style={{
-            width: "100dvw",
-            height: "100dvh",
-        }}
-            innerClassName={classNames(sizing.paddingL, flex.flexColumn, flex.flexGapM)}
+        <div
+            className={classNames(
+                sizing.parentWidth,
+                sizing.paddingL,
+                flex.flexColumn,
+                flex.flexGapM,
+                flex.justifyContentCenter
+            )}
         >
-            {children}
-        </BackgroundComponent>
+                {children}
+        </div>
     )
 }

@@ -59,16 +59,16 @@
     /* Light backgrounds */
     --light-bg-primary: rgb(204, 189, 169);
     --light-bg-secondary: rgb(74, 54, 28);
-    --light-bg-tertiary: rgba(255, 255, 255, 0);
+    --light-bg-tertiary: rgb(255, 245, 230);
 
     /* Light text */
-    --light-text-primary: rgb(251, 223, 173);
-    --light-text-secondary: #e1ab77;
-    --light-text-muted: rgb(190, 171, 140);
+    --light-text-primary: rgb(51, 31, 0);
+    --light-text-secondary: #573009;
+    --light-text-muted: rgb(107, 77, 35);
 
     /* Light surfaces */
     --light-surface-base: rgba(0, 0, 0, 0);
-    --light-surface-raised: rgb(74, 52, 27);
+    --light-surface-raised: rgb(168, 143, 119);
     --light-surface-overlay: rgb(90, 68, 40);
 
     /* Light borders */
@@ -172,11 +172,11 @@ body {
     height: 100dvh;
     width: 100dvw;
     position: relative;
-    overflow: hidden; /* prevent scrollbars; fixed the background */
 }
 
 /* GLOBAL STYLES =========================================================== */
 * {
+    box-sizing: border-box;
     font-family: 'Chakra Petch', system-ui, Avenir, Helvetica, Arial, sans-serif;
 }
 
