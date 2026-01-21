@@ -3,12 +3,15 @@
 import styles from "./pronunciationTableInput.module.scss";
 import classNames from "classnames";
 import { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useRef, useState } from "react";
-import type { registerFieldReturnType, fieldOptions } from "smart-form/types";
+import type { registerFieldReturnType } from "smart-form/types";
 import { translationMapHelper } from "utils-func/localization";
 import IconButton from "cyber-components/interactable/buttons/iconButton/iconButton.tsx";
 import HoverToolTip from "cyber-components/interactable/information/hoverToolTip/hoverToolTip.tsx";
 import LabelShiftTextCustomKeyboardInput from "smart-form/input/fancy/redditStyle/labelShiftTextCustomKeyboardInput";
-import { useSmartFormContext, useSmartFormContextOptional } from "smart-form/smartForm";
+import { SmartForm, useSmartForm } from "smart-form/smartForm";
+import type { useSmartFormRef } from "smart-form/types";
+import { IPA_CHARACTERS } from "cyber-components/interactable/customKeyboard/ipaCharacters";
+import { ProcessingLockModalProvider } from "cyber-components/graphics/loading/processingLockModal/processingLockModal";
 
 /** Translation keys -------------------------------------- */
 
@@ -34,16 +37,6 @@ export interface PronunciationTableInputProps extends registerFieldReturnType {
     maxRows?: number;
     requirePronunciation?: boolean;
     className?: string;
-    /**
-     * Optional: Pass registerField directly as a prop for cases where context isn't available.
-     * If not provided, the component will try to get it from SmartFormContext.
-     */
-    registerFieldProp?: (name: string, options?: fieldOptions) => registerFieldReturnType;
-    /**
-     * Optional: Pass unregisterField directly as a prop.
-     * If not provided, the component will try to get it from SmartFormContext.
-     */
-    unregisterFieldProp?: (name: string) => void;
 }
 
 /** Internal row state type -------------------------------------- */
@@ -65,26 +58,10 @@ export const PronunciationTableInput = forwardRef((
         maxRows,
         requirePronunciation = false,
         className,
-        registerFieldProp,
-        unregisterFieldProp,
     }: PronunciationTableInputProps,
     _
 ) => {
     const t = translationMapHelper(TranslationMaps, defaultTranslationMap);
-
-    // Try to get registerField from context, fall back to prop
-    const smartFormContext = useSmartFormContextOptional();
-    const registerField = registerFieldProp ?? smartFormContext?.registerField;
-    const unregisterField = unregisterFieldProp ?? smartFormContext?.unregisterField;
-
-    // Warn in development if neither context nor prop is available
-    if (!registerField) {
-        console.warn(
-            'PronunciationTableInput: No registerField available. ' +
-            'Either wrap the form with <SmartForm registerField={registerField} unregisterField={unregisterField}> ' +
-            'or pass registerFieldProp directly.'
-        );
-    }
 
     // Get hydration-safe ID prefix
     const idPrefix = useId();
@@ -92,11 +69,11 @@ export const PronunciationTableInput = forwardRef((
     // Track initial render to avoid setting touched on mount
     const isInitialRender = useRef(true);
 
-    // Use ref to hold fieldState to avoid infinite loops in useEffect/useCallback
+    // Use ref to hold fieldState to avoid infinite loops in useEffect
     const fieldStateRef = useRef(fieldState);
     fieldStateRef.current = fieldState;
 
-    // Row state management - single source of truth
+    // Row state management - tracks row IDs and checkbox states
     const [rows, setRows] = useState<RowState[]>(() => {
         const initialRows = defaultValue?.length > 0
             ? defaultValue
@@ -109,16 +86,6 @@ export const PronunciationTableInput = forwardRef((
         }));
     });
 
-    // Expose value via useImperativeHandle
-    useImperativeHandle(registerSmartFieldProps.ref, () => ({
-        get value(): PronunciationRowValue[] {
-            return rows.map(row => ({
-                pronunciation: row.pronunciation,
-                useInAutoSpelling: row.useInAutoSpelling
-            }));
-        }
-    }), [rows]);
-
     // Update parent field state when rows change
     useEffect(() => {
         // Skip initial render
@@ -128,21 +95,94 @@ export const PronunciationTableInput = forwardRef((
         }
 
         fieldStateRef.current.isTouched.setIsTouched(true);
+        fieldStateRef.current.isChanged.setIsChanged(true);
     }, [rows]);
+
+    return (
+        <ProcessingLockModalProvider>
+            <PronunciationTableInputInner
+                rows={rows}
+                setRows={setRows}
+                fieldStateRef={fieldStateRef}
+                registerSmartFieldProps={registerSmartFieldProps}
+                t={t}
+                maxRows={maxRows}
+                requirePronunciation={requirePronunciation}
+                className={className}
+                idPrefix={idPrefix}
+            />
+        </ProcessingLockModalProvider>
+    );
+});
+
+/** Inner component that uses useSmartForm (needs to be inside ProcessingLockModalProvider) */
+interface PronunciationTableInputInnerProps {
+    rows: RowState[];
+    setRows: React.Dispatch<React.SetStateAction<RowState[]>>;
+    fieldStateRef: React.MutableRefObject<PronunciationTableInputProps['fieldState']>;
+    registerSmartFieldProps: PronunciationTableInputProps['registerSmartFieldProps'];
+    t: (key: keyof typeof defaultTranslationMap) => string;
+    maxRows?: number;
+    requirePronunciation: boolean;
+    className?: string;
+    idPrefix: string;
+}
+
+const PronunciationTableInputInner = ({
+    rows,
+    setRows,
+    fieldStateRef,
+    registerSmartFieldProps,
+    t,
+    maxRows,
+    requirePronunciation,
+    className,
+    idPrefix,
+}: PronunciationTableInputInnerProps) => {
+    // Create internal SmartForm for managing pronunciation rows
+    const { registerField, registerForm, unregisterField, isFormValid } = useSmartForm({});
+
+    // Create ref for the SmartForm imperative handle
+    const smartFormRef = useRef<useSmartFormRef>(null);
+
+    // Register self as a mini SmartForm
+    const selfFormProps = registerForm("pronunciationTableInput", {});
+
+    // Expose value via useImperativeHandle - returns array of pronunciation rows
+    useImperativeHandle(registerSmartFieldProps.ref, () => ({
+        get value(): PronunciationRowValue[] {
+            const formValues = smartFormRef.current?.value || {};
+
+            // Map rows to output format, maintaining order
+            return rows.map(row => ({
+                pronunciation: formValues[`pronunciation-${row.id}`] || "",
+                useInAutoSpelling: row.useInAutoSpelling
+            }));
+        }
+    }), [rows]);
 
     // Validate and update isEmpty/isInputValid states
     useEffect(() => {
-        const allEmpty = rows.every(row => !row.pronunciation || row.pronunciation.trim() === "");
+        const formValues = smartFormRef.current?.value || {};
+
+        const allEmpty = rows.every(row => {
+            const value = formValues[`pronunciation-${row.id}`];
+            return !value || value.trim() === "";
+        });
+
         fieldStateRef.current.isEmpty.setIsEmpty(allEmpty);
 
         // If requirePronunciation is true, check that all rows have pronunciation
         if (requirePronunciation) {
-            const allValid = rows.every(row => row.pronunciation && row.pronunciation.trim() !== "");
+            const allValid = rows.every(row => {
+                const value = formValues[`pronunciation-${row.id}`];
+                return value && value.trim() !== "";
+            });
             fieldStateRef.current.isInputValid.setIsInputValid(allValid);
         } else {
             fieldStateRef.current.isInputValid.setIsInputValid(true);
         }
-    }, [rows, requirePronunciation]);
+    }, [rows, requirePronunciation, isFormValid, fieldStateRef]);
 
     // Row operations
     const handleAddRow = useCallback(() => {
@@ -157,42 +197,34 @@ export const PronunciationTableInput = forwardRef((
         };
 
         setRows(prev => [...prev, newRow]);
-        fieldStateRef.current.isChanged.setIsChanged(true);
-    }, [rows.length, maxRows, idPrefix]);
+    }, [rows.length, maxRows, idPrefix, setRows]);
 
     const handleRemoveRow = useCallback((rowId: string) => {
         if (rows.length <= 1) return;
 
         // Unregister the field before removing the row
-        if (unregisterField) {
-            unregisterField('pronunciation-' + rowId);
-        }
+        unregisterField(`pronunciation-${rowId}`);
 
         setRows(prev => prev.filter(row => row.id !== rowId));
-        fieldStateRef.current.isChanged.setIsChanged(true);
-    }, [rows.length, unregisterField]);
+    }, [rows.length, unregisterField, setRows]);
 
-    // Cleanup all dynamic fields on unmount
-    useEffect(() => {
-        return () => {
-            if (unregisterField) {
-                rows.forEach(row => {
-                    unregisterField('pronunciation-' + row.id);
-                });
-            }
-        };
-    }, []); // Empty deps - only run cleanup on unmount
-
-    // Field change handlers - not needed since we use controlled inputs via registerField
+    // Checkbox change handler
     const handleCheckboxChange = useCallback((rowId: string, checked: boolean) => {
         setRows(prev => prev.map(row =>
             row.id === rowId ? { ...row, useInAutoSpelling: checked } : row
         ));
-        fieldStateRef.current.isChanged.setIsChanged(true);
-    }, []);
+    }, [setRows]);
 
     return (
-        <div className={classNames(styles.pronunciationTableInput, className)}>
+        <SmartForm
+            ref={smartFormRef}
+            as={"div"}
+            {...selfFormProps}
+            registerField={registerField}
+            unregisterField={unregisterField}
+            isFormValid={isFormValid}
+            className={classNames(styles.pronunciationTableInput, className)}
+        >
             <div className={styles.tableContainer}>
                 <table className={styles.pronunciationTable}>
                     <thead>
@@ -218,18 +250,14 @@ export const PronunciationTableInput = forwardRef((
                         {rows.map((row) => (
                             <tr key={row.id}>
                                 <td>
-                                    {registerField ? (
-                                        <LabelShiftTextCustomKeyboardInput
-                                            {...registerField('pronunciation-' + row.id, {})}
-                                            className={styles.textInput}
-                                        />
-                                    ) : (
-                                        <input
-                                            type="text"
-                                            className={styles.textInput}
-                                            placeholder="Enter pronunciation"
-                                        />
-                                    )}
+                                    <LabelShiftTextCustomKeyboardInput
+                                        {...registerField(`pronunciation-${row.id}`, {
+                                            defaultValue: row.pronunciation
+                                        })}
+                                        characters={IPA_CHARACTERS}
+                                        displayName={t("pronunciationLabel")}
+                                        className={styles.textInput}
+                                    />
                                 </td>
                                 <td>
                                     <input
@@ -256,9 +284,9 @@ export const PronunciationTableInput = forwardRef((
                     </tbody>
                 </table>
             </div>
-        </div>
+        </SmartForm>
     );
-});
+};
 
 PronunciationTableInput.displayName = "PronunciationTableInput";
 export default PronunciationTableInput;

@@ -21,11 +21,14 @@ const PARTS_OF_SPEECH: Record<string, string> = {
 };
 
 export default function CreateLexiconForm() {
-    const {registerForm, registerField} = useSmartForm();
+    const {registerForm, registerField, unregisterField, isFormValid} = useSmartForm();
 
     return (
         <SmartForm
             {...registerForm("createLexiconForm")}
+            registerField={registerField}
+            unregisterField={unregisterField}
+            isFormValid={isFormValid}
         >
             <div>
                 <div className={classNames(flex.flexRow, flex.alignItemsCenter, flex.flexGapM)}>
