@@ -1,26 +1,36 @@
 import {SmartForm, useSmartForm} from "smart-form/smartForm";
-import HoverToolTip from "cyber-components/interactable/information/hoverToolTip/hoverToolTip.tsx";
-import LabelShiftTextInput from "smart-form/input/fancy/redditStyle/labelShiftTextInput/labelShiftTextInput.tsx";
-import BasicCheckbox from "smart-form/input/basic/checkbox/checkbox.tsx";
+import PronunciationTableInput from "smart-form/input/fancy/redditStyle/pronunciationTableInput";
 
 export default function PronunciationForm() {
     const {registerField, registerForm} = useSmartForm();
 
-    return (
-        <SmartForm>
-            <HoverToolTip content={"The pronunciation of the logogram"}>
-                <LabelShiftTextInput
-                    displayName={"Pronunciation"}
-                    {...registerField("pronunciation", {})}
-                />
-            </HoverToolTip>
+    const pronunciationsField = registerField("pronunciations", {
+        validation: {
+            validator: (value) => {
+                if (!value || value.length === 0) {
+                    return {
+                        message: "At least one pronunciation is required",
+                        type: "error"
+                    };
+                }
+                return null;
+            },
+            htmlAttrs: {},
+            options: {}
+        }
+    });
 
-            <HoverToolTip content={"Use in auto-spelling"}>
-                <BasicCheckbox
-                    displayName={"Use in auto-spelling"}
-                    {...registerField("isLogogram", {})}
-                />
-            </HoverToolTip>
+    const formProps = registerForm("pronunciationForm", {
+        method: "post",
+    });
+
+    return (
+        <SmartForm as="div" {...formProps}>
+            <PronunciationTableInput
+                {...pronunciationsField}
+                maxRows={10}
+                requirePronunciation={true}
+            />
         </SmartForm>
     )
 }
