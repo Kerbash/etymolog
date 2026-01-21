@@ -1,3 +1,4 @@
+import styles from "./newLogogram.module.scss";
 import {flex, graphic, sizing} from "utils-styles";
 
 import classNames from "classnames";
@@ -9,6 +10,7 @@ import SvgDrawerInput from "smart-form/input/basic/svgDrawerInput/svgDrawerInput
 import TextInputValidatorFactory from "smart-form/commonValidatorFactory/textValidatorFactory/textValidatorFactory.ts";
 import IconButton from "cyber-components/interactable/buttons/iconButton/iconButton.tsx";
 import {PronunciationTableInput} from "../../../form/customInput/pronunciationTableInput";
+import {buttonStyles} from "cyber-components/interactable/buttons/button/button";
 
 export default function NewLogogramForm() {
     const {registerField, unregisterField, registerForm, isFormValid} = useSmartForm({mode: "onChange"});
@@ -27,6 +29,7 @@ export default function NewLogogramForm() {
             registerField={registerField} 
             unregisterField={unregisterField}
             isFormValid={isFormValid}
+            className={classNames(styles.formContainer)}
         >
             <h2 className={graphic.underlineHighlightColorPrimary}>
                 New Logogram
@@ -84,7 +87,9 @@ export default function NewLogogramForm() {
                 />
             </div>
 
-            <IconButton>
+            <IconButton
+                className={classNames(styles.saveLogogramButton, buttonStyles.primary)}
+            >
                 Save Logogram
             </IconButton>
         </SmartForm>
