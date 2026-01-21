@@ -7,7 +7,8 @@ import LabelShiftTextInput from "smart-form/input/fancy/redditStyle/labelShiftTe
 import HoverToolTip from "cyber-components/interactable/information/hoverToolTip/hoverToolTip.tsx";
 import SvgDrawerInput from "smart-form/input/basic/svgDrawerInput/svgDrawerInput.tsx";
 import TextInputValidatorFactory from "smart-form/commonValidatorFactory/textValidatorFactory/textValidatorFactory.ts";
-import PronunciationForm from "../pronunciation/pronunciation.tsx";
+import IconButton from "cyber-components/interactable/buttons/iconButton/iconButton.tsx";
+import {PronunciationTableInput} from "../../../form/customInput/pronunciationTableInput";
 
 const exampleSyllableStructure = {
     // Primary constituents
@@ -18,9 +19,17 @@ const exampleSyllableStructure = {
 
 export default function NewLogogramForm() {
     const {registerField, registerForm} = useSmartForm({mode: "onChange"});
+    // create the form
+    const formProps = registerForm("logogramForm", {
+        submitFunc: async (formData) => {
+            console.log("Submitting logogram form data:", formData);
+            // Here you would typically send the data to your backend or process it as needed
+            return { success: true, data: formData };
+        }
+    });
 
     return (
-        <SmartForm {...registerForm("logogramForm")}>
+        <SmartForm {...formProps}>
             <h2 className={graphic.underlineHighlightColorPrimary}>
                 New Logogram
             </h2>
@@ -70,8 +79,16 @@ export default function NewLogogramForm() {
                 Pronunciation
             </h2>
             <div>
-                <PronunciationForm/>
+                <PronunciationTableInput
+                    {...registerField("pronunciations", {})}
+                    maxRows={10}
+                    requirePronunciation={true}
+                />
             </div>
+
+            <IconButton>
+                Save Logogram
+            </IconButton>
         </SmartForm>
     );
 }
