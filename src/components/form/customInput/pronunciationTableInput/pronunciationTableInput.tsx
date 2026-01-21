@@ -2,12 +2,14 @@
 
 import styles from "./pronunciationTableInput.module.scss";
 import classNames from "classnames";
-import React, { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useRef, useState } from "react";
 import type { registerFieldReturnType } from "smart-form/types";
 import { translationMapHelper } from "utils-func/localization";
-import SvgIcon from "cyber-components/graphics/decor/svgIcon/svgIcon";
 import IconButton from "cyber-components/interactable/buttons/iconButton/iconButton.tsx";
 import HoverToolTip from "cyber-components/interactable/information/hoverToolTip/hoverToolTip.tsx";
+import FancyTextCustomKeyboardInput from "smart-form/input/fancy/base/fancyTextCustomKeyboardInput";
+import LabelShiftTextCustomKeyboardInput from "smart-form/input/fancy/redditStyle/labelShiftTextCustomKeyboardInput";
+import {useSmartForm} from "smart-form/smartForm";
 
 /** Translation keys -------------------------------------- */
 
@@ -49,7 +51,6 @@ export const PronunciationTableInput = forwardRef((
     {
         registerSmartFieldProps,
         fieldState,
-        utils,
         TranslationMaps = {},
         defaultValue = [],
         maxRows,
@@ -59,6 +60,8 @@ export const PronunciationTableInput = forwardRef((
     _
 ) => {
     const t = translationMapHelper(TranslationMaps, defaultTranslationMap);
+
+    const { registerField } = useSmartForm();
 
     // Get hydration-safe ID prefix
     const idPrefix = useId();
@@ -173,7 +176,7 @@ export const PronunciationTableInput = forwardRef((
                                         className={styles.addButton}
                                         iconSize={'1.5em'}
                                         iconColor={'var(--green)'}
-                                        themeType={'bounce'}
+                                        themeType={'basic'}
                                     />
                                 </HoverToolTip>
                             </th>
@@ -183,10 +186,8 @@ export const PronunciationTableInput = forwardRef((
                         {rows.map((row) => (
                             <tr key={row.id}>
                                 <td>
-                                    <input
-                                        type="text"
-                                        value={row.pronunciation}
-                                        onChange={(e) => handlePronunciationChange(row.id, e.target.value)}
+                                    <LabelShiftTextCustomKeyboardInput
+                                        {...registerField('pronunciation-' + row.id, {})}
                                         className={styles.textInput}
                                         placeholder="Enter pronunciation"
                                     />
@@ -200,15 +201,16 @@ export const PronunciationTableInput = forwardRef((
                                     />
                                 </td>
                                 <td>
-                                    <button
-                                        type="button"
-                                        onClick={() => handleRemoveRow(row.id)}
-                                        disabled={rows.length === 1}
-                                        className={styles.removeButton}
-                                        title={t("removePronunciation")}
-                                    >
-                                        <SvgIcon iconName="trash3" size="1rem" />
-                                    </button>
+                                    <HoverToolTip content={"Remove this row"}>
+                                        <IconButton
+                                            type={"button"}
+                                            onClick={() => handleRemoveRow(row.id)}
+                                            disabled={rows.length === 1}
+                                            iconName={"trash3"}
+                                            iconSize={'1.5em'}
+                                            iconColor={'red'}
+                                        />
+                                    </HoverToolTip>
                                 </td>
                             </tr>
                         ))}
