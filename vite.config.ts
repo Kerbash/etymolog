@@ -13,6 +13,9 @@ export default defineConfig({
                 short_name: 'Etymolog',
                 description: 'Your constructed language word journal',
                 theme_color: '#ffffff',
+                start_url: '/',
+                scope: '/',
+                display: 'standalone',
                 icons: [
                     {
                         src: 'pwa-192x192.png',
@@ -23,6 +26,43 @@ export default defineConfig({
                         src: 'pwa-512x512.png',
                         sizes: '512x512',
                         type: 'image/png'
+                    }
+                ]
+            },
+            workbox: {
+                // SPA fallback: serve index.html for all navigation requests
+                navigateFallback: '/index.html',
+                // Ensure all paths fallback to index.html for client-side routing
+                navigateFallbackAllowlist: [/^(?!\/__).*/],
+                // Cache strategies for different asset types
+                runtimeCaching: [
+                    {
+                        urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+                        handler: 'CacheFirst',
+                        options: {
+                            cacheName: 'google-fonts-cache',
+                            expiration: {
+                                maxEntries: 10,
+                                maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year
+                            },
+                            cacheableResponse: {
+                                statuses: [0, 200]
+                            }
+                        }
+                    },
+                    {
+                        urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
+                        handler: 'CacheFirst',
+                        options: {
+                            cacheName: 'gstatic-fonts-cache',
+                            expiration: {
+                                maxEntries: 10,
+                                maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year
+                            },
+                            cacheableResponse: {
+                                statuses: [0, 200]
+                            }
+                        }
                     }
                 ]
             }
