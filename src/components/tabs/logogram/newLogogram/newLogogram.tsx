@@ -11,17 +11,72 @@ import TextInputValidatorFactory from "smart-form/commonValidatorFactory/textVal
 import IconButton from "cyber-components/interactable/buttons/iconButton/iconButton.tsx";
 import {PronunciationTableInput} from "../../../form/customInput/pronunciationTableInput";
 import {buttonStyles} from "cyber-components/interactable/buttons/button/button";
+import { useGraphemes, transformFormToGraphemeInput, type LogogramFormData } from "../../../../db";
 
+/**
+ * NewLogogramForm Component
+ *
+ * Form for creating new script characters (logograms) with:
+ * - SVG drawing canvas for the visual representation
+ * - Name input for the character
+ * - Notes textarea for additional information
+ * - Pronunciation table for associated phonemes
+ *
+ * On submission, the form data is transformed and saved to the local
+ * SQLite database as a grapheme with associated phonemes.
+ */
 export default function NewLogogramForm() {
     const {registerField, unregisterField, registerForm, isFormValid} = useSmartForm({mode: "onChange"});
-    // create the form
+
+    // Use the graphemes hook - this automatically initializes the database
+    const { create, isLoading, error } = useGraphemes();
+
+    // Register form with submission handler
     const formProps = registerForm("logogramForm", {
         submitFunc: async (formData) => {
-            console.log("Submitting logogram form data:", formData);
-            // Here you would typically send the data to your backend or process it as needed
-            return { success: true, data: formData };
+            try {
+                // Transform form data to database input format
+                const graphemeInput = transformFormToGraphemeInput(formData as LogogramFormData);
+
+                // Validate required fields
+                if (!graphemeInput.svg_data || graphemeInput.svg_data.trim() === '') {
+                    throw new Error('Please draw a script character');
+                }
+                if (!graphemeInput.name || graphemeInput.name.trim() === '') {
+                    throw new Error('Logogram name is required');
+                }
+
+                // Save to database using the hook's create function
+                const grapheme = await create(graphemeInput);
+
+                console.log("[NewLogogramForm] Saved grapheme:", grapheme);
+
+                // TODO: Show success notification
+                // TODO: Optionally clear form or navigate to view
+
+                return { success: true, data: grapheme };
+            } catch (error) {
+                console.error("[NewLogogramForm] Failed to save:", error);
+
+                // TODO: Show error notification to user
+
+                return {
+                    success: false,
+                    error: error instanceof Error ? error.message : 'Failed to save logogram'
+                };
+            }
         }
     });
+
+    // Show loading state while database initializes
+    if (isLoading) {
+        return <div className={classNames(styles.formContainer)}>Loading database...</div>;
+    }
+
+    // Show error if database failed to initialize
+    if (error) {
+        return <div className={classNames(styles.formContainer)}>Database error: {error.message}</div>;
+    }
 
     return (
         <SmartForm 
@@ -48,7 +103,7 @@ export default function NewLogogramForm() {
                 </div>
 
                 {/* Script name Input */}
-                <HoverToolTip content={"The name of the scipt character or logogram"}>
+                <HoverToolTip content={"The name of the script character or logogram"}>
                     <LabelShiftTextInput
                         displayName={"Logogram Name"}
                         asInput={true}
