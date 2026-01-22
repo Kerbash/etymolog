@@ -7,7 +7,7 @@ import Background from "./components/background/background.tsx";
 import classNames from "classnames";
 import RouterTabContainer, {tabContainerBorderStyle} from "cyber-components/container/tabContainer/routerTabContainer.tsx";
 import LexiconMain from "./components/tabs/lexicon/main.tsx";
-import LogogramMain from "./components/tabs/logogram/main.tsx";
+import GraphemeMain from "./components/tabs/grapheme/main.tsx";
 import GraphotacticMain from "./components/tabs/graphotactic/main.tsx";
 
 const sections = [
@@ -28,7 +28,7 @@ const sections = [
         path: 'script-maker',
         toggle: 'Script Maker',
         content:
-            <LogogramMain/>
+            <GraphemeMain/>
     },
     {
         path: 'graphotactic',

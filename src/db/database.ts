@@ -5,7 +5,7 @@
  * conlang graphemes (script characters) and their associated phonemes.
  *
  * Terminology:
- * - Grapheme: A visual symbol in the writing system (UI: "logogram")
+ * - Grapheme: A visual symbol in the writing system (UI: "grapheme")
  * - Phoneme: A sound/pronunciation associated with a grapheme (UI: "pronunciation")
  */
 
@@ -43,16 +43,18 @@ export async function initDatabase(): Promise<Database> {
             console.log('[DB] Loaded existing database from localStorage');
         } catch (error) {
             console.warn('[DB] Failed to load saved database, creating new one:', error);
-            db = new SQL.Database();
-            createTables(db);
+            const newDb = new SQL.Database();
+            createTables(newDb);
+            db = newDb;
         }
     } else {
-        db = new SQL.Database();
-        createTables(db);
+        const newDb = new SQL.Database();
+        createTables(newDb);
+        db = newDb;
         console.log('[DB] Created new database');
     }
 
-    return db;
+    return db!;
 }
 
 /**
@@ -64,7 +66,7 @@ export async function initDatabase(): Promise<Database> {
  */
 function createTables(database: Database): void {
     // Graphemes table - stores individual script characters
-    // UI calls these "logograms" or "script characters"
+    // UI calls these "graphemes" or "script characters"
     database.run(`
         CREATE TABLE IF NOT EXISTS graphemes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -150,7 +152,7 @@ export function exportDatabaseFile(): Blob {
     }
 
     const data = db.export();
-    return new Blob([data], { type: 'application/x-sqlite3' });
+    return new Blob([new Uint8Array(data).buffer], { type: 'application/x-sqlite3' });
 }
 
 /**

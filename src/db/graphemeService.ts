@@ -5,7 +5,7 @@
  * associated phonemes (pronunciations) in the database.
  *
  * Terminology:
- * - Grapheme = visual symbol (UI: "logogram")
+ * - Grapheme = visual symbol (UI: "grapheme")
  * - Phoneme = pronunciation (UI: "pronunciation")
  */
 

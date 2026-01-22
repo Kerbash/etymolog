@@ -1,4 +1,4 @@
-import styles from "./newLogogram.module.scss";
+import styles from "./newGrapheme.module.scss";
 import {flex, graphic, sizing} from "utils-styles";
 
 import classNames from "classnames";
@@ -11,58 +11,41 @@ import TextInputValidatorFactory from "smart-form/commonValidatorFactory/textVal
 import IconButton from "cyber-components/interactable/buttons/iconButton/iconButton.tsx";
 import {PronunciationTableInput} from "../../../form/customInput/pronunciationTableInput";
 import {buttonStyles} from "cyber-components/interactable/buttons/button/button";
-import { useGraphemes, transformFormToGraphemeInput, type LogogramFormData } from "../../../../db";
+import { useGraphemes, transformFormToGraphemeInput, type GraphemeFormData } from "../../../../db";
 
-/**
- * NewLogogramForm Component
- *
- * Form for creating new script characters (logograms) with:
- * - SVG drawing canvas for the visual representation
- * - Name input for the character
- * - Notes textarea for additional information
- * - Pronunciation table for associated phonemes
- *
- * On submission, the form data is transformed and saved to the local
- * SQLite database as a grapheme with associated phonemes.
- */
-export default function NewLogogramForm() {
+export default function NewGraphemeForm() {
     const {registerField, unregisterField, registerForm, isFormValid} = useSmartForm({mode: "onChange"});
 
     // Use the graphemes hook - this automatically initializes the database
     const { create, isLoading, error } = useGraphemes();
 
     // Register form with submission handler
-    const formProps = registerForm("logogramForm", {
+    const formProps = registerForm("graphemeForm", {
         submitFunc: async (formData) => {
             try {
                 // Transform form data to database input format
-                const graphemeInput = transformFormToGraphemeInput(formData as LogogramFormData);
+                const graphemeInput = transformFormToGraphemeInput(formData as unknown as GraphemeFormData);
 
                 // Validate required fields
                 if (!graphemeInput.svg_data || graphemeInput.svg_data.trim() === '') {
                     throw new Error('Please draw a script character');
                 }
                 if (!graphemeInput.name || graphemeInput.name.trim() === '') {
-                    throw new Error('Logogram name is required');
+                    throw new Error('Grapheme name is required');
                 }
 
                 // Save to database using the hook's create function
                 const grapheme = await create(graphemeInput);
 
-                console.log("[NewLogogramForm] Saved grapheme:", grapheme);
-
-                // TODO: Show success notification
-                // TODO: Optionally clear form or navigate to view
+                console.log("[NewGraphemeForm] Saved grapheme:", grapheme);
 
                 return { success: true, data: grapheme };
             } catch (error) {
-                console.error("[NewLogogramForm] Failed to save:", error);
-
-                // TODO: Show error notification to user
+                console.error("[NewGraphemeForm] Failed to save:", error);
 
                 return {
                     success: false,
-                    error: error instanceof Error ? error.message : 'Failed to save logogram'
+                    error: error instanceof Error ? error.message : 'Failed to save grapheme'
                 };
             }
         }
@@ -79,39 +62,39 @@ export default function NewLogogramForm() {
     }
 
     return (
-        <SmartForm 
-            {...formProps} 
-            registerField={registerField} 
+        <SmartForm
+            {...formProps}
+            registerField={registerField}
             unregisterField={unregisterField}
             isFormValid={isFormValid}
             className={classNames(styles.formContainer)}
         >
             <h2 className={graphic.underlineHighlightColorPrimary}>
-                New Logogram
+                New Grapheme
             </h2>
             <div className={classNames(flex.flexCol, flex.flexGapM)}>
                 <div className={classNames(sizing.parentWidth, flex.flex, flex.justifyContentCenter)}>
                     {/* SVG Drawing Canvas */}
                     <HoverToolTip
                         className={classNames(sizing.fitContent)}
-                        content={"Draw your script character or logogram here"}
+                        content={"Draw your script character or grapheme here"}
                     >
                         <SvgDrawerInput
-                            {...registerField("logogramSvg", {})}
+                            {...registerField("graphemeSvg", {})}
                         />
                     </HoverToolTip>
                 </div>
 
                 {/* Script name Input */}
-                <HoverToolTip content={"The name of the script character or logogram"}>
+                <HoverToolTip content={"The name of the script character or grapheme"}>
                     <LabelShiftTextInput
-                        displayName={"Logogram Name"}
+                        displayName={"Grapheme Name"}
                         asInput={true}
-                        {...registerField("logogramName", {
+                        {...registerField("graphemeName", {
                             validation: TextInputValidatorFactory({
                                 required: {
                                     value: true,
-                                    message: "Logogram name is required"
+                                    message: "Grapheme name is required"
                                 },
                             })
                         })}
@@ -143,9 +126,9 @@ export default function NewLogogramForm() {
             </div>
 
             <IconButton
-                className={classNames(styles.saveLogogramButton, buttonStyles.primary)}
+                className={classNames(styles.saveGraphemeButton, buttonStyles.primary)}
             >
-                Save Logogram
+                Save Grapheme
             </IconButton>
         </SmartForm>
     );

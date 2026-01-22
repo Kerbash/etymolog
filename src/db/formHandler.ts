@@ -6,15 +6,15 @@
  * and the database layer.
  *
  * UI Terms → DB Terms:
- * - logogramSvg → svg_data
- * - logogramName → name
+ * - graphemeSvg → svg_data
+ * - graphemeName → name
  * - pronunciation → phoneme
  * - useInAutoSpelling → use_in_auto_spelling
  */
 
 import type {
     CreateGraphemeInput,
-    LogogramFormData,
+    GraphemeFormData,
     GraphemeWithPhonemes
 } from './types';
 import { createGrapheme } from './graphemeService';
@@ -22,34 +22,13 @@ import { createGrapheme } from './graphemeService';
 /**
  * Transform form data from the UI into database input format.
  *
- * @param formData - Data from NewLogogramForm component
+ * @param formData - Data from NewGraphemeForm component
  * @returns Database-ready input for createGrapheme()
- *
- * @example
- * // Form produces:
- * {
- *   logogramSvg: '<svg>...</svg>',
- *   logogramName: 'A',
- *   notes: 'First letter',
- *   pronunciations: [
- *     { pronunciation: 'a', useInAutoSpelling: true }
- *   ]
- * }
- *
- * // Transforms to:
- * {
- *   svg_data: '<svg>...</svg>',
- *   name: 'A',
- *   notes: 'First letter',
- *   phonemes: [
- *     { phoneme: 'a', use_in_auto_spelling: true }
- *   ]
- * }
  */
-export function transformFormToGraphemeInput(formData: LogogramFormData): CreateGraphemeInput {
+export function transformFormToGraphemeInput(formData: GraphemeFormData): CreateGraphemeInput {
     return {
-        name: formData.logogramName,
-        svg_data: formData.logogramSvg,
+        name: formData.graphemeName,
+        svg_data: formData.graphemeSvg,
         notes: formData.notes || undefined,
         phonemes: formData.pronunciations
             // Filter out empty pronunciations
@@ -63,29 +42,21 @@ export function transformFormToGraphemeInput(formData: LogogramFormData): Create
 }
 
 /**
- * Save a logogram from form data to the database.
+ * Save a grapheme from form data to the database.
  * This is the main function called by the form's submit handler.
  *
- * @param formData - Data from NewLogogramForm component
+ * @param formData - Data from NewGraphemeForm component
  * @returns The created grapheme with all its phonemes
  * @throws Error if validation fails or database operation fails
- *
- * @example
- * const formProps = registerForm("logogramForm", {
- *   submitFunc: async (formData) => {
- *     const grapheme = await saveLogogram(formData);
- *     return { success: true, data: grapheme };
- *   }
- * });
  */
-export async function saveLogogram(formData: LogogramFormData): Promise<GraphemeWithPhonemes> {
+export async function saveGrapheme(formData: GraphemeFormData): Promise<GraphemeWithPhonemes> {
     // Validate required fields
-    if (!formData.logogramSvg || formData.logogramSvg.trim() === '') {
+    if (!formData.graphemeSvg || formData.graphemeSvg.trim() === '') {
         throw new Error('SVG drawing is required');
     }
 
-    if (!formData.logogramName || formData.logogramName.trim() === '') {
-        throw new Error('Logogram name is required');
+    if (!formData.graphemeName || formData.graphemeName.trim() === '') {
+        throw new Error('Grapheme name is required');
     }
 
     // Transform form data to database input
@@ -101,18 +72,18 @@ export async function saveLogogram(formData: LogogramFormData): Promise<Grapheme
  * Validate form data before submission.
  * Returns an array of error messages (empty if valid).
  *
- * @param formData - Data from NewLogogramForm component
+ * @param formData - Data from NewGraphemeForm component
  * @returns Array of validation error messages
  */
-export function validateLogogramForm(formData: Partial<LogogramFormData>): string[] {
+export function validateGraphemeForm(formData: Partial<GraphemeFormData>): string[] {
     const errors: string[] = [];
 
-    if (!formData.logogramSvg || formData.logogramSvg.trim() === '') {
+    if (!formData.graphemeSvg || formData.graphemeSvg.trim() === '') {
         errors.push('Please draw a script character');
     }
 
-    if (!formData.logogramName || formData.logogramName.trim() === '') {
-        errors.push('Logogram name is required');
+    if (!formData.graphemeName || formData.graphemeName.trim() === '') {
+        errors.push('Grapheme name is required');
     }
 
     // Check if at least one pronunciation has content

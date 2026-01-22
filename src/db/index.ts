@@ -35,7 +35,7 @@ export type {
     CreatePhonemeInput,
     UpdatePhonemeInput,
     // Form types
-    LogogramFormData,
+    GraphemeFormData,
     PronunciationFormRow
 } from './types';
 
@@ -72,8 +72,8 @@ export {
 // =============================================================================
 export {
     transformFormToGraphemeInput,
-    saveLogogram,
-    validateLogogramForm
+    saveGrapheme,
+    validateGraphemeForm
 } from './formHandler';
 
 // =============================================================================

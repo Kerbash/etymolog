@@ -18,7 +18,7 @@ A conlang (constructed language) script creation and management tool. Create cus
 
 | UI Term (User-Friendly) | DB Term (Linguistic) | Description |
 |------------------------|---------------------|-------------|
-| Logogram / Script Character | Grapheme | A visual symbol in the writing system |
+| Grapheme / Script Character | Grapheme | A visual symbol in the writing system |
 | Pronunciation | Phoneme | A sound associated with a grapheme |
 | Auto-Spelling | `use_in_auto_spelling` | Whether this phoneme is used for automatic transliteration |
 
@@ -55,8 +55,8 @@ A conlang (constructed language) script creation and management tool. Create cus
 ┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
 │   Form Input     │     │  Form Handler    │     │    Database      │
 │                  │     │                  │     │                  │
-│ logogramSvg      │────▶│ transformForm    │────▶│ createGrapheme() │
-│ logogramName     │     │ ToGraphemeInput  │     │                  │
+│ graphemeSvg      │────▶│ transformForm    │────▶│ createGrapheme() │
+│ graphemeName     │     │ ToGraphemeInput  │     │                  │
 │ notes            │     │                  │     │ Creates:         │
 │ pronunciations[] │     │ Maps UI terms    │     │ - 1 grapheme     │
 │   - pronunciation│     │ to DB terms      │     │ - N phonemes     │
@@ -125,14 +125,14 @@ function MyComponent() {
 
 ## Form Integration
 
-The `NewLogogramForm` component collects user input and transforms it for database storage:
+The `NewGraphemeForm` component collects user input and transforms it for database storage:
 
 ### Form Output Structure
 
 ```typescript
-interface LogogramFormData {
-  logogramSvg: string;           // SVG drawing data
-  logogramName: string;          // Character name
+interface GraphemeFormData {
+  graphemeSvg: string;           // SVG drawing data
+  graphemeName: string;          // Character name
   notes: string;                 // Optional notes
   pronunciations: Array<{
     pronunciation: string;       // IPA or phonetic representation
@@ -146,8 +146,8 @@ interface LogogramFormData {
 ```typescript
 // Form data → Database input
 const dbInput: CreateGraphemeInput = {
-  name: formData.logogramName,
-  svg_data: formData.logogramSvg,
+  name: formData.graphemeName,
+  svg_data: formData.graphemeSvg,
   notes: formData.notes || undefined,
   phonemes: formData.pronunciations.map(p => ({
     phoneme: p.pronunciation,

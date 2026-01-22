@@ -77,7 +77,7 @@ interface UseDatabaseResult {
  * Hook for managing graphemes with automatic database initialization.
  *
  * @example
- * function LogogramList() {
+ * function GraphemeList() {
  *   const { graphemes, isLoading, create, remove } = useGraphemes();
  *
  *   if (isLoading) return <Spinner />;

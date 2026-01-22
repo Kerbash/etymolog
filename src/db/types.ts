@@ -3,16 +3,16 @@
  *
  * TypeScript interfaces for database entities.
  * Uses linguistic terminology (grapheme/phoneme) internally,
- * while the UI uses friendly terms (logogram/pronunciation).
+ * while the UI uses friendly terms (grapheme/pronunciation).
  */
 
 // =============================================================================
-// GRAPHEME TYPES (UI: "Logogram" or "Script Character")
+// GRAPHEME TYPES (UI: "Grapheme" or "Script Character")
 // =============================================================================
 
 /**
  * A grapheme represents a visual symbol in the writing system.
- * In the UI, this is called a "logogram" or "script character".
+ * In the UI, this is called a "grapheme" or "script character".
  */
 export interface Grapheme {
     id: number;
@@ -98,12 +98,12 @@ export interface UpdatePhonemeInput {
 // =============================================================================
 
 /**
- * The shape of data from the NewLogogramForm component.
+ * The shape of data from the NewGraphemeForm component.
  * Uses UI-friendly terms that get transformed to DB terms.
  */
-export interface LogogramFormData {
-    logogramSvg: string;
-    logogramName: string;
+export interface GraphemeFormData {
+    graphemeSvg: string;
+    graphemeName: string;
     notes?: string;
     pronunciations: PronunciationFormRow[];
 }

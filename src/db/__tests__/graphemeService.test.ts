@@ -3,13 +3,6 @@
  *
  * Comprehensive test suite covering all CRUD operations and edge cases
  * for graphemes (script characters) and phonemes (pronunciations).
- *
- * Test Categories:
- * 1. Database Initialization
- * 2. Grapheme CRUD Operations
- * 3. Phoneme CRUD Operations
- * 4. Form Handler Integration
- * 5. Edge Cases & Error Handling
  */
 
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
@@ -35,10 +28,10 @@ import {
     deleteAllPhonemesForGrapheme,
     getAutoSpellingPhonemes,
     transformFormToGraphemeInput,
-    saveLogogram,
-    validateLogogramForm
+    saveGrapheme,
+    validateGraphemeForm
 } from '../index';
-import type { LogogramFormData, CreateGraphemeInput } from '../types';
+import type { GraphemeFormData, CreateGraphemeInput } from '../types';
 
 // =============================================================================
 // TEST SETUP
@@ -628,9 +621,9 @@ describe('Grapheme Service', () => {
 
     describe('transformFormToGraphemeInput', () => {
         it('should transform form data to grapheme input', () => {
-            const formData: LogogramFormData = {
-                logogramSvg: '<svg><path/></svg>',
-                logogramName: 'TestChar',
+            const formData: GraphemeFormData = {
+                graphemeSvg: '<svg><path/></svg>',
+                graphemeName: 'TestChar',
                 notes: 'Some notes',
                 pronunciations: [
                     { pronunciation: 'a', useInAutoSpelling: true },
@@ -649,9 +642,9 @@ describe('Grapheme Service', () => {
         });
 
         it('should filter out empty pronunciations', () => {
-            const formData: LogogramFormData = {
-                logogramSvg: '<svg/>',
-                logogramName: 'Test',
+            const formData: GraphemeFormData = {
+                graphemeSvg: '<svg/>',
+                graphemeName: 'Test',
                 pronunciations: [
                     { pronunciation: 'a', useInAutoSpelling: true },
                     { pronunciation: '', useInAutoSpelling: false },
@@ -668,9 +661,9 @@ describe('Grapheme Service', () => {
         });
 
         it('should trim pronunciation values', () => {
-            const formData: LogogramFormData = {
-                logogramSvg: '<svg/>',
-                logogramName: 'Test',
+            const formData: GraphemeFormData = {
+                graphemeSvg: '<svg/>',
+                graphemeName: 'Test',
                 pronunciations: [
                     { pronunciation: '  a  ', useInAutoSpelling: true }
                 ]
@@ -682,9 +675,9 @@ describe('Grapheme Service', () => {
         });
 
         it('should handle undefined notes', () => {
-            const formData: LogogramFormData = {
-                logogramSvg: '<svg/>',
-                logogramName: 'Test',
+            const formData: GraphemeFormData = {
+                graphemeSvg: '<svg/>',
+                graphemeName: 'Test',
                 pronunciations: []
             };
 
@@ -694,9 +687,9 @@ describe('Grapheme Service', () => {
         });
 
         it('should handle empty notes string', () => {
-            const formData: LogogramFormData = {
-                logogramSvg: '<svg/>',
-                logogramName: 'Test',
+            const formData: GraphemeFormData = {
+                graphemeSvg: '<svg/>',
+                graphemeName: 'Test',
                 notes: '',
                 pronunciations: []
             };
@@ -707,18 +700,18 @@ describe('Grapheme Service', () => {
         });
     });
 
-    describe('saveLogogram', () => {
+    describe('saveGrapheme', () => {
         it('should save valid form data to database', async () => {
-            const formData: LogogramFormData = {
-                logogramSvg: '<svg><rect/></svg>',
-                logogramName: 'SaveTest',
+            const formData: GraphemeFormData = {
+                graphemeSvg: '<svg><rect/></svg>',
+                graphemeName: 'SaveTest',
                 notes: 'Test saving',
                 pronunciations: [
                     { pronunciation: 'test', useInAutoSpelling: true }
                 ]
             };
 
-            const result = await saveLogogram(formData);
+            const result = await saveGrapheme(formData);
 
             expect(result.id).toBeGreaterThan(0);
             expect(result.name).toBe('SaveTest');
@@ -730,112 +723,112 @@ describe('Grapheme Service', () => {
         });
 
         it('should throw error for empty SVG', async () => {
-            const formData: LogogramFormData = {
-                logogramSvg: '',
-                logogramName: 'Test',
+            const formData: GraphemeFormData = {
+                graphemeSvg: '',
+                graphemeName: 'Test',
                 pronunciations: []
             };
 
-            await expect(saveLogogram(formData)).rejects.toThrow('SVG drawing is required');
+            await expect(saveGrapheme(formData)).rejects.toThrow('SVG drawing is required');
         });
 
         it('should throw error for whitespace-only SVG', async () => {
-            const formData: LogogramFormData = {
-                logogramSvg: '   ',
-                logogramName: 'Test',
+            const formData: GraphemeFormData = {
+                graphemeSvg: '   ',
+                graphemeName: 'Test',
                 pronunciations: []
             };
 
-            await expect(saveLogogram(formData)).rejects.toThrow('SVG drawing is required');
+            await expect(saveGrapheme(formData)).rejects.toThrow('SVG drawing is required');
         });
 
         it('should throw error for empty name', async () => {
-            const formData: LogogramFormData = {
-                logogramSvg: '<svg/>',
-                logogramName: '',
+            const formData: GraphemeFormData = {
+                graphemeSvg: '<svg/>',
+                graphemeName: '',
                 pronunciations: []
             };
 
-            await expect(saveLogogram(formData)).rejects.toThrow('Logogram name is required');
+            await expect(saveGrapheme(formData)).rejects.toThrow('Grapheme name is required');
         });
 
         it('should throw error for whitespace-only name', async () => {
-            const formData: LogogramFormData = {
-                logogramSvg: '<svg/>',
-                logogramName: '   ',
+            const formData: GraphemeFormData = {
+                graphemeSvg: '<svg/>',
+                graphemeName: '   ',
                 pronunciations: []
             };
 
-            await expect(saveLogogram(formData)).rejects.toThrow('Logogram name is required');
+            await expect(saveGrapheme(formData)).rejects.toThrow('Grapheme name is required');
         });
     });
 
-    describe('validateLogogramForm', () => {
+    describe('validateGraphemeForm', () => {
         it('should return empty array for valid form', () => {
-            const formData: Partial<LogogramFormData> = {
-                logogramSvg: '<svg/>',
-                logogramName: 'Test',
+            const formData: Partial<GraphemeFormData> = {
+                graphemeSvg: '<svg/>',
+                graphemeName: 'Test',
                 pronunciations: [{ pronunciation: 'a', useInAutoSpelling: true }]
             };
 
-            const errors = validateLogogramForm(formData);
+            const errors = validateGraphemeForm(formData);
 
             expect(errors).toEqual([]);
         });
 
         it('should return error for missing SVG', () => {
-            const formData: Partial<LogogramFormData> = {
-                logogramName: 'Test',
+            const formData: Partial<GraphemeFormData> = {
+                graphemeName: 'Test',
                 pronunciations: [{ pronunciation: 'a', useInAutoSpelling: true }]
             };
 
-            const errors = validateLogogramForm(formData);
+            const errors = validateGraphemeForm(formData);
 
             expect(errors).toContain('Please draw a script character');
         });
 
         it('should return error for missing name', () => {
-            const formData: Partial<LogogramFormData> = {
-                logogramSvg: '<svg/>',
+            const formData: Partial<GraphemeFormData> = {
+                graphemeSvg: '<svg/>',
                 pronunciations: [{ pronunciation: 'a', useInAutoSpelling: true }]
             };
 
-            const errors = validateLogogramForm(formData);
+            const errors = validateGraphemeForm(formData);
 
-            expect(errors).toContain('Logogram name is required');
+            expect(errors).toContain('Grapheme name is required');
         });
 
         it('should return error for missing pronunciations', () => {
-            const formData: Partial<LogogramFormData> = {
-                logogramSvg: '<svg/>',
-                logogramName: 'Test',
+            const formData: Partial<GraphemeFormData> = {
+                graphemeSvg: '<svg/>',
+                graphemeName: 'Test',
                 pronunciations: []
             };
 
-            const errors = validateLogogramForm(formData);
+            const errors = validateGraphemeForm(formData);
 
             expect(errors).toContain('At least one pronunciation is required');
         });
 
         it('should return error for all empty pronunciations', () => {
-            const formData: Partial<LogogramFormData> = {
-                logogramSvg: '<svg/>',
-                logogramName: 'Test',
+            const formData: Partial<GraphemeFormData> = {
+                graphemeSvg: '<svg/>',
+                graphemeName: 'Test',
                 pronunciations: [
                     { pronunciation: '', useInAutoSpelling: false },
                     { pronunciation: '  ', useInAutoSpelling: true }
                 ]
             };
 
-            const errors = validateLogogramForm(formData);
+            const errors = validateGraphemeForm(formData);
 
             expect(errors).toContain('At least one pronunciation is required');
         });
 
         it('should return multiple errors', () => {
-            const formData: Partial<LogogramFormData> = {};
+            const formData: Partial<GraphemeFormData> = {};
 
-            const errors = validateLogogramForm(formData);
+            const errors = validateGraphemeForm(formData);
 
             expect(errors.length).toBeGreaterThanOrEqual(2);
         });
