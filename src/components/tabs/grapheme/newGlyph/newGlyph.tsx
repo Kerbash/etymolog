@@ -16,6 +16,11 @@ import {
     useGraphemes
 } from "../../../../db";
 
+interface NewGlyphFormProps {
+    /** Callback fired after successful glyph/grapheme creation */
+    onSuccess?: () => void;
+}
+
 /**
  * NewGlyphForm - Creates a new glyph and optionally a grapheme with pronunciations.
  *
@@ -25,7 +30,7 @@ import {
  * 3. Add pronunciations
  * 4. Save → Creates both a glyph AND a grapheme using that glyph
  */
-export default function NewGlyphForm() {
+export default function NewGlyphForm({ onSuccess }: NewGlyphFormProps) {
     const { registerField, unregisterField, registerForm, isFormValid } = useSmartForm({ mode: "onChange" });
 
     // Use both hooks - glyphs for creating the visual symbol, graphemes for refresh
@@ -87,6 +92,9 @@ export default function NewGlyphForm() {
                 // Refresh both stores
                 refreshGlyphs();
                 refreshGraphemes();
+
+                // Call onSuccess callback if provided
+                onSuccess?.();
 
                 return {
                     success: true,

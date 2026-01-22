@@ -1,0 +1,91 @@
+.galleryContainer {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    height: 100%;
+}
+
+.toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+.searchContainer {
+    flex: 1;
+    min-width: 200px;
+    max-width: 400px;
+}
+
+.viewToggle {
+    display: flex;
+    gap: 0.25rem;
+    border: 1px solid var(--border-primary);
+    border-radius: 6px;
+    padding: 0.25rem;
+    background: var(--surface-base);
+}
+
+.viewButton {
+    padding: 0.5rem;
+    border: none;
+    background: transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.viewButton:hover {
+    background: var(--surface-hover);
+    color: var(--text-primary);
+}
+
+.viewButton.active {
+    background: var(--color-primary);
+    color: var(--color-primary-text, white);
+}
+
+.resultCount {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    margin-left: auto;
+}
+
+.galleryContent {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.expandedList {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.compactGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 1rem;
+}
+
+.emptyState {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    padding: 2rem;
+    text-align: center;
+    color: var(--text-secondary);
+}
+
+.noResults {
+    text-align: center;
+    padding: 2rem;
+    color: var(--text-secondary);
+}
