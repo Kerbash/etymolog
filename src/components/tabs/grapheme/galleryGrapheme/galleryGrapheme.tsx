@@ -1,3 +1,5 @@
+import DetailedGraphemeDisplay from "./graphemeDisplay/detailed/detailed.tsx";
+
 const sampleData = {
   "id": 2,
   "name": "Lechan",
@@ -19,7 +21,7 @@ const sampleData = {
 export default function GraphemeView() {
     return (
         <div>
-            <GraphemeView graphemeData={sampleData} />
+            <DetailedGraphemeDisplay graphemeData={sampleData} />
         </div>
     )
 }

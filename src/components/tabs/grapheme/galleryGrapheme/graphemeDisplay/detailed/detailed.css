@@ -1,0 +1,125 @@
+.detailed-grapheme-display {
+    display: flex;
+    gap: 1.5rem;
+    padding: 1rem;
+    background-color: var(--surface-raised);
+    border-radius: 8px;
+    border: 1px solid var(--border-primary);
+    min-height: 200px;
+}
+
+/* Left section - SVG and Name */
+.detailed-grapheme-left {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+    flex-shrink: 0;
+}
+
+.detailed-grapheme-svg {
+    width: 120px;
+    height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--bg-tertiary);
+    border-radius: 6px;
+    padding: 0.5rem;
+}
+
+.detailed-grapheme-svg svg {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.detailed-grapheme-name {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+/* Right section - Pronunciations */
+.detailed-grapheme-right {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.pronunciation-header {
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin: 0 0 0.5rem 0;
+    flex-shrink: 0;
+}
+
+.pronunciation-container {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding-right: 0.5rem;
+}
+
+.pronunciation-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    background-color: var(--bg-tertiary);
+    border-radius: 4px;
+    border: 1px solid var(--border-secondary);
+}
+
+.phoneme-symbol {
+    font-size: 1.125rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    font-family: monospace;
+}
+
+.phoneme-context {
+    font-size: 0.875rem;
+    color: var(--text-primary-muted);
+    font-style: italic;
+}
+
+.auto-spelling-badge {
+    font-size: 0.75rem;
+    padding: 0.125rem 0.5rem;
+    background-color: var(--status-info);
+    color: var(--white);
+    border-radius: 12px;
+    margin-left: auto;
+}
+
+.no-phonemes {
+    color: var(--text-primary-muted);
+    font-style: italic;
+    margin: 0;
+}
+
+/* Scrollbar styling */
+.pronunciation-container::-webkit-scrollbar {
+    width: 6px;
+}
+
+.pronunciation-container::-webkit-scrollbar-track {
+    background: var(--bg-tertiary);
+    border-radius: 3px;
+}
+
+.pronunciation-container::-webkit-scrollbar-thumb {
+    background: var(--border-primary);
+    border-radius: 3px;
+}
+
+.pronunciation-container::-webkit-scrollbar-thumb:hover {
+    background: var(--border-secondary);
+}
