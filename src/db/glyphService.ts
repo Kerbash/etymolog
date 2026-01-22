@@ -21,15 +21,15 @@ import type {
 /**
  * Create a new glyph.
  *
- * @param input - Glyph data (name, svg_data, notes)
+ * @param input - Glyph data (name, svg_data, category, notes)
  * @returns The created glyph
  */
 export function createGlyph(input: CreateGlyphInput): Glyph {
     const db = getDatabase();
 
     db.run(
-        `INSERT INTO glyphs (name, svg_data, notes) VALUES (?, ?, ?)`,
-        [input.name, input.svg_data, input.notes ?? null]
+        `INSERT INTO glyphs (name, svg_data, category, notes) VALUES (?, ?, ?, ?)`,
+        [input.name, input.svg_data, input.category ?? null, input.notes ?? null]
     );
 
     const result = db.exec('SELECT last_insert_rowid() as id');
@@ -52,7 +52,7 @@ export function getGlyphById(id: number): Glyph | null {
     const db = getDatabase();
 
     const result = db.exec(
-        `SELECT id, name, svg_data, notes, created_at, updated_at 
+        `SELECT id, name, svg_data, category, notes, created_at, updated_at 
          FROM glyphs WHERE id = ?`,
         [id]
     );
@@ -66,9 +66,10 @@ export function getGlyphById(id: number): Glyph | null {
         id: row[0] as number,
         name: row[1] as string,
         svg_data: row[2] as string,
-        notes: row[3] as string | null,
-        created_at: row[4] as string,
-        updated_at: row[5] as string
+        category: row[3] as string | null,
+        notes: row[4] as string | null,
+        created_at: row[5] as string,
+        updated_at: row[6] as string
     };
 }
 
@@ -79,7 +80,7 @@ export function getAllGlyphs(): Glyph[] {
     const db = getDatabase();
 
     const result = db.exec(
-        `SELECT id, name, svg_data, notes, created_at, updated_at 
+        `SELECT id, name, svg_data, category, notes, created_at, updated_at 
          FROM glyphs 
          ORDER BY created_at DESC`
     );
@@ -92,9 +93,10 @@ export function getAllGlyphs(): Glyph[] {
         id: row[0] as number,
         name: row[1] as string,
         svg_data: row[2] as string,
-        notes: row[3] as string | null,
-        created_at: row[4] as string,
-        updated_at: row[5] as string
+        category: row[3] as string | null,
+        notes: row[4] as string | null,
+        created_at: row[5] as string,
+        updated_at: row[6] as string
     }));
 }
 
@@ -105,7 +107,7 @@ export function getAllGlyphsWithUsage(): GlyphWithUsage[] {
     const db = getDatabase();
 
     const result = db.exec(`
-        SELECT g.id, g.name, g.svg_data, g.notes, g.created_at, g.updated_at,
+        SELECT g.id, g.name, g.svg_data, g.category, g.notes, g.created_at, g.updated_at,
                COUNT(gg.id) as usage_count
         FROM glyphs g
         LEFT JOIN grapheme_glyphs gg ON g.id = gg.glyph_id
@@ -121,10 +123,11 @@ export function getAllGlyphsWithUsage(): GlyphWithUsage[] {
         id: row[0] as number,
         name: row[1] as string,
         svg_data: row[2] as string,
-        notes: row[3] as string | null,
-        created_at: row[4] as string,
-        updated_at: row[5] as string,
-        usageCount: row[6] as number
+        category: row[3] as string | null,
+        notes: row[4] as string | null,
+        created_at: row[5] as string,
+        updated_at: row[6] as string,
+        usageCount: row[7] as number
     }));
 }
 
@@ -156,7 +159,7 @@ export function searchGlyphsByName(query: string): Glyph[] {
     const db = getDatabase();
 
     const result = db.exec(
-        `SELECT id, name, svg_data, notes, created_at, updated_at 
+        `SELECT id, name, svg_data, category, notes, created_at, updated_at 
          FROM glyphs 
          WHERE name LIKE ?
          ORDER BY name`,
@@ -171,9 +174,10 @@ export function searchGlyphsByName(query: string): Glyph[] {
         id: row[0] as number,
         name: row[1] as string,
         svg_data: row[2] as string,
-        notes: row[3] as string | null,
-        created_at: row[4] as string,
-        updated_at: row[5] as string
+        category: row[3] as string | null,
+        notes: row[4] as string | null,
+        created_at: row[5] as string,
+        updated_at: row[6] as string
     }));
 }
 
@@ -194,6 +198,11 @@ export function updateGlyph(id: number, input: UpdateGlyphInput): Glyph | null {
     if (input.svg_data !== undefined) {
         updates.push('svg_data = ?');
         values.push(input.svg_data);
+    }
+
+    if (input.category !== undefined) {
+        updates.push('category = ?');
+        values.push(input.category);
     }
 
     if (input.notes !== undefined) {

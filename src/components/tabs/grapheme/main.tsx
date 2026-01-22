@@ -1,5 +1,5 @@
 import { Routes, Route, Link, useNavigate } from "react-router-dom";
-import NewGlyphForm from "./newGlyph/newGlyph.tsx";
+import NewGraphemeForm from "./newGrapheme/newGrapheme.tsx";
 import GraphemeView from "./galleryGrapheme/galleryGrapheme.tsx";
 import IconButton from "cyber-components/interactable/buttons/iconButton/iconButton.tsx";
 import { buttonStyles } from "cyber-components/interactable/buttons/button/button.tsx";
@@ -55,7 +55,7 @@ function CreateGlyphPage() {
                     Back to Gallery
                 </IconButton>
             </nav>
-            <NewGlyphForm onSuccess={handleSuccess} />
+            <NewGraphemeForm />
         </div>
     );
 }

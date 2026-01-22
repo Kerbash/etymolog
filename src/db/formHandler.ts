@@ -83,6 +83,7 @@ export function validateGlyphForm(formData: Partial<GlyphFormData>): string[] {
 export function transformGraphemeFormToInput(formData: GraphemeFormData): CreateGraphemeInput {
     return {
         name: formData.graphemeName.trim(),
+        category: formData.category?.trim() || undefined,
         notes: formData.notes?.trim() || undefined,
         glyphs: formData.glyphIds.map((glyphId, index) => ({
             glyph_id: glyphId,
@@ -158,6 +159,8 @@ export interface CombinedGlyphGraphemeFormData {
     glyphSvg: string;
     glyphName: string;
     glyphNotes?: string;
+    // Shared category for both glyph and grapheme
+    category?: string;
     // Grapheme data (if different from glyph)
     graphemeName?: string;  // Falls back to glyphName if not provided
     graphemeNotes?: string;
@@ -192,12 +195,14 @@ export async function saveGlyphAndGrapheme(formData: CombinedGlyphGraphemeFormDa
     const glyph = createGlyph({
         name: formData.glyphName.trim(),
         svg_data: formData.glyphSvg,
+        category: formData.category?.trim() || undefined,
         notes: formData.glyphNotes?.trim() || undefined
     });
 
     // Then create the grapheme using that glyph
     const grapheme = createGrapheme({
         name: (formData.graphemeName || formData.glyphName).trim(),
+        category: formData.category?.trim() || undefined,
         notes: formData.graphemeNotes?.trim() || undefined,
         glyphs: [{
             glyph_id: glyph.id,
@@ -250,16 +255,18 @@ export function validateCombinedForm(formData: Partial<CombinedGlyphGraphemeForm
 export function transformFormToGraphemeInput(formData: {
     graphemeSvg: string;
     graphemeName: string;
+    category?: string;
     notes?: string;
     pronunciations: Array<{
         pronunciation: string;
         useInAutoSpelling: boolean;
     }>;
-}): CreateGraphemeInput & { _legacySvgData: string } {
+}): CreateGraphemeInput & { _legacySvgData: string; _category?: string } {
     // Return a special object that the caller needs to handle
     // by first creating a glyph, then using that glyph ID
     return {
         name: formData.graphemeName.trim(),
+        category: formData.category?.trim() || undefined,
         notes: formData.notes?.trim() || undefined,
         glyphs: [], // Will need to be filled in after creating glyph
         phonemes: formData.pronunciations
@@ -268,6 +275,7 @@ export function transformFormToGraphemeInput(formData: {
                 phoneme: p.pronunciation.trim(),
                 use_in_auto_spelling: p.useInAutoSpelling
             })),
-        _legacySvgData: formData.graphemeSvg // Caller must use this to create glyph first
+        _legacySvgData: formData.graphemeSvg, // Caller must use this to create glyph first
+        _category: formData.category?.trim() || undefined // Caller must use this for glyph category
     };
 }

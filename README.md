@@ -33,9 +33,10 @@ A conlang (constructed language) script creation and management tool. Create cus
 ├─────────────────┤     │   (junction table)      │     ├─────────────────┤
 │ id              │◄────┤ glyph_id                │────►│ id              │
 │ name            │     │ grapheme_id             │     │ name            │
-│ svg_data        │     │ position (order)        │     │ notes           │
-│ notes           │     │ transform               │     │ created_at      │
-│ created_at      │     └─────────────────────────┘     │ updated_at      │
+│ svg_data        │     │ position (order)        │     │ category        │
+│ category        │     │ transform               │     │ notes           │
+│ notes           │     └─────────────────────────┘     │ created_at      │
+│ created_at      │                                     │ updated_at      │
 │ updated_at      │                                     └────────┬────────┘
 └─────────────────┘                                              │
                                                                  │ 1:N

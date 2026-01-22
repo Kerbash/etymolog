@@ -45,8 +45,8 @@ export function createGrapheme(input: CreateGraphemeInput): GraphemeComplete {
 
     // Insert the grapheme
     db.run(
-        `INSERT INTO graphemes (name, notes) VALUES (?, ?)`,
-        [input.name, input.notes ?? null]
+        `INSERT INTO graphemes (name, category, notes) VALUES (?, ?, ?)`,
+        [input.name, input.category ?? null, input.notes ?? null]
     );
 
     const result = db.exec('SELECT last_insert_rowid() as id');
@@ -85,7 +85,7 @@ export function getGraphemeById(id: number): Grapheme | null {
     const db = getDatabase();
 
     const result = db.exec(
-        `SELECT id, name, notes, created_at, updated_at 
+        `SELECT id, name, category, notes, created_at, updated_at 
          FROM graphemes WHERE id = ?`,
         [id]
     );
@@ -98,9 +98,10 @@ export function getGraphemeById(id: number): Grapheme | null {
     return {
         id: row[0] as number,
         name: row[1] as string,
-        notes: row[2] as string | null,
-        created_at: row[3] as string,
-        updated_at: row[4] as string
+        category: row[2] as string | null,
+        notes: row[3] as string | null,
+        created_at: row[4] as string,
+        updated_at: row[5] as string
     };
 }
 
@@ -145,7 +146,7 @@ export function getAllGraphemes(): Grapheme[] {
     const db = getDatabase();
 
     const result = db.exec(
-        `SELECT id, name, notes, created_at, updated_at 
+        `SELECT id, name, category, notes, created_at, updated_at 
          FROM graphemes 
          ORDER BY created_at DESC`
     );
@@ -157,9 +158,10 @@ export function getAllGraphemes(): Grapheme[] {
     return result[0].values.map((row: unknown[]) => ({
         id: row[0] as number,
         name: row[1] as string,
-        notes: row[2] as string | null,
-        created_at: row[3] as string,
-        updated_at: row[4] as string
+        category: row[2] as string | null,
+        notes: row[3] as string | null,
+        created_at: row[4] as string,
+        updated_at: row[5] as string
     }));
 }
 
@@ -207,7 +209,7 @@ export function searchGraphemesByName(query: string): Grapheme[] {
     const db = getDatabase();
 
     const result = db.exec(
-        `SELECT id, name, notes, created_at, updated_at 
+        `SELECT id, name, category, notes, created_at, updated_at 
          FROM graphemes 
          WHERE name LIKE ?
          ORDER BY name`,
@@ -221,9 +223,10 @@ export function searchGraphemesByName(query: string): Grapheme[] {
     return result[0].values.map((row: unknown[]) => ({
         id: row[0] as number,
         name: row[1] as string,
-        notes: row[2] as string | null,
-        created_at: row[3] as string,
-        updated_at: row[4] as string
+        category: row[2] as string | null,
+        notes: row[3] as string | null,
+        created_at: row[4] as string,
+        updated_at: row[5] as string
     }));
 }
 
@@ -239,6 +242,11 @@ export function updateGrapheme(id: number, input: UpdateGraphemeInput): Grapheme
     if (input.name !== undefined) {
         updates.push('name = ?');
         values.push(input.name);
+    }
+
+    if (input.category !== undefined) {
+        updates.push('category = ?');
+        values.push(input.category);
     }
 
     if (input.notes !== undefined) {
@@ -303,7 +311,7 @@ export function getGlyphsByGraphemeId(graphemeId: number): Glyph[] {
     const db = getDatabase();
 
     const result = db.exec(`
-        SELECT g.id, g.name, g.svg_data, g.notes, g.created_at, g.updated_at
+        SELECT g.id, g.name, g.svg_data, g.category, g.notes, g.created_at, g.updated_at
         FROM glyphs g
         JOIN grapheme_glyphs gg ON g.id = gg.glyph_id
         WHERE gg.grapheme_id = ?
@@ -318,9 +326,10 @@ export function getGlyphsByGraphemeId(graphemeId: number): Glyph[] {
         id: row[0] as number,
         name: row[1] as string,
         svg_data: row[2] as string,
-        notes: row[3] as string | null,
-        created_at: row[4] as string,
-        updated_at: row[5] as string
+        category: row[3] as string | null,
+        notes: row[4] as string | null,
+        created_at: row[5] as string,
+        updated_at: row[6] as string
     }));
 }
 

@@ -12,3 +12,146 @@
 .formContainer {
     padding-bottom: 10rem;
 }
+
+// Glyph Selection Container
+.glyphSelectionContainer {
+    margin: 1.5rem 0;
+
+    h3 {
+        margin-bottom: 0.75rem;
+        font-size: 1.125rem;
+        color: var(--text-primary);
+    }
+}
+
+.glyphSelectionBox {
+    border: 2px dashed var(--border-primary);
+    border-radius: 8px;
+    padding: 1.5rem;
+    background: var(--surface-raised);
+    min-height: 150px;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.emptyState {
+    text-align: center;
+    color: var(--text-secondary);
+    font-style: italic;
+    margin: auto;
+    padding: 2rem;
+}
+
+.selectedGlyphs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    padding: 0.5rem;
+}
+
+.glyphItem {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1rem;
+    border: 1px solid var(--border-primary);
+    border-radius: 8px;
+    background: var(--surface-base);
+    transition: all 0.2s ease;
+
+    &:hover {
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        transform: translateY(-2px);
+    }
+}
+
+.glyphSvg {
+    width: 250px;
+    height: 250px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-secondary);
+    border-radius: 4px;
+    background: white;
+
+    svg {
+        max-width: 100%;
+        max-height: 100%;
+    }
+}
+
+.glyphName {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+.glyphCategory {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+.removeButton {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    border: none;
+    background: var(--error-base);
+    color: white;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    padding: 0.25rem;
+
+    &:hover {
+        background: var(--error-dark);
+        transform: scale(1.05);
+    }
+
+    &:focus {
+        outline: 2px solid var(--focus-ring);
+        outline-offset: 2px;
+    }
+
+    &:active {
+        transform: scale(0.95);
+    }
+}
+
+.glyphButtons {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: auto;
+}
+
+// Modal Styles
+.modalContent {
+    background: var(--bg-primary);
+    padding: 2rem;
+}
+
+.errorMessage {
+    padding: 1rem;
+    background: var(--error-light);
+    border: 1px solid var(--error-base);
+    border-radius: 4px;
+    color: var(--error-dark);
+    margin-bottom: 1rem;
+}
+
+.modalButtons {
+    justify-content: flex-end;
+    margin-top: 1.5rem;
+}

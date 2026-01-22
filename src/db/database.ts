@@ -17,7 +17,7 @@ let db: Database | null = null;
 let SQL: SqlJsStatic | null = null;
 
 // Storage key for persisting database to localStorage
-const DB_STORAGE_KEY = 'etymolog_db_v2'; // Versioned key for new schema
+const DB_STORAGE_KEY = 'etymolog_db_v3'; // Versioned key for schema with category
 
 /**
  * Initialize the SQL.js library and database
@@ -55,7 +55,7 @@ export async function initDatabase(): Promise<Database> {
         const newDb = new SQL.Database();
         createTables(newDb);
         db = newDb;
-        console.log('[DB] Created new database with v2 schema');
+        console.log('[DB] Created new database with v3 schema');
     }
 
     return db!;
@@ -80,6 +80,7 @@ function createTables(database: Database): void {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             svg_data TEXT NOT NULL,
+            category TEXT,
             notes TEXT,
             created_at TEXT DEFAULT (datetime('now')),
             updated_at TEXT DEFAULT (datetime('now'))
@@ -97,6 +98,7 @@ function createTables(database: Database): void {
         CREATE TABLE IF NOT EXISTS graphemes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
+            category TEXT,
             notes TEXT,
             created_at TEXT DEFAULT (datetime('now')),
             updated_at TEXT DEFAULT (datetime('now'))
@@ -156,7 +158,7 @@ function createTables(database: Database): void {
         ON phonemes(grapheme_id)
     `);
 
-    console.log('[DB] Tables created successfully (v2 schema)');
+    console.log('[DB] Tables created successfully (v3 schema with category)');
 }
 
 /**
@@ -170,11 +172,26 @@ function runMigrations(database: Database): void {
     `);
 
     if (result.length === 0 || result[0].values.length === 0) {
-        console.log('[DB] Migrating from v1 to v2 schema...');
+        console.log('[DB] Migrating from v1 to v3 schema...');
         // Old schema detected, need to migrate
         // For now, just recreate tables (user will lose data)
         // TODO: Implement proper migration if needed
         createTables(database);
+        return;
+    }
+
+    // Check if category column exists in glyphs table (v3 schema)
+    const glyphColumns = database.exec(`PRAGMA table_info(glyphs)`);
+    const hasGlyphCategory = glyphColumns.length > 0 &&
+        glyphColumns[0].values.some((row: unknown[]) => row[1] === 'category');
+
+    if (!hasGlyphCategory) {
+        console.log('[DB] Migrating from v2 to v3 schema (adding category columns)...');
+        // Add category column to glyphs table
+        database.run(`ALTER TABLE glyphs ADD COLUMN category TEXT`);
+        // Add category column to graphemes table
+        database.run(`ALTER TABLE graphemes ADD COLUMN category TEXT`);
+        console.log('[DB] Migration to v3 complete');
     }
 }
 

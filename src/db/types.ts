@@ -25,6 +25,7 @@ export interface Glyph {
     id: number;
     name: string;
     svg_data: string;
+    category: string | null;
     notes: string | null;
     created_at: string;
     updated_at: string;
@@ -36,6 +37,7 @@ export interface Glyph {
 export interface CreateGlyphInput {
     name: string;
     svg_data: string;
+    category?: string;
     notes?: string;
 }
 
@@ -60,6 +62,7 @@ export interface UpdateGlyphInput {
 export interface Grapheme {
     id: number;
     name: string;
+    category: string | null;
     notes: string | null;
     created_at: string;
     updated_at: string;
@@ -92,6 +95,7 @@ export interface CreateGraphemeGlyphInput {
  */
 export interface CreateGraphemeInput {
     name: string;
+    category?: string;
     notes?: string;
     /** Ordered array of glyph references */
     glyphs: CreateGraphemeGlyphInput[];
@@ -176,6 +180,7 @@ export interface UpdatePhonemeInput {
 export interface GlyphFormData {
     glyphSvg: string;
     glyphName: string;
+    category?: string;
     notes?: string;
 }
 
