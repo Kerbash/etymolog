@@ -1,30 +1,20 @@
 import DOMPurify from 'dompurify';
+import type { GraphemeComplete } from '../../../../../../db/types';
 import './detailed.css';
 
-interface Phoneme {
-    id: number;
-    grapheme_id: number;
-    phoneme: string;
-    use_in_auto_spelling: boolean;
-    context: string | null;
-}
-
-export interface GraphemeData {
-    id: number;
-    name: string;
-    svg_data: string;
-    notes: string;
-    created_at: string;
-    updated_at: string;
-    phonemes: Phoneme[];
-}
-
 interface DetailedGraphemeDisplayProps {
-    graphemeData: GraphemeData;
+    graphemeData: GraphemeComplete;
 }
 
 export default function DetailedGraphemeDisplay({ graphemeData }: DetailedGraphemeDisplayProps) {
-    const sanitizedSvg = DOMPurify.sanitize(graphemeData.svg_data, {
+    // Combine all glyph SVGs into one display
+    // For now, just show the first glyph if there's only one
+    // In the future, this could render multiple glyphs side by side
+    const combinedSvg = graphemeData.glyphs
+        .map(glyph => glyph.svg_data)
+        .join('');
+
+    const sanitizedSvg = DOMPurify.sanitize(combinedSvg, {
         USE_PROFILES: { svg: true, svgFilters: true },
     });
 
@@ -36,6 +26,9 @@ export default function DetailedGraphemeDisplay({ graphemeData }: DetailedGraphe
                     dangerouslySetInnerHTML={{ __html: sanitizedSvg }}
                 />
                 <h2 className="detailed-grapheme-name">{graphemeData.name}</h2>
+                {graphemeData.glyphs.length > 1 && (
+                    <span className="glyph-count">{graphemeData.glyphs.length} glyphs</span>
+                )}
             </div>
 
             <div className="detailed-grapheme-right">

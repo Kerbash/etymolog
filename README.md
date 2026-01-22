@@ -1,10 +1,12 @@
 # Etymolog
 
-A conlang (constructed language) script creation and management tool. Create custom writing systems with graphemes (script characters) and their associated phonemes (pronunciations).
+A conlang (constructed language) script creation and management tool. Create custom writing systems with glyphs, graphemes, and their associated phonemes (pronunciations).
 
 ## Features
 
-- **Script Drawer**: Draw custom script characters using pen, shapes, and selection tools
+- **Script Drawer**: Draw custom glyphs using pen, shapes, and selection tools
+- **Glyph Library**: Reusable atomic visual symbols
+- **Grapheme Composition**: Combine glyphs into meaningful written units
 - **Phoneme Management**: Associate multiple pronunciations with each grapheme
 - **Auto-Spelling Support**: Mark phonemes for use in automatic spelling/transliteration
 - **Local Database**: All data stored locally using SQL.js (SQLite in the browser)
@@ -16,52 +18,65 @@ A conlang (constructed language) script creation and management tool. Create cus
 
 ### Terminology
 
-| UI Term (User-Friendly) | DB Term (Linguistic) | Description |
-|------------------------|---------------------|-------------|
-| Grapheme / Script Character | Grapheme | A visual symbol in the writing system |
+| UI Term | DB Term | Description |
+|---------|---------|-------------|
+| Glyph | Glyph | An atomic visual symbol (SVG drawing) - reusable |
+| Grapheme | Grapheme | A composition of one or more glyphs - represents a written character |
 | Pronunciation | Phoneme | A sound associated with a grapheme |
 | Auto-Spelling | `use_in_auto_spelling` | Whether this phoneme is used for automatic transliteration |
 
-### Database Schema
+### Data Model
 
 ```
-┌─────────────────────────────────────┐
-│            graphemes                │
-├─────────────────────────────────────┤
-│ id          INTEGER PRIMARY KEY     │
-│ name        TEXT NOT NULL           │
-│ svg_data    TEXT NOT NULL           │
-│ notes       TEXT                    │
-│ created_at  TEXT (datetime)         │
-│ updated_at  TEXT (datetime)         │
-└─────────────────────────────────────┘
-                 │
-                 │ 1:N
-                 ▼
-┌─────────────────────────────────────┐
-│            phonemes                 │
-├─────────────────────────────────────┤
-│ id                    INTEGER PK    │
-│ grapheme_id           INTEGER FK    │
-│ phoneme               TEXT NOT NULL │
-│ use_in_auto_spelling  INTEGER (0/1) │
-│ context               TEXT          │
-└─────────────────────────────────────┘
+┌─────────────────┐     ┌─────────────────────────┐     ┌─────────────────┐
+│     glyphs      │     │   grapheme_glyphs       │     │   graphemes     │
+├─────────────────┤     │   (junction table)      │     ├─────────────────┤
+│ id              │◄────┤ glyph_id                │────►│ id              │
+│ name            │     │ grapheme_id             │     │ name            │
+│ svg_data        │     │ position (order)        │     │ notes           │
+│ notes           │     │ transform               │     │ created_at      │
+│ created_at      │     └─────────────────────────┘     │ updated_at      │
+│ updated_at      │                                     └────────┬────────┘
+└─────────────────┘                                              │
+                                                                 │ 1:N
+                                                                 ▼
+                                                        ┌─────────────────┐
+                                                        │    phonemes     │
+                                                        ├─────────────────┤
+                                                        │ id              │
+                                                        │ grapheme_id     │
+                                                        │ phoneme (IPA)   │
+                                                        │ use_in_auto_... │
+                                                        │ context         │
+                                                        └─────────────────┘
 ```
+
+### Why This Architecture?
+
+1. **Glyph Reusability**: The same glyph can be used in multiple graphemes. For example, a diacritical mark glyph can be combined with different base glyphs.
+
+2. **Compound Characters**: Graphemes can be composed of multiple glyphs in order. This enables ligatures, combined characters, and complex scripts.
+
+3. **Future-Proof**: The `transform` field in the junction table allows for future features like glyph rotation, scaling, or positioning within a grapheme.
 
 ### Data Flow
 
 ```
 ┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
-│   Form Input     │     │  Form Handler    │     │    Database      │
+│   Glyph Form     │     │    Database      │     │  Grapheme Form   │
 │                  │     │                  │     │                  │
-│ graphemeSvg      │────▶│ transformForm    │────▶│ createGrapheme() │
-│ graphemeName     │     │ ToGraphemeInput  │     │                  │
-│ notes            │     │                  │     │ Creates:         │
-│ pronunciations[] │     │ Maps UI terms    │     │ - 1 grapheme     │
-│   - pronunciation│     │ to DB terms      │     │ - N phonemes     │
-│   - useInAuto... │     │                  │     │                  │
-└──────────────────┘     └──────────────────┘     └──────────────────┘
+│ Draw SVG         │────▶│ createGlyph()    │     │ Select glyph(s)  │
+│ Enter name       │     │                  │     │ Enter name       │
+│ Add notes        │     │ Creates:         │◄────│ Add phonemes     │
+│                  │     │ - 1 glyph        │     │                  │
+└──────────────────┘     │                  │     └──────────────────┘
+                         │ createGrapheme() │
+                         │                  │
+                         │ Creates:         │
+                         │ - 1 grapheme     │
+                         │ - N glyph links  │
+                         │ - N phonemes     │
+                         └──────────────────┘
 ```
 
 ---
@@ -77,46 +92,79 @@ import { initDatabase } from './db';
 await initDatabase();
 ```
 
+### Glyph Operations
+
+```typescript
+import { 
+  createGlyph, 
+  getGlyphById, 
+  getAllGlyphs,
+  getAllGlyphsWithUsage,
+  updateGlyph,
+  deleteGlyph 
+} from './db';
+
+// Create a glyph (atomic visual symbol)
+const glyph = createGlyph({
+  name: 'Base A',
+  svg_data: '<svg>...</svg>',
+  notes: 'The base form of letter A'
+});
+
+// Get all glyphs with usage count
+const glyphsWithUsage = getAllGlyphsWithUsage();
+// Returns: [{ ...glyph, usageCount: 3 }, ...]
+```
+
 ### Grapheme Operations
 
 ```typescript
 import { 
   createGrapheme, 
-  getGraphemeById, 
-  getAllGraphemes,
-  updateGrapheme,
-  deleteGrapheme 
+  getGraphemeComplete,
+  getAllGraphemesComplete,
+  setGraphemeGlyphs
 } from './db';
 
-// Create a grapheme with phonemes
+// Create a grapheme using existing glyph(s)
 const grapheme = createGrapheme({
   name: 'A',
-  svg_data: '<svg>...</svg>',
-  notes: 'The first letter',
+  notes: 'The letter A',
+  glyphs: [
+    { glyph_id: 1, position: 0 },  // Base glyph
+    { glyph_id: 5, position: 1 }   // Optional diacritical mark
+  ],
   phonemes: [
     { phoneme: 'a', use_in_auto_spelling: true },
     { phoneme: 'æ', use_in_auto_spelling: false }
   ]
 });
 
-// Get all graphemes with their phonemes
-const all = getAllGraphemesWithPhonemes();
+// Get grapheme with all data (glyphs + phonemes)
+const complete = getGraphemeComplete(1);
+// Returns: { ...grapheme, glyphs: [...], phonemes: [...] }
 ```
 
 ### React Hooks
 
 ```typescript
-import { useGraphemes } from './db';
+import { useGlyphs, useGraphemes } from './db';
 
 function MyComponent() {
+  // Glyph management
   const { 
-    graphemes,           // All graphemes
-    isLoading,           // Loading state
-    error,               // Error state
-    create,              // Create grapheme
-    update,              // Update grapheme
-    remove,              // Delete grapheme
-    refresh              // Refresh data
+    glyphs,              // All glyphs
+    glyphsWithUsage,     // Glyphs with usage count
+    create: createGlyph,
+    remove: removeGlyph,
+  } = useGlyphs();
+
+  // Grapheme management
+  const { 
+    graphemesComplete,   // All graphemes with glyphs + phonemes
+    create: createGrapheme,
+    updateGlyphs,        // Update glyph composition
+    remove: removeGrapheme,
   } = useGraphemes();
 }
 ```
@@ -125,35 +173,46 @@ function MyComponent() {
 
 ## Form Integration
 
-The `NewGraphemeForm` component collects user input and transforms it for database storage:
+### Combined Workflow (Most Common)
 
-### Form Output Structure
+The most common workflow is to create a glyph and immediately use it in a grapheme:
 
 ```typescript
-interface GraphemeFormData {
-  graphemeSvg: string;           // SVG drawing data
-  graphemeName: string;          // Character name
-  notes: string;                 // Optional notes
-  pronunciations: Array<{
-    pronunciation: string;       // IPA or phonetic representation
-    useInAutoSpelling: boolean;  // Include in auto-spelling
-  }>;
-}
+import { saveGlyphAndGrapheme } from './db';
+
+const result = await saveGlyphAndGrapheme({
+  // Glyph data
+  glyphSvg: '<svg>...</svg>',
+  glyphName: 'A',
+  glyphNotes: 'Base letter A',
+  // Grapheme data (optional - falls back to glyph name)
+  graphemeName: 'A',
+  // Pronunciations
+  pronunciations: [
+    { pronunciation: 'a', useInAutoSpelling: true }
+  ]
+});
+
+// Result: { glyph: {...}, grapheme: {...} }
 ```
 
-### Transformation to Database Input
+### Separate Workflows
+
+For more complex use cases (like creating compound graphemes):
 
 ```typescript
-// Form data → Database input
-const dbInput: CreateGraphemeInput = {
-  name: formData.graphemeName,
-  svg_data: formData.graphemeSvg,
-  notes: formData.notes || undefined,
-  phonemes: formData.pronunciations.map(p => ({
-    phoneme: p.pronunciation,
-    use_in_auto_spelling: p.useInAutoSpelling
-  }))
-};
+import { saveGlyph, saveGrapheme } from './db';
+
+// Step 1: Create glyphs
+const baseGlyph = await saveGlyph({ glyphSvg: '...', glyphName: 'Base' });
+const accentGlyph = await saveGlyph({ glyphSvg: '...', glyphName: 'Accent' });
+
+// Step 2: Create grapheme using both glyphs
+const grapheme = await saveGrapheme({
+  graphemeName: 'Accented Base',
+  glyphIds: [baseGlyph.id, accentGlyph.id],  // Order matters!
+  pronunciations: [{ pronunciation: 'á', useInAutoSpelling: true }]
+});
 ```
 
 ---
@@ -163,13 +222,54 @@ const dbInput: CreateGraphemeInput = {
 ```
 src/db/
 ├── index.ts              # Barrel exports
-├── database.ts           # SQL.js initialization & persistence
+├── database.ts           # SQL.js initialization & schema
 ├── types.ts              # TypeScript interfaces
-├── graphemeService.ts    # CRUD operations for graphemes/phonemes
-├── useGraphemes.ts       # React hooks
+├── glyphService.ts       # Glyph CRUD operations
+├── graphemeService.ts    # Grapheme & phoneme CRUD operations
+├── useGlyphs.ts          # React hook for glyphs
+├── useGraphemes.ts       # React hook for graphemes
 ├── formHandler.ts        # Form-to-DB transformation
 └── __tests__/
-    └── graphemeService.test.ts  # Comprehensive tests
+    ├── setup.ts                  # Test environment setup
+    ├── glyphService.test.ts      # Glyph CRUD tests
+    ├── graphemeService.test.ts   # Grapheme & phoneme tests
+    └── edgeCases.test.ts         # Integration & edge case tests
+```
+
+---
+
+## Testing
+
+The test suite covers 141 tests across 3 test files:
+
+### Test Files
+
+| File | Description | Coverage |
+|------|-------------|----------|
+| `glyphService.test.ts` | Atomic glyph CRUD operations | Create, retrieve, update, delete, search, usage tracking |
+| `graphemeService.test.ts` | Grapheme composition & phonemes | Create, glyph linking, reordering, phoneme management |
+| `edgeCases.test.ts` | Integration & boundary tests | Glyph reuse, cascading deletes, concurrent operations |
+
+### Key Test Scenarios
+
+- **Glyph Reusability**: Same glyph used across multiple graphemes
+- **Safe Delete**: Prevents deletion of glyphs that are in use
+- **Force Delete**: Removes glyphs even when referenced
+- **Cascade Deletes**: Phonemes are deleted when grapheme is deleted
+- **Unicode Support**: Full IPA character support for phonemes
+- **Position Ordering**: Glyphs maintain their order in graphemes
+
+### Running Tests
+
+```bash
+# Run all tests
+pnpm test
+
+# Run tests in watch mode
+pnpm test:watch
+
+# Run with coverage
+pnpm test --coverage
 ```
 
 ---
@@ -186,21 +286,28 @@ pnpm dev
 # Run tests
 pnpm test
 
+# Run tests in watch mode  
+pnpm test -- --watch
+
 # Build for production
 pnpm build
 ```
 
 ---
 
-## Testing
+## Database Migration
 
-Tests cover all edge cases including:
+The database uses versioned storage keys. When upgrading from v1 (old schema without glyphs table) to v2:
 
-- Creating graphemes with/without phonemes
-- Handling empty/null/undefined values
-- Unicode and special characters in phonemes
-- Duplicate name handling
-- Cascade deletion of phonemes
-- Auto-spelling flag management
+- The database will automatically detect the old schema
+- Currently, this triggers a fresh database creation (data loss)
+- TODO: Implement proper migration to preserve existing data
 
-See `src/db/__tests__/graphemeService.test.ts` for full test coverage.
+To manually reset the database:
+
+```typescript
+import { resetDatabase } from './db';
+
+// Drops all tables and recreates fresh schema
+resetDatabase();
+```

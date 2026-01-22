@@ -2,11 +2,12 @@
  * SQL.js Database Setup
  *
  * Initializes and manages the in-browser SQLite database for storing
- * conlang graphemes (script characters) and their associated phonemes.
+ * conlang glyphs, graphemes, and phonemes.
  *
- * Terminology:
- * - Grapheme: A visual symbol in the writing system (UI: "grapheme")
- * - Phoneme: A sound/pronunciation associated with a grapheme (UI: "pronunciation")
+ * Architecture:
+ * - Glyph: Atomic visual symbol (SVG drawing) - reusable
+ * - Grapheme: Composition of glyphs with order (via junction table)
+ * - Phoneme: Pronunciation associated with a grapheme
  */
 
 import initSqlJs, { type Database, type SqlJsStatic } from 'sql.js';
@@ -16,7 +17,7 @@ let db: Database | null = null;
 let SQL: SqlJsStatic | null = null;
 
 // Storage key for persisting database to localStorage
-const DB_STORAGE_KEY = 'etymolog_db';
+const DB_STORAGE_KEY = 'etymolog_db_v2'; // Versioned key for new schema
 
 /**
  * Initialize the SQL.js library and database
@@ -25,8 +26,6 @@ export async function initDatabase(): Promise<Database> {
     if (db) return db;
 
     // Initialize SQL.js with WASM
-    // In browser: load from CDN
-    // In Node.js (tests): let sql.js find the WASM file automatically
     const isNode = typeof window === 'undefined';
 
     SQL = await initSqlJs(isNode ? undefined : {
@@ -41,6 +40,11 @@ export async function initDatabase(): Promise<Database> {
             const binaryArray = Uint8Array.from(atob(savedDb), c => c.charCodeAt(0));
             db = new SQL.Database(binaryArray);
             console.log('[DB] Loaded existing database from localStorage');
+
+            // Run migrations if needed
+            if (db) {
+                runMigrations(db);
+            }
         } catch (error) {
             console.warn('[DB] Failed to load saved database, creating new one:', error);
             const newDb = new SQL.Database();
@@ -51,7 +55,7 @@ export async function initDatabase(): Promise<Database> {
         const newDb = new SQL.Database();
         createTables(newDb);
         db = newDb;
-        console.log('[DB] Created new database');
+        console.log('[DB] Created new database with v2 schema');
     }
 
     return db!;
@@ -60,15 +64,19 @@ export async function initDatabase(): Promise<Database> {
 /**
  * Create database tables
  *
- * Schema Design:
- * - graphemes: Stores the visual representation of script characters
- * - phonemes: Stores pronunciation data linked to graphemes (1:N relationship)
+ * Schema v2: Glyph → Grapheme → Phoneme architecture
+ * - glyphs: Atomic visual symbols (SVG drawings)
+ * - graphemes: Compositions of glyphs
+ * - grapheme_glyphs: Junction table with position ordering
+ * - phonemes: Pronunciations linked to graphemes
  */
 function createTables(database: Database): void {
-    // Graphemes table - stores individual script characters
-    // UI calls these "graphemes" or "script characters"
+    // Enable foreign key support
+    database.run('PRAGMA foreign_keys = ON');
+
+    // Glyphs table - atomic visual symbols
     database.run(`
-        CREATE TABLE IF NOT EXISTS graphemes (
+        CREATE TABLE IF NOT EXISTS glyphs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             svg_data TEXT NOT NULL,
@@ -78,9 +86,59 @@ function createTables(database: Database): void {
         )
     `);
 
-    // Phonemes table - stores pronunciations for each grapheme
-    // UI calls these "pronunciations"
-    // Each grapheme can have multiple phonemes (1:N relationship)
+    // Index for glyph name searches
+    database.run(`
+        CREATE INDEX IF NOT EXISTS idx_glyphs_name 
+        ON glyphs(name)
+    `);
+
+    // Graphemes table - compositions of glyphs
+    database.run(`
+        CREATE TABLE IF NOT EXISTS graphemes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            notes TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now'))
+        )
+    `);
+
+    // Index for grapheme name searches
+    database.run(`
+        CREATE INDEX IF NOT EXISTS idx_graphemes_name 
+        ON graphemes(name)
+    `);
+
+    // Junction table: grapheme_glyphs
+    // Links glyphs to graphemes with position for ordering
+    database.run(`
+        CREATE TABLE IF NOT EXISTS grapheme_glyphs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            grapheme_id INTEGER NOT NULL,
+            glyph_id INTEGER NOT NULL,
+            position INTEGER NOT NULL DEFAULT 0,
+            transform TEXT,
+            FOREIGN KEY (grapheme_id) REFERENCES graphemes(id) ON DELETE CASCADE,
+            FOREIGN KEY (glyph_id) REFERENCES glyphs(id) ON DELETE RESTRICT,
+            UNIQUE(grapheme_id, glyph_id, position)
+        )
+    `);
+
+    // Indexes for junction table
+    database.run(`
+        CREATE INDEX IF NOT EXISTS idx_grapheme_glyphs_grapheme 
+        ON grapheme_glyphs(grapheme_id)
+    `);
+    database.run(`
+        CREATE INDEX IF NOT EXISTS idx_grapheme_glyphs_glyph 
+        ON grapheme_glyphs(glyph_id)
+    `);
+    database.run(`
+        CREATE INDEX IF NOT EXISTS idx_grapheme_glyphs_position 
+        ON grapheme_glyphs(grapheme_id, position)
+    `);
+
+    // Phonemes table - pronunciations for graphemes
     database.run(`
         CREATE TABLE IF NOT EXISTS phonemes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -92,13 +150,32 @@ function createTables(database: Database): void {
         )
     `);
 
-    // Create index for faster phoneme lookups by grapheme
+    // Index for phoneme lookups
     database.run(`
         CREATE INDEX IF NOT EXISTS idx_phonemes_grapheme_id 
         ON phonemes(grapheme_id)
     `);
 
-    console.log('[DB] Tables created successfully');
+    console.log('[DB] Tables created successfully (v2 schema)');
+}
+
+/**
+ * Run any necessary migrations
+ */
+function runMigrations(database: Database): void {
+    // Check if glyphs table exists (v2 schema)
+    const result = database.exec(`
+        SELECT name FROM sqlite_master 
+        WHERE type='table' AND name='glyphs'
+    `);
+
+    if (result.length === 0 || result[0].values.length === 0) {
+        console.log('[DB] Migrating from v1 to v2 schema...');
+        // Old schema detected, need to migrate
+        // For now, just recreate tables (user will lose data)
+        // TODO: Implement proper migration if needed
+        createTables(database);
+    }
 }
 
 /**
@@ -121,7 +198,6 @@ export function isDatabaseInitialized(): boolean {
 
 /**
  * Save the current database state to localStorage
- * Called automatically after mutations, but can be called manually
  */
 export function persistDatabase(): void {
     if (!db) {
@@ -144,7 +220,6 @@ export function persistDatabase(): void {
 
 /**
  * Export database as a downloadable Blob
- * Use with URL.createObjectURL() for download links
  */
 export function exportDatabaseFile(): Blob {
     if (!db) {
@@ -157,7 +232,6 @@ export function exportDatabaseFile(): Blob {
 
 /**
  * Import database from a file
- * Replaces the current database entirely
  */
 export async function importDatabaseFile(file: File): Promise<void> {
     if (!SQL) {
@@ -167,20 +241,20 @@ export async function importDatabaseFile(file: File): Promise<void> {
     const buffer = await file.arrayBuffer();
     const data = new Uint8Array(buffer);
 
-    // Close existing database
     if (db) {
         db.close();
     }
 
-    // Create new database from imported file
     db = new SQL.Database(data);
-    persistDatabase();
+    if (db) {
+        runMigrations(db);
+        persistDatabase();
+    }
     console.log('[DB] Database imported successfully');
 }
 
 /**
  * Close the database connection
- * Persists data before closing
  */
 export function closeDatabase(): void {
     if (db) {
@@ -193,14 +267,32 @@ export function closeDatabase(): void {
 
 /**
  * Clear all data from the database
- * Useful for testing or user-initiated reset
  */
 export function clearDatabase(): void {
     if (!db) return;
 
+    // Delete in order respecting foreign keys
     db.run('DELETE FROM phonemes');
+    db.run('DELETE FROM grapheme_glyphs');
     db.run('DELETE FROM graphemes');
-    db.run('DELETE FROM sqlite_sequence WHERE name IN ("graphemes", "phonemes")');
+    db.run('DELETE FROM glyphs');
+    db.run(`DELETE FROM sqlite_sequence WHERE name IN ('glyphs', 'graphemes', 'grapheme_glyphs', 'phonemes')`);
     persistDatabase();
     console.log('[DB] Database cleared');
+}
+
+/**
+ * Reset database to fresh state (drops and recreates all tables)
+ */
+export function resetDatabase(): void {
+    if (!db) return;
+
+    db.run('DROP TABLE IF EXISTS phonemes');
+    db.run('DROP TABLE IF EXISTS grapheme_glyphs');
+    db.run('DROP TABLE IF EXISTS graphemes');
+    db.run('DROP TABLE IF EXISTS glyphs');
+
+    createTables(db);
+    persistDatabase();
+    console.log('[DB] Database reset to fresh state');
 }

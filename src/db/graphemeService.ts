@@ -1,12 +1,12 @@
 /**
  * Grapheme Service
  *
- * CRUD operations for managing graphemes (script characters) and their
- * associated phonemes (pronunciations) in the database.
+ * CRUD operations for managing graphemes and their relationships to glyphs and phonemes.
  *
- * Terminology:
- * - Grapheme = visual symbol (UI: "grapheme")
- * - Phoneme = pronunciation (UI: "pronunciation")
+ * Architecture:
+ * - Grapheme: A composition of one or more glyphs
+ * - GraphemeGlyph: Junction table linking glyphs to graphemes with position
+ * - Phoneme: Pronunciation associated with a grapheme
  */
 
 import { getDatabase, persistDatabase } from './database';
@@ -17,7 +17,12 @@ import type {
     Phoneme,
     CreatePhonemeInput,
     UpdatePhonemeInput,
-    GraphemeWithPhonemes
+    GraphemeWithGlyphs,
+    GraphemeWithPhonemes,
+    GraphemeComplete,
+    Glyph,
+    GraphemeGlyph,
+    CreateGraphemeGlyphInput
 } from './types';
 
 // =============================================================================
@@ -25,36 +30,34 @@ import type {
 // =============================================================================
 
 /**
- * Create a new grapheme with optional phonemes.
+ * Create a new grapheme with its glyph composition and optional phonemes.
  *
- * @param input - Grapheme data including optional phonemes array
- * @returns The created grapheme with all its phonemes
- *
- * @example
- * const grapheme = createGrapheme({
- *   name: 'A',
- *   svg_data: '<svg>...</svg>',
- *   notes: 'First letter',
- *   phonemes: [
- *     { phoneme: 'a', use_in_auto_spelling: true },
- *     { phoneme: 'æ', use_in_auto_spelling: false }
- *   ]
- * });
+ * @param input - Grapheme data including glyphs array and optional phonemes
+ * @returns The created grapheme with all its data
  */
-export function createGrapheme(input: CreateGraphemeInput): GraphemeWithPhonemes {
+export function createGrapheme(input: CreateGraphemeInput): GraphemeComplete {
     const db = getDatabase();
+
+    // Validate at least one glyph is provided
+    if (!input.glyphs || input.glyphs.length === 0) {
+        throw new Error('At least one glyph is required to create a grapheme');
+    }
 
     // Insert the grapheme
     db.run(
-        `INSERT INTO graphemes (name, svg_data, notes) VALUES (?, ?, ?)`,
-        [input.name, input.svg_data, input.notes ?? null]
+        `INSERT INTO graphemes (name, notes) VALUES (?, ?)`,
+        [input.name, input.notes ?? null]
     );
 
-    // Get the auto-generated ID
     const result = db.exec('SELECT last_insert_rowid() as id');
     const graphemeId = result[0].values[0][0] as number;
 
-    // Create associated phonemes if provided
+    // Link glyphs to grapheme
+    for (const glyphInput of input.glyphs) {
+        addGlyphToGrapheme(graphemeId, glyphInput);
+    }
+
+    // Create phonemes if provided
     const phonemes: Phoneme[] = [];
     if (input.phonemes && input.phonemes.length > 0) {
         for (const phonemeInput of input.phonemes) {
@@ -63,29 +66,26 @@ export function createGrapheme(input: CreateGraphemeInput): GraphemeWithPhonemes
         }
     }
 
-    // Persist changes
     persistDatabase();
 
-    // Return complete grapheme with phonemes
     const grapheme = getGraphemeById(graphemeId);
     if (!grapheme) {
         throw new Error('Failed to create grapheme');
     }
 
-    return { ...grapheme, phonemes };
+    const glyphs = getGlyphsByGraphemeId(graphemeId);
+
+    return { ...grapheme, glyphs, phonemes };
 }
 
 /**
- * Get a grapheme by its ID.
- *
- * @param id - The grapheme ID
- * @returns The grapheme or null if not found
+ * Get a grapheme by ID (without glyphs or phonemes).
  */
 export function getGraphemeById(id: number): Grapheme | null {
     const db = getDatabase();
 
     const result = db.exec(
-        `SELECT id, name, svg_data, notes, created_at, updated_at 
+        `SELECT id, name, notes, created_at, updated_at 
          FROM graphemes WHERE id = ?`,
         [id]
     );
@@ -98,18 +98,25 @@ export function getGraphemeById(id: number): Grapheme | null {
     return {
         id: row[0] as number,
         name: row[1] as string,
-        svg_data: row[2] as string,
-        notes: row[3] as string | null,
-        created_at: row[4] as string,
-        updated_at: row[5] as string
+        notes: row[2] as string | null,
+        created_at: row[3] as string,
+        updated_at: row[4] as string
     };
 }
 
 /**
- * Get a grapheme with all its phonemes.
- *
- * @param id - The grapheme ID
- * @returns The grapheme with phonemes or null if not found
+ * Get a grapheme with its ordered glyphs.
+ */
+export function getGraphemeWithGlyphs(id: number): GraphemeWithGlyphs | null {
+    const grapheme = getGraphemeById(id);
+    if (!grapheme) return null;
+
+    const glyphs = getGlyphsByGraphemeId(id);
+    return { ...grapheme, glyphs };
+}
+
+/**
+ * Get a grapheme with its phonemes.
  */
 export function getGraphemeWithPhonemes(id: number): GraphemeWithPhonemes | null {
     const grapheme = getGraphemeById(id);
@@ -120,15 +127,25 @@ export function getGraphemeWithPhonemes(id: number): GraphemeWithPhonemes | null
 }
 
 /**
- * Get all graphemes ordered by creation date (newest first).
- *
- * @returns Array of all graphemes
+ * Get a grapheme with both glyphs and phonemes.
+ */
+export function getGraphemeComplete(id: number): GraphemeComplete | null {
+    const grapheme = getGraphemeById(id);
+    if (!grapheme) return null;
+
+    const glyphs = getGlyphsByGraphemeId(id);
+    const phonemes = getPhonemesByGraphemeId(id);
+    return { ...grapheme, glyphs, phonemes };
+}
+
+/**
+ * Get all graphemes (without related data).
  */
 export function getAllGraphemes(): Grapheme[] {
     const db = getDatabase();
 
     const result = db.exec(
-        `SELECT id, name, svg_data, notes, created_at, updated_at 
+        `SELECT id, name, notes, created_at, updated_at 
          FROM graphemes 
          ORDER BY created_at DESC`
     );
@@ -140,17 +157,26 @@ export function getAllGraphemes(): Grapheme[] {
     return result[0].values.map((row: unknown[]) => ({
         id: row[0] as number,
         name: row[1] as string,
-        svg_data: row[2] as string,
-        notes: row[3] as string | null,
-        created_at: row[4] as string,
-        updated_at: row[5] as string
+        notes: row[2] as string | null,
+        created_at: row[3] as string,
+        updated_at: row[4] as string
+    }));
+}
+
+/**
+ * Get all graphemes with their glyphs.
+ */
+export function getAllGraphemesWithGlyphs(): GraphemeWithGlyphs[] {
+    const graphemes = getAllGraphemes();
+
+    return graphemes.map(grapheme => ({
+        ...grapheme,
+        glyphs: getGlyphsByGraphemeId(grapheme.id)
     }));
 }
 
 /**
  * Get all graphemes with their phonemes.
- *
- * @returns Array of all graphemes with their phonemes
  */
 export function getAllGraphemesWithPhonemes(): GraphemeWithPhonemes[] {
     const graphemes = getAllGraphemes();
@@ -162,16 +188,26 @@ export function getAllGraphemesWithPhonemes(): GraphemeWithPhonemes[] {
 }
 
 /**
- * Search graphemes by name (case-insensitive partial match).
- *
- * @param query - Search string
- * @returns Matching graphemes
+ * Get all graphemes with full data (glyphs and phonemes).
+ */
+export function getAllGraphemesComplete(): GraphemeComplete[] {
+    const graphemes = getAllGraphemes();
+
+    return graphemes.map(grapheme => ({
+        ...grapheme,
+        glyphs: getGlyphsByGraphemeId(grapheme.id),
+        phonemes: getPhonemesByGraphemeId(grapheme.id)
+    }));
+}
+
+/**
+ * Search graphemes by name.
  */
 export function searchGraphemesByName(query: string): Grapheme[] {
     const db = getDatabase();
 
     const result = db.exec(
-        `SELECT id, name, svg_data, notes, created_at, updated_at 
+        `SELECT id, name, notes, created_at, updated_at 
          FROM graphemes 
          WHERE name LIKE ?
          ORDER BY name`,
@@ -185,25 +221,18 @@ export function searchGraphemesByName(query: string): Grapheme[] {
     return result[0].values.map((row: unknown[]) => ({
         id: row[0] as number,
         name: row[1] as string,
-        svg_data: row[2] as string,
-        notes: row[3] as string | null,
-        created_at: row[4] as string,
-        updated_at: row[5] as string
+        notes: row[2] as string | null,
+        created_at: row[3] as string,
+        updated_at: row[4] as string
     }));
 }
 
 /**
- * Update an existing grapheme.
- * Only provided fields will be updated.
- *
- * @param id - The grapheme ID
- * @param input - Fields to update
- * @returns The updated grapheme or null if not found
+ * Update a grapheme's basic info (not glyph composition).
  */
 export function updateGrapheme(id: number, input: UpdateGraphemeInput): Grapheme | null {
     const db = getDatabase();
 
-    // Build dynamic UPDATE query based on provided fields
     const updates: string[] = [];
     const values: (string | null)[] = [];
 
@@ -212,22 +241,15 @@ export function updateGrapheme(id: number, input: UpdateGraphemeInput): Grapheme
         values.push(input.name);
     }
 
-    if (input.svg_data !== undefined) {
-        updates.push('svg_data = ?');
-        values.push(input.svg_data);
-    }
-
     if (input.notes !== undefined) {
         updates.push('notes = ?');
         values.push(input.notes);
     }
 
-    // If no fields to update, just return current state
     if (updates.length === 0) {
         return getGraphemeById(id);
     }
 
-    // Always update the updated_at timestamp
     updates.push("updated_at = datetime('now')");
     values.push(id.toString());
 
@@ -241,18 +263,14 @@ export function updateGrapheme(id: number, input: UpdateGraphemeInput): Grapheme
 }
 
 /**
- * Delete a grapheme and all its associated phonemes.
- *
- * @param id - The grapheme ID
- * @returns true if deleted, false if not found
+ * Delete a grapheme and all its associations.
  */
 export function deleteGrapheme(id: number): boolean {
     const db = getDatabase();
 
-    // Delete phonemes first (in case CASCADE doesn't work in sql.js)
+    // Phonemes and grapheme_glyphs will cascade delete
     db.run('DELETE FROM phonemes WHERE grapheme_id = ?', [id]);
-
-    // Delete the grapheme
+    db.run('DELETE FROM grapheme_glyphs WHERE grapheme_id = ?', [id]);
     db.run('DELETE FROM graphemes WHERE id = ?', [id]);
 
     const changes = db.getRowsModified();
@@ -266,9 +284,7 @@ export function deleteGrapheme(id: number): boolean {
 }
 
 /**
- * Get the total count of graphemes.
- *
- * @returns Number of graphemes in the database
+ * Get grapheme count.
  */
 export function getGraphemeCount(): number {
     const db = getDatabase();
@@ -277,31 +293,176 @@ export function getGraphemeCount(): number {
 }
 
 // =============================================================================
+// GRAPHEME-GLYPH RELATIONSHIP OPERATIONS
+// =============================================================================
+
+/**
+ * Get glyphs for a grapheme, ordered by position.
+ */
+export function getGlyphsByGraphemeId(graphemeId: number): Glyph[] {
+    const db = getDatabase();
+
+    const result = db.exec(`
+        SELECT g.id, g.name, g.svg_data, g.notes, g.created_at, g.updated_at
+        FROM glyphs g
+        JOIN grapheme_glyphs gg ON g.id = gg.glyph_id
+        WHERE gg.grapheme_id = ?
+        ORDER BY gg.position ASC
+    `, [graphemeId]);
+
+    if (result.length === 0) {
+        return [];
+    }
+
+    return result[0].values.map((row: unknown[]) => ({
+        id: row[0] as number,
+        name: row[1] as string,
+        svg_data: row[2] as string,
+        notes: row[3] as string | null,
+        created_at: row[4] as string,
+        updated_at: row[5] as string
+    }));
+}
+
+/**
+ * Get the junction table entries for a grapheme.
+ */
+export function getGraphemeGlyphEntries(graphemeId: number): GraphemeGlyph[] {
+    const db = getDatabase();
+
+    const result = db.exec(`
+        SELECT id, grapheme_id, glyph_id, position, transform
+        FROM grapheme_glyphs
+        WHERE grapheme_id = ?
+        ORDER BY position ASC
+    `, [graphemeId]);
+
+    if (result.length === 0) {
+        return [];
+    }
+
+    return result[0].values.map((row: unknown[]) => ({
+        id: row[0] as number,
+        grapheme_id: row[1] as number,
+        glyph_id: row[2] as number,
+        position: row[3] as number,
+        transform: row[4] as string | null
+    }));
+}
+
+/**
+ * Add a glyph to a grapheme at a specific position.
+ */
+export function addGlyphToGrapheme(graphemeId: number, input: CreateGraphemeGlyphInput): GraphemeGlyph {
+    const db = getDatabase();
+
+    db.run(`
+        INSERT INTO grapheme_glyphs (grapheme_id, glyph_id, position, transform)
+        VALUES (?, ?, ?, ?)
+    `, [graphemeId, input.glyph_id, input.position, input.transform ?? null]);
+
+    const result = db.exec('SELECT last_insert_rowid() as id');
+    const id = result[0].values[0][0] as number;
+
+    // Update grapheme's updated_at
+    db.run(`UPDATE graphemes SET updated_at = datetime('now') WHERE id = ?`, [graphemeId]);
+
+    persistDatabase();
+
+    return {
+        id,
+        grapheme_id: graphemeId,
+        glyph_id: input.glyph_id,
+        position: input.position,
+        transform: input.transform ?? null
+    };
+}
+
+/**
+ * Remove a glyph from a grapheme.
+ */
+export function removeGlyphFromGrapheme(graphemeId: number, glyphId: number): boolean {
+    const db = getDatabase();
+
+    db.run(`
+        DELETE FROM grapheme_glyphs 
+        WHERE grapheme_id = ? AND glyph_id = ?
+    `, [graphemeId, glyphId]);
+
+    const changes = db.getRowsModified();
+
+    if (changes > 0) {
+        db.run(`UPDATE graphemes SET updated_at = datetime('now') WHERE id = ?`, [graphemeId]);
+        persistDatabase();
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * Replace all glyphs for a grapheme with a new ordered list.
+ */
+export function setGraphemeGlyphs(graphemeId: number, glyphs: CreateGraphemeGlyphInput[]): void {
+    const db = getDatabase();
+
+    // Remove all existing glyph links
+    db.run('DELETE FROM grapheme_glyphs WHERE grapheme_id = ?', [graphemeId]);
+
+    // Add new glyphs
+    for (const glyphInput of glyphs) {
+        db.run(`
+            INSERT INTO grapheme_glyphs (grapheme_id, glyph_id, position, transform)
+            VALUES (?, ?, ?, ?)
+        `, [graphemeId, glyphInput.glyph_id, glyphInput.position, glyphInput.transform ?? null]);
+    }
+
+    // Update grapheme's updated_at
+    db.run(`UPDATE graphemes SET updated_at = datetime('now') WHERE id = ?`, [graphemeId]);
+
+    persistDatabase();
+}
+
+/**
+ * Reorder glyphs within a grapheme.
+ */
+export function reorderGraphemeGlyphs(graphemeId: number, glyphIds: number[]): void {
+    const db = getDatabase();
+
+    // Update positions based on array order
+    glyphIds.forEach((glyphId, index) => {
+        db.run(`
+            UPDATE grapheme_glyphs 
+            SET position = ?
+            WHERE grapheme_id = ? AND glyph_id = ?
+        `, [index, graphemeId, glyphId]);
+    });
+
+    db.run(`UPDATE graphemes SET updated_at = datetime('now') WHERE id = ?`, [graphemeId]);
+
+    persistDatabase();
+}
+
+// =============================================================================
 // PHONEME CRUD OPERATIONS
 // =============================================================================
 
 /**
  * Add a phoneme to a grapheme.
- *
- * @param graphemeId - The parent grapheme ID
- * @param input - Phoneme data
- * @returns The created phoneme
  */
 export function addPhoneme(graphemeId: number, input: CreatePhonemeInput): Phoneme {
     const db = getDatabase();
 
-    db.run(
-        `INSERT INTO phonemes (grapheme_id, phoneme, use_in_auto_spelling, context) 
-         VALUES (?, ?, ?, ?)`,
-        [
-            graphemeId,
-            input.phoneme,
-            input.use_in_auto_spelling ? 1 : 0,
-            input.context ?? null
-        ]
-    );
+    db.run(`
+        INSERT INTO phonemes (grapheme_id, phoneme, use_in_auto_spelling, context) 
+        VALUES (?, ?, ?, ?)
+    `, [
+        graphemeId,
+        input.phoneme,
+        input.use_in_auto_spelling ? 1 : 0,
+        input.context ?? null
+    ]);
 
-    // Get the auto-generated ID
     const result = db.exec('SELECT last_insert_rowid() as id');
     const phonemeId = result[0].values[0][0] as number;
 
@@ -316,19 +477,15 @@ export function addPhoneme(graphemeId: number, input: CreatePhonemeInput): Phone
 }
 
 /**
- * Get a phoneme by its ID.
- *
- * @param id - The phoneme ID
- * @returns The phoneme or null if not found
+ * Get a phoneme by ID.
  */
 export function getPhonemeById(id: number): Phoneme | null {
     const db = getDatabase();
 
-    const result = db.exec(
-        `SELECT id, grapheme_id, phoneme, use_in_auto_spelling, context 
-         FROM phonemes WHERE id = ?`,
-        [id]
-    );
+    const result = db.exec(`
+        SELECT id, grapheme_id, phoneme, use_in_auto_spelling, context 
+        FROM phonemes WHERE id = ?
+    `, [id]);
 
     if (result.length === 0 || result[0].values.length === 0) {
         return null;
@@ -346,20 +503,16 @@ export function getPhonemeById(id: number): Phoneme | null {
 
 /**
  * Get all phonemes for a grapheme.
- *
- * @param graphemeId - The parent grapheme ID
- * @returns Array of phonemes for this grapheme
  */
 export function getPhonemesByGraphemeId(graphemeId: number): Phoneme[] {
     const db = getDatabase();
 
-    const result = db.exec(
-        `SELECT id, grapheme_id, phoneme, use_in_auto_spelling, context 
-         FROM phonemes 
-         WHERE grapheme_id = ?
-         ORDER BY id ASC`,
-        [graphemeId]
-    );
+    const result = db.exec(`
+        SELECT id, grapheme_id, phoneme, use_in_auto_spelling, context 
+        FROM phonemes 
+        WHERE grapheme_id = ?
+        ORDER BY id ASC
+    `, [graphemeId]);
 
     if (result.length === 0) {
         return [];
@@ -376,15 +529,10 @@ export function getPhonemesByGraphemeId(graphemeId: number): Phoneme[] {
 
 /**
  * Update a phoneme.
- *
- * @param id - The phoneme ID
- * @param input - Fields to update
- * @returns The updated phoneme or null if not found
  */
 export function updatePhoneme(id: number, input: UpdatePhonemeInput): Phoneme | null {
     const db = getDatabase();
 
-    // Build dynamic UPDATE query
     const updates: string[] = [];
     const values: (string | number | null)[] = [];
 
@@ -409,10 +557,7 @@ export function updatePhoneme(id: number, input: UpdatePhonemeInput): Phoneme | 
 
     values.push(id);
 
-    db.run(
-        `UPDATE phonemes SET ${updates.join(', ')} WHERE id = ?`,
-        values
-    );
+    db.run(`UPDATE phonemes SET ${updates.join(', ')} WHERE id = ?`, values);
 
     persistDatabase();
     return getPhonemeById(id);
@@ -420,9 +565,6 @@ export function updatePhoneme(id: number, input: UpdatePhonemeInput): Phoneme | 
 
 /**
  * Delete a phoneme.
- *
- * @param id - The phoneme ID
- * @returns true if deleted, false if not found
  */
 export function deletePhoneme(id: number): boolean {
     const db = getDatabase();
@@ -441,9 +583,6 @@ export function deletePhoneme(id: number): boolean {
 
 /**
  * Delete all phonemes for a grapheme.
- *
- * @param graphemeId - The parent grapheme ID
- * @returns Number of phonemes deleted
  */
 export function deleteAllPhonemesForGrapheme(graphemeId: number): number {
     const db = getDatabase();
@@ -460,20 +599,17 @@ export function deleteAllPhonemesForGrapheme(graphemeId: number): number {
 }
 
 /**
- * Get all phonemes that are marked for auto-spelling.
- * Useful for building transliteration tables.
- *
- * @returns Array of phonemes with use_in_auto_spelling = true
+ * Get all phonemes marked for auto-spelling.
  */
 export function getAutoSpellingPhonemes(): Phoneme[] {
     const db = getDatabase();
 
-    const result = db.exec(
-        `SELECT p.id, p.grapheme_id, p.phoneme, p.use_in_auto_spelling, p.context 
-         FROM phonemes p
-         WHERE p.use_in_auto_spelling = 1
-         ORDER BY p.grapheme_id, p.id`
-    );
+    const result = db.exec(`
+        SELECT id, grapheme_id, phoneme, use_in_auto_spelling, context 
+        FROM phonemes
+        WHERE use_in_auto_spelling = 1
+        ORDER BY grapheme_id, id
+    `);
 
     if (result.length === 0) {
         return [];

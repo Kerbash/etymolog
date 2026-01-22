@@ -1,8 +1,11 @@
 /**
- * React Hooks for Database Operations
+ * React Hook for Grapheme Operations
  *
- * Provides easy-to-use React integration for managing graphemes and phonemes.
+ * Provides easy-to-use React integration for managing graphemes.
  * Handles database initialization, state management, and CRUD operations.
+ *
+ * Note: Graphemes are now compositions of glyphs. Use useGlyphs() for
+ * managing the atomic visual symbols.
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -10,19 +13,27 @@ import { initDatabase } from './database';
 import {
     createGrapheme,
     getAllGraphemes,
+    getAllGraphemesComplete,
+    getAllGraphemesWithGlyphs,
     getAllGraphemesWithPhonemes,
     getGraphemeById,
+    getGraphemeComplete,
+    getGraphemeWithGlyphs,
     getGraphemeWithPhonemes,
     updateGrapheme,
     deleteGrapheme,
     searchGraphemesByName,
-    getGraphemeCount
+    getGraphemeCount,
+    setGraphemeGlyphs
 } from './graphemeService';
 import type {
     Grapheme,
     CreateGraphemeInput,
     UpdateGraphemeInput,
-    GraphemeWithPhonemes
+    GraphemeComplete,
+    GraphemeWithGlyphs,
+    GraphemeWithPhonemes,
+    CreateGraphemeGlyphInput
 } from './types';
 
 // =============================================================================
@@ -30,10 +41,14 @@ import type {
 // =============================================================================
 
 interface UseGraphemesResult {
-    /** All graphemes (without phonemes) */
+    /** All graphemes (basic info only) */
     graphemes: Grapheme[];
+    /** All graphemes with their glyphs */
+    graphemesWithGlyphs: GraphemeWithGlyphs[];
     /** All graphemes with their phonemes */
     graphemesWithPhonemes: GraphemeWithPhonemes[];
+    /** All graphemes with full data (glyphs + phonemes) */
+    graphemesComplete: GraphemeComplete[];
     /** Loading state during initialization */
     isLoading: boolean;
     /** Error state if something went wrong */
@@ -42,16 +57,22 @@ interface UseGraphemesResult {
     count: number;
 
     // CRUD Operations
-    /** Create a new grapheme with optional phonemes */
-    create: (input: CreateGraphemeInput) => Promise<GraphemeWithPhonemes>;
-    /** Update an existing grapheme */
+    /** Create a new grapheme with glyphs and optional phonemes */
+    create: (input: CreateGraphemeInput) => Promise<GraphemeComplete>;
+    /** Update a grapheme's basic info */
     update: (id: number, input: UpdateGraphemeInput) => Promise<Grapheme | null>;
-    /** Delete a grapheme and all its phonemes */
+    /** Update a grapheme's glyph composition */
+    updateGlyphs: (id: number, glyphs: CreateGraphemeGlyphInput[]) => Promise<void>;
+    /** Delete a grapheme */
     remove: (id: number) => Promise<boolean>;
     /** Get a single grapheme by ID */
     getById: (id: number) => Grapheme | null;
-    /** Get a single grapheme with its phonemes by ID */
+    /** Get a grapheme with its glyphs */
+    getByIdWithGlyphs: (id: number) => GraphemeWithGlyphs | null;
+    /** Get a grapheme with its phonemes */
     getByIdWithPhonemes: (id: number) => GraphemeWithPhonemes | null;
+    /** Get a grapheme with full data */
+    getByIdComplete: (id: number) => GraphemeComplete | null;
     /** Search graphemes by name */
     search: (query: string) => Grapheme[];
 
@@ -78,15 +99,15 @@ interface UseDatabaseResult {
  *
  * @example
  * function GraphemeList() {
- *   const { graphemes, isLoading, create, remove } = useGraphemes();
+ *   const { graphemesComplete, isLoading, create, remove } = useGraphemes();
  *
  *   if (isLoading) return <Spinner />;
  *
  *   return (
  *     <ul>
- *       {graphemes.map(g => (
+ *       {graphemesComplete.map(g => (
  *         <li key={g.id}>
- *           {g.name}
+ *           {g.name} - {g.glyphs.length} glyph(s)
  *           <button onClick={() => remove(g.id)}>Delete</button>
  *         </li>
  *       ))}
@@ -96,7 +117,9 @@ interface UseDatabaseResult {
  */
 export function useGraphemes(): UseGraphemesResult {
     const [graphemes, setGraphemes] = useState<Grapheme[]>([]);
+    const [graphemesWithGlyphs, setGraphemesWithGlyphs] = useState<GraphemeWithGlyphs[]>([]);
     const [graphemesWithPhonemes, setGraphemesWithPhonemes] = useState<GraphemeWithPhonemes[]>([]);
+    const [graphemesComplete, setGraphemesComplete] = useState<GraphemeComplete[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<Error | null>(null);
     const [count, setCount] = useState(0);
@@ -137,7 +160,9 @@ export function useGraphemes(): UseGraphemesResult {
 
         try {
             setGraphemes(getAllGraphemes());
+            setGraphemesWithGlyphs(getAllGraphemesWithGlyphs());
             setGraphemesWithPhonemes(getAllGraphemesWithPhonemes());
+            setGraphemesComplete(getAllGraphemesComplete());
             setCount(getGraphemeCount());
             setError(null);
         } catch (err) {
@@ -152,7 +177,7 @@ export function useGraphemes(): UseGraphemesResult {
 
     // CRUD Operations
 
-    const create = useCallback(async (input: CreateGraphemeInput): Promise<GraphemeWithPhonemes> => {
+    const create = useCallback(async (input: CreateGraphemeInput): Promise<GraphemeComplete> => {
         if (!isInitialized) {
             throw new Error('Database not initialized');
         }
@@ -172,6 +197,15 @@ export function useGraphemes(): UseGraphemesResult {
         return grapheme;
     }, [isInitialized, refresh]);
 
+    const updateGlyphsFn = useCallback(async (id: number, glyphs: CreateGraphemeGlyphInput[]): Promise<void> => {
+        if (!isInitialized) {
+            throw new Error('Database not initialized');
+        }
+
+        setGraphemeGlyphs(id, glyphs);
+        refresh();
+    }, [isInitialized, refresh]);
+
     const remove = useCallback(async (id: number): Promise<boolean> => {
         if (!isInitialized) {
             throw new Error('Database not initialized');
@@ -189,9 +223,19 @@ export function useGraphemes(): UseGraphemesResult {
         return getGraphemeById(id);
     }, [isInitialized]);
 
+    const getByIdWithGlyphsFn = useCallback((id: number): GraphemeWithGlyphs | null => {
+        if (!isInitialized) return null;
+        return getGraphemeWithGlyphs(id);
+    }, [isInitialized]);
+
     const getByIdWithPhonemesFn = useCallback((id: number): GraphemeWithPhonemes | null => {
         if (!isInitialized) return null;
         return getGraphemeWithPhonemes(id);
+    }, [isInitialized]);
+
+    const getByIdCompleteFn = useCallback((id: number): GraphemeComplete | null => {
+        if (!isInitialized) return null;
+        return getGraphemeComplete(id);
     }, [isInitialized]);
 
     const searchFn = useCallback((query: string): Grapheme[] => {
@@ -201,15 +245,20 @@ export function useGraphemes(): UseGraphemesResult {
 
     return {
         graphemes,
+        graphemesWithGlyphs,
         graphemesWithPhonemes,
+        graphemesComplete,
         isLoading,
         error,
         count,
         create,
         update,
+        updateGlyphs: updateGlyphsFn,
         remove,
         getById: getByIdFn,
+        getByIdWithGlyphs: getByIdWithGlyphsFn,
         getByIdWithPhonemes: getByIdWithPhonemesFn,
+        getByIdComplete: getByIdCompleteFn,
         search: searchFn,
         refresh
     };
@@ -217,18 +266,6 @@ export function useGraphemes(): UseGraphemesResult {
 
 /**
  * Hook for checking database initialization status.
- * Use this when you only need to know if the database is ready.
- *
- * @example
- * function App() {
- *   const { isReady, isLoading, error } = useDatabase();
- *
- *   if (isLoading) return <Spinner />;
- *   if (error) return <ErrorMessage error={error} />;
- *   if (!isReady) return <InitializingMessage />;
- *
- *   return <MainContent />;
- * }
  */
 export function useDatabase(): UseDatabaseResult {
     const [isReady, setIsReady] = useState(false);

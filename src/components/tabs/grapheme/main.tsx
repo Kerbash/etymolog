@@ -1,7 +1,7 @@
-import NewGraphemeForm from "./newGrapheme/newGrapheme.tsx";
+import NewGlyphForm from "./newGlyph/newGlyph.tsx";
 import GraphemeView from "./galleryGrapheme/galleryGrapheme.tsx";
 
-// todo add "new grapheme" into the route (<NewGraphemeForm/>)
+// todo add "new glyph" into the route (<NewGlyphForm/>)
 export default function GraphemeMain() {
     return (
         <GraphemeView />

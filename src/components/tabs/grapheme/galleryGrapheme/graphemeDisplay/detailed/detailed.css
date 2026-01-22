@@ -41,6 +41,14 @@
     margin: 0;
 }
 
+.glyph-count {
+    font-size: 0.75rem;
+    color: var(--text-primary-muted);
+    padding: 0.125rem 0.5rem;
+    background-color: var(--bg-tertiary);
+    border-radius: 4px;
+}
+
 /* Right section - Pronunciations */
 .detailed-grapheme-right {
     flex: 1;
