@@ -47,6 +47,7 @@ export interface CreateGlyphInput {
 export interface UpdateGlyphInput {
     name?: string;
     svg_data?: string;
+    category?: string | null;
     notes?: string | null;
 }
 
@@ -108,6 +109,7 @@ export interface CreateGraphemeInput {
  */
 export interface UpdateGraphemeInput {
     name?: string;
+    category?: string | null;
     notes?: string | null;
 }
 
@@ -189,6 +191,7 @@ export interface GlyphFormData {
  */
 export interface GraphemeFormData {
     graphemeName: string;
+    category?: string;
     notes?: string;
     /** Selected glyph IDs in order */
     glyphIds: number[];

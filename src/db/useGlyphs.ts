@@ -1,6 +1,20 @@
 /**
  * React Hook for Glyph Operations
  *
+ * @deprecated Use `useEtymolog()` from `EtymologContext` instead.
+ * This hook is kept for backwards compatibility but will be removed in a future version.
+ *
+ * Migration:
+ * ```tsx
+ * // Old way
+ * const { glyphs, create, remove } = useGlyphs();
+ *
+ * // New way
+ * const { api, data } = useEtymolog();
+ * // api.glyph.create(), api.glyph.delete()
+ * // data.glyphs, data.glyphsWithUsage
+ * ```
+ *
  * Provides easy-to-use React integration for managing glyphs.
  * Handles database initialization, state management, and CRUD operations.
  */

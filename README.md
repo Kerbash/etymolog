@@ -12,6 +12,62 @@ A conlang (constructed language) script creation and management tool. Create cus
 - **Local Database**: All data stored locally using SQL.js (SQLite in the browser)
 - **Import/Export**: Save and load your language data
 
+---
+
+## Quick Start
+
+### Using the Etymolog Context (Recommended)
+
+The app uses a **two-layer virtual frontend/backend architecture**. All UI components access data through the `useEtymolog()` hook:
+
+```tsx
+import { EtymologProvider, useEtymolog } from './db';
+
+// 1. Wrap your app with the provider
+function App() {
+  return (
+    <EtymologProvider>
+      <YourApp />
+    </EtymologProvider>
+  );
+}
+
+// 2. Use the hook in any component
+function GlyphGallery() {
+  const { api, data, settings, isLoading, error } = useEtymolog();
+  
+  if (isLoading) return <Spinner />;
+  if (error) return <Error message={error.message} />;
+  
+  // Read data reactively
+  const { glyphs, graphemesComplete, glyphCount } = data;
+  
+  // Perform operations via the API
+  const handleCreate = () => {
+    const result = api.glyph.create({
+      name: 'New Glyph',
+      svg_data: '<svg>...</svg>'
+    });
+    // Data auto-refreshes after mutations
+  };
+  
+  // Access or update settings
+  const { simpleScriptSystem } = settings;
+  api.settings.update({ simpleScriptSystem: true });
+  
+  return <div>{/* Your UI */}</div>;
+}
+```
+
+### Why Two Layers?
+
+Even though this is a PWA running entirely client-side, we maintain clean separation of concerns:
+
+- **Frontend (UI)**: React components only render and handle user input
+- **Backend (API)**: Handles all data logic, validation, and persistence
+- **Benefits**: Testability, maintainability, and potential future server migration
+
+---
 
 ### Script Maker (Graphemes & Glyphs)
 
@@ -35,7 +91,7 @@ Routing notes:
 
 ---
 
-## Architecture
+## Data Architecture
 
 ### Terminology
 
@@ -99,6 +155,268 @@ Routing notes:
                          │ - N glyph links  │
                          │ - N phonemes     │
                          └──────────────────┘
+```
+
+---
+
+## Two-Layer Architecture
+
+Etymolog uses a **virtual frontend/backend** architecture to separate UI concerns from data operations. Even though this is a PWA running entirely client-side, we maintain clean separation as if it were a client-server application.
+
+### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              FRONTEND LAYER                                  │
+│  (React Components)                                                         │
+│                                                                             │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐       │
+│  │ GlyphGallery│  │GraphemeView │  │ NewGrapheme │  │ Settings    │       │
+│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘       │
+│         │                │                │                │               │
+│         └────────────────┴────────────────┴────────────────┘               │
+│                                   │                                         │
+│                          useEtymolog() hook                                 │
+│                                   │                                         │
+├───────────────────────────────────┼─────────────────────────────────────────┤
+│                              API LAYER                                      │
+│  (EtymologContext / Virtual Backend)                                        │
+│                                   │                                         │
+│         ┌─────────────────────────┼─────────────────────────┐               │
+│         │                         │                         │               │
+│  ┌──────▼──────┐  ┌───────────────▼───────────────┐  ┌──────▼──────┐       │
+│  │  glyphApi   │  │        graphemeApi            │  │ settingsApi │       │
+│  │  - create   │  │  - create                     │  │ - get       │       │
+│  │  - getAll   │  │  - getAllComplete             │  │ - update    │       │
+│  │  - delete   │  │  - delete                     │  │ - reset     │       │
+│  └──────┬──────┘  └───────────────┬───────────────┘  └─────────────┘       │
+│         │                         │                                         │
+├─────────┼─────────────────────────┼─────────────────────────────────────────┤
+│         │        BACKEND LAYER    │                                         │
+│         │    (Database Services)  │                                         │
+│         │                         │                                         │
+│  ┌──────▼──────┐  ┌───────────────▼───────────────┐                        │
+│  │glyphService │  │       graphemeService         │                        │
+│  └──────┬──────┘  └───────────────┬───────────────┘                        │
+│         │                         │                                         │
+│         └─────────────────────────┴─────────────────────────┐               │
+│                                                             │               │
+│                                   ┌─────────────────────────▼─────────────┐ │
+│                                   │          SQL.js Database              │ │
+│                                   │         (localStorage)                │ │
+│                                   └───────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Layers Explained
+
+1. **Frontend Layer** (React Components)
+   - Purely concerned with UI rendering and user interaction
+   - Accesses data and operations only through the `useEtymolog()` hook
+   - No direct database imports or SQL knowledge
+
+2. **API Layer** (EtymologContext)
+   - Acts as a "virtual backend" providing standardized API responses
+   - All operations return `ApiResponse<T>` with `{ success, data, error }`
+   - Manages reactive state subscriptions for automatic UI updates
+   - Handles settings (including `simpleScriptSystem` flag)
+
+3. **Backend Layer** (Database Services)
+   - Raw database operations (glyphService, graphemeService)
+   - SQL.js database management
+   - Persistence to localStorage
+
+### Using the Context
+
+```tsx
+import { EtymologProvider, useEtymolog } from './db';
+
+// Wrap your app with the provider
+function App() {
+  return (
+    <EtymologProvider>
+      <MyApp />
+    </EtymologProvider>
+  );
+}
+
+// Use the hook in components
+function GlyphList() {
+  const { api, data, isLoading, error } = useEtymolog();
+
+  if (isLoading) return <Spinner />;
+  if (error) return <ErrorDisplay error={error} />;
+
+  const handleCreate = () => {
+    const result = api.glyph.create({
+      name: 'New Glyph',
+      svg_data: '<svg>...</svg>'
+    });
+    
+    if (!result.success) {
+      console.error('Failed:', result.error?.message);
+    }
+    // Data auto-refreshes, no manual refresh needed
+  };
+
+  return (
+    <div>
+      <button onClick={handleCreate}>Add Glyph</button>
+      {data.glyphs.map(g => <GlyphCard key={g.id} glyph={g} />)}
+    </div>
+  );
+}
+```
+
+### Convenience Hooks
+
+```tsx
+// Main hook - full access
+const { api, data, settings, isLoading, error, refresh } = useEtymolog();
+
+// API only
+const api = useEtymologApi();
+
+// Data only (reactive)
+const { glyphs, graphemesComplete, glyphCount } = useEtymologData();
+
+// Settings with update function
+const { settings, updateSettings } = useEtymologSettings();
+
+// Loading status only
+const { isLoading, isReady, error } = useEtymologStatus();
+```
+
+### Settings API
+
+Application settings are managed through the settings API. Settings are **not stored in the database** but are persisted to localStorage separately.
+
+#### Available Settings
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `simpleScriptSystem` | `boolean` | `false` | Reserved for future use. When enabled, may simplify the script system by treating each grapheme as a single glyph. |
+| `defaultGalleryView` | `'compact' \| 'detailed' \| 'expanded'` | `'compact'` | Default view mode for galleries. |
+| `autoSaveInterval` | `number` | `0` | Auto-save interval in milliseconds. 0 = disabled. |
+
+#### Usage
+
+```tsx
+const { settings, updateSettings, resetSettings } = useEtymologSettings();
+
+// Read current settings
+console.log(settings.simpleScriptSystem); // false
+
+// Update settings (partial update supported)
+updateSettings({ simpleScriptSystem: true });
+
+// Reset to defaults
+resetSettings();
+```
+
+Settings are persisted to localStorage and automatically loaded on app start.
+
+### API Response Format
+
+All API operations return a standardized response:
+
+```typescript
+interface ApiResponse<T> {
+  success: boolean;
+  data?: T;
+  error?: {
+    code: ApiErrorCode;
+    message: string;
+    details?: Record<string, unknown>;
+  };
+}
+
+type ApiErrorCode =
+  | 'DB_NOT_INITIALIZED'
+  | 'VALIDATION_ERROR'
+  | 'NOT_FOUND'
+  | 'CONSTRAINT_VIOLATION'
+  | 'OPERATION_FAILED'
+  | 'UNKNOWN_ERROR';
+```
+
+### Complete API Reference
+
+The `api` object from `useEtymolog()` provides the following methods:
+
+#### Glyph API (`api.glyph`)
+
+| Method | Description | Returns |
+|--------|-------------|---------|
+| `create(request)` | Create a new glyph | `ApiResponse<Glyph>` |
+| `getById(id)` | Get a glyph by ID | `ApiResponse<Glyph>` |
+| `getAll()` | Get all glyphs | `ApiResponse<GlyphListResponse>` |
+| `getAllWithUsage()` | Get all glyphs with usage count | `ApiResponse<GlyphWithUsageListResponse>` |
+| `search(query)` | Search glyphs by name | `ApiResponse<GlyphListResponse>` |
+| `update(id, request)` | Update a glyph | `ApiResponse<Glyph>` |
+| `delete(id)` | Delete a glyph (fails if in use) | `ApiResponse<void>` |
+| `forceDelete(id)` | Delete a glyph, removing references | `ApiResponse<void>` |
+| `cascadeDelete(id)` | Delete glyph and all graphemes using it | `ApiResponse<void>` |
+| `checkNameExists(name, excludeId?)` | Check if name is taken | `ApiResponse<boolean>` |
+
+#### Grapheme API (`api.grapheme`)
+
+| Method | Description | Returns |
+|--------|-------------|---------|
+| `create(request)` | Create a grapheme with glyphs and phonemes | `ApiResponse<GraphemeComplete>` |
+| `getById(id)` | Get basic grapheme info | `ApiResponse<Grapheme>` |
+| `getByIdComplete(id)` | Get grapheme with glyphs + phonemes | `ApiResponse<GraphemeComplete>` |
+| `getAll()` | Get all graphemes (basic) | `ApiResponse<GraphemeListResponse>` |
+| `getAllComplete()` | Get all graphemes with full data | `ApiResponse<GraphemeCompleteListResponse>` |
+| `search(query)` | Search graphemes by name | `ApiResponse<GraphemeListResponse>` |
+| `update(id, request)` | Update grapheme metadata | `ApiResponse<Grapheme>` |
+| `updateGlyphs(id, request)` | Replace grapheme's glyph composition | `ApiResponse<void>` |
+| `delete(id)` | Delete grapheme (cascades to phonemes) | `ApiResponse<void>` |
+
+#### Phoneme API (`api.phoneme`)
+
+| Method | Description | Returns |
+|--------|-------------|---------|
+| `add(request)` | Add a phoneme to a grapheme | `ApiResponse<Phoneme>` |
+| `getById(id)` | Get a phoneme by ID | `ApiResponse<Phoneme>` |
+| `getByGraphemeId(graphemeId)` | Get all phonemes for a grapheme | `ApiResponse<Phoneme[]>` |
+| `update(id, request)` | Update a phoneme | `ApiResponse<Phoneme>` |
+| `delete(id)` | Delete a phoneme | `ApiResponse<void>` |
+| `deleteAllForGrapheme(graphemeId)` | Delete all phonemes for a grapheme | `ApiResponse<number>` |
+| `getAutoSpelling()` | Get all phonemes marked for auto-spelling | `ApiResponse<Phoneme[]>` |
+
+#### Settings API (`api.settings`)
+
+| Method | Description | Returns |
+|--------|-------------|---------|
+| `get()` | Get current settings | `ApiResponse<EtymologSettings>` |
+| `update(settings)` | Update settings (partial) | `ApiResponse<EtymologSettings>` |
+| `reset()` | Reset settings to defaults | `ApiResponse<EtymologSettings>` |
+
+#### Database API (`api.database`)
+
+| Method | Description | Returns |
+|--------|-------------|---------|
+| `getStatus()` | Get database status and counts | `ApiResponse<DatabaseStatus>` |
+| `export(format?)` | Export database as blob | `ApiResponse<Blob>` |
+| `import(file)` | Import database from file | `Promise<ApiResponse<void>>` |
+| `clear()` | Clear all data (keeps schema) | `ApiResponse<void>` |
+| `reset()` | Drop and recreate all tables | `ApiResponse<void>` |
+
+### Migration from Legacy Hooks
+
+The old hooks (`useGlyphs`, `useGraphemes`) are deprecated but still available:
+
+```tsx
+// Old way (deprecated)
+import { useGlyphs, useGraphemes } from './db';
+const { glyphs, create } = useGlyphs();
+const { graphemesComplete } = useGraphemes();
+
+// New way (recommended)
+import { useEtymolog } from './db';
+const { api, data } = useEtymolog();
+// api.glyph.create(), data.glyphs, data.graphemesComplete
 ```
 
 ---
@@ -246,28 +564,20 @@ const complete = getGraphemeComplete(1);
 // Returns: { ...grapheme, glyphs: [...], phonemes: [...] }
 ```
 
-### React Hooks
+### React Hooks (DEPRECATED)
+
+> **Note**: The `useGlyphs` and `useGraphemes` hooks are deprecated. Use `useEtymolog()` instead.
 
 ```typescript
+// ❌ Old way (deprecated)
 import { useGlyphs, useGraphemes } from './db';
+const { glyphs, create } = useGlyphs();
+const { graphemesComplete } = useGraphemes();
 
-function MyComponent() {
-  // Glyph management
-  const { 
-    glyphs,              // All glyphs
-    glyphsWithUsage,     // Glyphs with usage count
-    create: createGlyph,
-    remove: removeGlyph,
-  } = useGlyphs();
-
-  // Grapheme management
-  const { 
-    graphemesComplete,   // All graphemes with glyphs + phonemes
-    create: createGrapheme,
-    updateGlyphs,        // Update glyph composition
-    remove: removeGrapheme,
-  } = useGraphemes();
-}
+// ✅ New way (recommended)
+import { useEtymolog } from './db';
+const { api, data } = useEtymolog();
+// api.glyph.create(), data.glyphs, data.graphemesComplete
 ```
 
 ---
@@ -322,14 +632,24 @@ const grapheme = await saveGrapheme({
 
 ```
 src/db/
-├── index.ts              # Barrel exports
+├── index.ts              # Barrel exports (context, API, types, legacy)
 ├── database.ts           # SQL.js initialization & schema
-├── types.ts              # TypeScript interfaces
-├── glyphService.ts       # Glyph CRUD operations
-├── graphemeService.ts    # Grapheme & phoneme CRUD operations
-├── useGlyphs.ts          # React hook for glyphs
-├── useGraphemes.ts       # React hook for graphemes
-├── formHandler.ts        # Form-to-DB transformation
+├── types.ts              # TypeScript interfaces for data models
+├── glyphService.ts       # Glyph CRUD operations (backend layer)
+├── graphemeService.ts    # Grapheme & phoneme CRUD (backend layer)
+├── formHandler.ts        # Form-to-DB transformation (legacy)
+├── useGlyphs.ts          # React hook for glyphs (deprecated)
+├── useGraphemes.ts       # React hook for graphemes (deprecated)
+├── api/                  # API Layer (virtual backend)
+│   ├── index.ts          # API barrel exports
+│   ├── types.ts          # API types (ApiResponse, Settings, etc.)
+│   ├── glyphApi.ts       # Glyph API with standardized responses
+│   ├── graphemeApi.ts    # Grapheme & Phoneme APIs
+│   ├── settingsApi.ts    # Settings management API
+│   └── databaseApi.ts    # Database management API
+├── context/              # React Context (frontend interface)
+│   ├── index.ts          # Context barrel exports
+│   └── EtymologContext.tsx  # Provider & hooks
 └── __tests__/
     ├── setup.ts                  # Test environment setup
     ├── glyphService.test.ts      # Glyph CRUD tests

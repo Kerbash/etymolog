@@ -12,7 +12,7 @@ import TextInputValidatorFactory from "smart-form/commonValidatorFactory/textVal
 import IconButton from "cyber-components/interactable/buttons/iconButton/iconButton.tsx";
 import {PronunciationTableInput} from "../../../form/customInput/pronunciationTableInput";
 import {buttonStyles} from "cyber-components/interactable/buttons/button/button";
-import { useGraphemes, createGrapheme, type Glyph, type CreateGraphemeInput } from "../../../../db";
+import { useEtymolog, type Glyph, type CreateGraphemeRequest } from "../../../../db";
 import NewGlyphModal from "./NewGlyphModal";
 
 /**
@@ -55,8 +55,8 @@ function getSmartFieldValue(field: registerFieldReturnType): string {
 export default function NewGraphemeForm() {
     const {registerField, unregisterField, registerForm, isFormValid} = useSmartForm({mode: "onChange"});
 
-    // Use the graphemes hook - this automatically initializes the database
-    const { isLoading, error } = useGraphemes();
+    // Use the unified context
+    const { api, isLoading, error } = useEtymolog();
 
     // State for glyph selection
     const [selectedGlyphs, setSelectedGlyphs] = useState<Glyph[]>([]);
@@ -137,7 +137,7 @@ export default function NewGraphemeForm() {
                 }
 
                 // Create grapheme input
-                const graphemeInput: CreateGraphemeInput = {
+                const graphemeInput: CreateGraphemeRequest = {
                     name: data.graphemeName.trim(),
                     category: data.category?.trim() || undefined,
                     notes: data.notes?.trim() || undefined,
@@ -153,15 +153,19 @@ export default function NewGraphemeForm() {
                         })) || []
                 };
 
-                // Save to database
-                const grapheme = createGrapheme(graphemeInput);
+                // Save to database via API
+                const result = api.grapheme.create(graphemeInput);
 
-                console.log("[NewGraphemeForm] Saved grapheme:", grapheme);
+                if (!result.success) {
+                    throw new Error(result.error?.message || 'Failed to save grapheme');
+                }
+
+                console.log("[NewGraphemeForm] Saved grapheme:", result.data);
 
                 // Reset form
                 setSelectedGlyphs([]);
 
-                return { success: true, data: grapheme };
+                return { success: true, data: result.data };
             } catch (error) {
                 console.error("[NewGraphemeForm] Failed to save:", error);
 

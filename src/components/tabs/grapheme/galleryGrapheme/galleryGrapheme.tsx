@@ -1,12 +1,12 @@
-import { useGraphemes } from '../../../../db/useGraphemes';
+import { useEtymolog } from '../../../../db';
 import GraphemeGallery from './graphemeGallery.tsx';
 
 export default function GraphemeView() {
-    const { graphemesComplete, isLoading, error } = useGraphemes();
+    const { data, isLoading, error } = useEtymolog();
 
     return (
         <GraphemeGallery
-            graphemes={graphemesComplete}
+            graphemes={data.graphemesComplete}
             isLoading={isLoading}
             error={error}
             defaultViewMode="expanded"

@@ -3,6 +3,7 @@ import {flex, sizing, template} from "utils-styles";
 import './App.css'
 
 import Background from "./components/background/background.tsx";
+import { EtymologProvider } from "./db";
 
 import classNames from "classnames";
 import RouterTabContainer, {tabContainerBorderStyle} from "cyber-components/container/tabContainer/routerTabContainer.tsx";
@@ -40,28 +41,30 @@ const sections = [
 
 function App() {
     return (
-        <Background>
-            <h1 className={classNames(template.primaryOutlineContainer, sizing.paddingS, sizing.parentWidth)}>
-                Threlogean
-            </h1>
-            <RouterTabContainer
-                className={classNames(sizing.parentSize, flex.flexGrow)}
-                basePath=""
-                contentContainerProps={{
-                    className: classNames(tabContainerBorderStyle, sizing.paddingLHeight)
-                }}
-                sections={sections}
-            />
-            <div className={classNames(flex.flexRow, flex.justifyContentSpaceBetween)}>
-                <span>
-                    Ethymolog: An open-source conlang lexicon and script management tool.
-                </span>
+        <EtymologProvider>
+            <Background>
+                <h1 className={classNames(template.primaryOutlineContainer, sizing.paddingS, sizing.parentWidth)}>
+                    Threlogean
+                </h1>
+                <RouterTabContainer
+                    className={classNames(sizing.parentSize, flex.flexGrow)}
+                    basePath=""
+                    contentContainerProps={{
+                        className: classNames(tabContainerBorderStyle, sizing.paddingLHeight)
+                    }}
+                    sections={sections}
+                />
+                <div className={classNames(flex.flexRow, flex.justifyContentSpaceBetween)}>
+                    <span>
+                        Ethymolog: An open-source conlang lexicon and script management tool.
+                    </span>
 
-                <span>
-                    By Kerbash
-                </span>
-            </div>
-        </Background>
+                    <span>
+                        By Kerbash
+                    </span>
+                </div>
+            </Background>
+        </EtymologProvider>
     )
 }
 

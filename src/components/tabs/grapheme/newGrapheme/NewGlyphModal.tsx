@@ -9,7 +9,7 @@ import TextInputValidatorFactory from "smart-form/commonValidatorFactory/textVal
 import IconButton from "cyber-components/interactable/buttons/iconButton/iconButton.tsx";
 import { buttonStyles } from "cyber-components/interactable/buttons/button/button";
 import { flex, graphic, sizing } from "utils-styles";
-import { createGlyph, type Glyph } from "../../../../db";
+import { useEtymologApi, type Glyph } from "../../../../db";
 import styles from "./newGrapheme.module.scss";
 
 interface NewGlyphModalProps {
@@ -22,6 +22,7 @@ export default function NewGlyphModal({ isOpen, setIsOpen, onGlyphCreated }: New
     const { registerField, unregisterField, registerForm, isFormValid } = useSmartForm({ mode: "onChange" });
     const [error, setError] = useState<string | null>(null);
     const isSubmittingRef = useRef(false);
+    const api = useEtymologApi();
 
     const handleClose = () => {
         setError(null);
@@ -58,14 +59,19 @@ export default function NewGlyphModal({ isOpen, setIsOpen, onGlyphCreated }: New
                     throw new Error('Glyph name is required');
                 }
 
-                // Create the glyph
-                const glyph = createGlyph({
+                // Create the glyph via API
+                const result = api.glyph.create({
                     name: data.glyphName.trim(),
                     svg_data: data.glyphSvg,
                     category: data.category?.trim() || undefined,
                     notes: data.notes?.trim() || undefined
                 });
 
+                if (!result.success) {
+                    throw new Error(result.error?.message || 'Failed to create glyph');
+                }
+
+                const glyph = result.data!;
                 console.log("[NewGlyphModal] Created glyph:", glyph);
 
                 // Close the modal first

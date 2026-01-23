@@ -1,6 +1,20 @@
 /**
  * React Hook for Grapheme Operations
  *
+ * @deprecated Use `useEtymolog()` from `EtymologContext` instead.
+ * This hook is kept for backwards compatibility but will be removed in a future version.
+ *
+ * Migration:
+ * ```tsx
+ * // Old way
+ * const { graphemesComplete, create, remove } = useGraphemes();
+ *
+ * // New way
+ * const { api, data } = useEtymolog();
+ * // api.grapheme.create(), api.grapheme.delete()
+ * // data.graphemesComplete
+ * ```
+ *
  * Provides easy-to-use React integration for managing graphemes.
  * Handles database initialization, state management, and CRUD operations.
  *

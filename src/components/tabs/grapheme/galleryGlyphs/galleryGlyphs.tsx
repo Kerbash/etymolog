@@ -4,7 +4,7 @@
  * Refactored to use the reusable DataGallery component from cyber-components.
  *
  * This component now focuses on:
- * - Data fetching and state management (via useGlyphs/useGraphemes hooks)
+ * - Data fetching and state management (via useEtymolog context)
  * - Delete modal logic
  * - Providing renderers for the DataGallery
  *
@@ -17,8 +17,7 @@
  */
 
 import {useState, useMemo, useCallback} from 'react';
-import {useGlyphs, useGraphemes} from '../../../../db';
-import type {GlyphWithUsage, GraphemeComplete} from '../../../../db/types';
+import {useEtymolog, type GlyphWithUsage, type GraphemeComplete} from '../../../../db';
 import CompactGraphemeDisplay from '../galleryGrapheme/graphemeDisplay/compact/compact';
 import DataGallery, {type SortOption} from 'cyber-components/display/dataGallery';
 import GlyphCard from '../../../display/glyphs/glyphCard';
@@ -30,9 +29,9 @@ import Button from "cyber-components/interactable/buttons/button/button.tsx";
  * Minimal styling so it matches the rest of the app's layout.
  */
 export default function GlyphGallery() {
-    // Data hooks
-    const {glyphsWithUsage, isLoading, error, cascadeRemove} = useGlyphs();
-    const {graphemesComplete, refresh: refreshGraphemes} = useGraphemes();
+    // Use the unified context
+    const { api, data, isLoading, error } = useEtymolog();
+    const { glyphsWithUsage, graphemesComplete } = data;
 
     // Gallery state
     const [searchQuery, setSearchQuery] = useState('');
@@ -121,15 +120,17 @@ export default function GlyphGallery() {
     const confirmDelete = useCallback(async (id: number) => {
         setIsDeleting(true);
         try {
-            await cascadeRemove(id);
-            refreshGraphemes();
+            const result = api.glyph.cascadeDelete(id);
+            if (!result.success) {
+                console.error('Failed to delete glyph:', result.error?.message);
+            }
             setGlyphToDelete(null);
         } catch (err) {
             console.error('Failed to delete glyph', err);
         } finally {
             setIsDeleting(false);
         }
-    }, [cascadeRemove, refreshGraphemes]);
+    }, [api]);
 
     // Renderers for DataGallery
     const renderGlyph = useCallback((glyph: GlyphWithUsage) => (

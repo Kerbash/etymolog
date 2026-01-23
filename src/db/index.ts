@@ -8,12 +8,70 @@
  * - Grapheme: Composition of glyphs - represents a written character
  * - Phoneme: Pronunciation associated with a grapheme
  *
+ * Two-Layer Architecture:
+ * - Frontend Layer: React components use EtymologContext via useEtymolog() hook
+ * - Backend Layer: API layer wraps database services with standardized responses
+ *
  * @example
+ * // New recommended approach (via context)
+ * import { useEtymolog, EtymologProvider } from '../db';
+ * const { api, data, isLoading } = useEtymolog();
+ *
+ * // Legacy approach (direct imports) - deprecated
  * import { initDatabase, createGlyph, createGrapheme, useGlyphs, useGraphemes } from '../db';
  */
 
 // =============================================================================
-// DATABASE MANAGEMENT
+// CONTEXT & API (Recommended - Two-Layer Architecture)
+// =============================================================================
+export {
+    // Context Provider
+    EtymologProvider,
+    // Main hook
+    useEtymolog,
+    // Convenience hooks
+    useEtymologApi,
+    useEtymologData,
+    useEtymologSettings,
+    useEtymologStatus,
+    // Types
+    type EtymologContextValue,
+    type EtymologData,
+} from './context';
+
+export {
+    // Full API object
+    etymologApi,
+    // Individual APIs
+    glyphApi,
+    graphemeApi,
+    phonemeApi,
+    settingsApi,
+    databaseApi,
+    // API Types
+    type ApiResponse,
+    type ApiError,
+    type ApiErrorCode,
+    type EtymologSettings,
+    type EtymologApi,
+    type GlyphApi,
+    type GraphemeApi,
+    type PhonemeApi,
+    type SettingsApi,
+    type DatabaseApi,
+    // Request/Response types
+    type CreateGlyphRequest,
+    type UpdateGlyphRequest,
+    type CreateGraphemeRequest,
+    type UpdateGraphemeRequest,
+    type AddPhonemeRequest,
+    type UpdatePhonemeRequest,
+    // Constants
+    DEFAULT_SETTINGS,
+} from './api';
+
+// =============================================================================
+// DATABASE MANAGEMENT (Legacy - for backwards compatibility)
 // =============================================================================
 export {
     initDatabase,
@@ -134,7 +192,9 @@ export {
 export type { CombinedGlyphGraphemeFormData } from './formHandler';
 
 // =============================================================================
-// REACT HOOKS
+// REACT HOOKS (Legacy - prefer useEtymolog() from context)
 // =============================================================================
+/** @deprecated Use useEtymolog() from EtymologContext instead */
 export { useGlyphs } from './useGlyphs';
+/** @deprecated Use useEtymolog() from EtymologContext instead */
 export { useGraphemes, useDatabase } from './useGraphemes';
