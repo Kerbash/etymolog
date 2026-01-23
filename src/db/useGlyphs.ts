@@ -14,6 +14,7 @@ import {
     getGlyphById,
     updateGlyph,
     deleteGlyph,
+    cascadeDeleteGlyph,
     searchGlyphsByName,
     getGlyphCount,
     getGlyphReferences
@@ -51,6 +52,8 @@ interface UseGlyphsResult {
     update: (id: number, input: UpdateGlyphInput) => Promise<Glyph | null>;
     /** Delete a glyph (fails if in use) */
     remove: (id: number) => Promise<boolean>;
+    /** Delete a glyph and all graphemes that reference it */
+    cascadeRemove: (id: number) => Promise<boolean>;
     /** Get a single glyph by ID */
     getById: (id: number) => Glyph | null;
     /** Search glyphs by name */
@@ -175,6 +178,18 @@ export function useGlyphs(): UseGlyphsResult {
         return success;
     }, [isInitialized, refresh]);
 
+    const cascadeRemove = useCallback(async (id: number): Promise<boolean> => {
+        if (!isInitialized) {
+            throw new Error('Database not initialized');
+        }
+
+        const success = cascadeDeleteGlyph(id);
+        if (success) {
+            refresh();
+        }
+        return success;
+    }, [isInitialized, refresh]);
+
     const getByIdFn = useCallback((id: number): Glyph | null => {
         if (!isInitialized) return null;
         return getGlyphById(id);
@@ -195,6 +210,7 @@ export function useGlyphs(): UseGlyphsResult {
         create,
         update,
         remove,
+        cascadeRemove,
         getById: getByIdFn,
         search: searchFn,
         refresh

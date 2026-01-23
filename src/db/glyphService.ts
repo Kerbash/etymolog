@@ -283,6 +283,45 @@ export function forceDeleteGlyph(id: number): boolean {
 }
 
 /**
+ * Cascade delete a glyph and all graphemes that reference it.
+ * Use with caution - this will delete graphemes permanently.
+ *
+ * @returns true if deleted, false if glyph not found
+ */
+export function cascadeDeleteGlyph(id: number): boolean {
+    const db = getDatabase();
+
+    // Get all grapheme IDs that reference this glyph
+    const result = db.exec(
+        `SELECT DISTINCT grapheme_id FROM grapheme_glyphs WHERE glyph_id = ?`,
+        [id]
+    );
+
+    const graphemeIds: number[] = result.length > 0
+        ? result[0].values.map((row: unknown[]) => row[0] as number)
+        : [];
+
+    // Delete each grapheme (this handles phonemes and grapheme_glyphs cascade)
+    for (const graphemeId of graphemeIds) {
+        db.run('DELETE FROM phonemes WHERE grapheme_id = ?', [graphemeId]);
+        db.run('DELETE FROM grapheme_glyphs WHERE grapheme_id = ?', [graphemeId]);
+        db.run('DELETE FROM graphemes WHERE id = ?', [graphemeId]);
+    }
+
+    // Delete the glyph itself
+    db.run('DELETE FROM glyphs WHERE id = ?', [id]);
+
+    const changes = db.getRowsModified();
+
+    if (changes > 0) {
+        persistDatabase();
+        return true;
+    }
+
+    return false;
+}
+
+/**
  * Get total count of glyphs.
  */
 export function getGlyphCount(): number {
