@@ -48,7 +48,7 @@ function App() {
                 className={classNames(sizing.parentSize)}
                 basePath=""
                 contentContainerProps={{
-                    className: classNames(tabContainerBorderStyle, sizing.paddingM)
+                    className: classNames(tabContainerBorderStyle, sizing.paddingLHeight)
                 }}
                 sections={sections}
             />

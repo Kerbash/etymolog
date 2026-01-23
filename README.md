@@ -12,6 +12,27 @@ A conlang (constructed language) script creation and management tool. Create cus
 - **Local Database**: All data stored locally using SQL.js (SQLite in the browser)
 - **Import/Export**: Save and load your language data
 
+
+### Script Maker (Graphemes & Glyphs)
+
+The Script Maker UI is available at the `/script-maker` route. It exposes nested subtabs for managing graphemes and glyphs:
+
+- Graphemes (default): shows the grapheme gallery and composition tools.
+- Glyphs: shows the glyph library (name on top, SVG preview in the middle).
+- Create Glyph: available at `/script-maker/create` (reachable from the UI but not shown as a top-level subtab).
+
+Key component locations:
+
+- `src/components/tabs/grapheme/main.tsx` — `GraphemeMain` (router-backed tab container for the Script Maker area)
+- `src/components/tabs/grapheme/galleryGrapheme/graphemeGallery.tsx` — Grapheme gallery UI
+- `src/components/tabs/grapheme/galleryGlyphs/galleryGlyphs.tsx` — Glyph gallery UI
+- `src/components/tabs/grapheme/newGrapheme/newGrapheme.tsx` — Create glyph form
+
+Routing notes:
+
+- The app uses `RouterTabContainer` for nested route-based subtabs under `/script-maker`.
+- Subtabs map to `/script-maker` (graphemes) and `/script-maker/glyphs` (glyphs). The create page is `/script-maker/create`.
+
 ---
 
 ## Architecture
