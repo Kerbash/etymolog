@@ -26,7 +26,7 @@ export default function Background({
             }}
         >
             <div
-                className={classNames(flex.flexColumn, flex.flexGapM)}
+                className={classNames(flex.flexColumn, flex.flexGapM, flex.flexGrow)}
                 style={{ maxWidth: '1200px', width: '100%' }}
             >
                 {children}

@@ -1,0 +1,62 @@
+/* GlyphCard styles - extracted from galleryGlyphs.module.scss and moved inline styles into classes for reuse */
+
+.container {
+    position: relative;
+    align-items: center;
+    text-align: center;
+    padding: 0.5rem;
+    border: 1px solid var(--border-primary);
+    border-radius: 8px;
+    background: var(--surface-base);
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.topRight {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+}
+
+.name {
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+/*
+ * Make the SVG area responsive so SVG always fits inside.
+ * Use aspect-ratio so the box remains square but scales with available width.
+ */
+.svgWrapper {
+    width: 100%;
+    /* allow the wrapper to be a responsive square; adjust as needed by parent layout */
+    aspect-ratio: 1 / 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    max-width: 100%;
+}
+
+/* SVG Container
+ * Targets nested SVGs inserted via dangerouslySetInnerHTML so they scale
+ * properly and don't overflow their parent.
+ */
+.svgContainer {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* fill the wrapper so the SVG can scale to the available area */
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
+}
+
+.svgContainer svg {
+    /* Fill the container; SVGs with a viewBox will preserve aspect ratio */
+    width: 100%;
+    height: 100%;
+    display: block;
+}

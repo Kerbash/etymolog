@@ -16,17 +16,14 @@
  * - Virtualization for large datasets
  */
 
-import { useState, useMemo, useCallback } from 'react';
-import { useGlyphs, useGraphemes } from '../../../../db';
-import type { GlyphWithUsage, GraphemeComplete } from '../../../../db/types';
-import classNames from 'classnames';
-import { flex } from 'utils-styles';
-import HoverToolTip from 'cyber-components/interactable/information/hoverToolTip/hoverToolTip';
-import IconButton from 'cyber-components/interactable/buttons/iconButton/iconButton';
-import Modal from 'cyber-components/container/modal/modal';
-import Button from 'cyber-components/interactable/buttons/button/button';
-import { DataGallery, type SortOption } from 'cyber-components/display/dataGallery';
+import {useState, useMemo, useCallback} from 'react';
+import {useGlyphs, useGraphemes} from '../../../../db';
+import type {GlyphWithUsage, GraphemeComplete} from '../../../../db/types';
 import CompactGraphemeDisplay from '../galleryGrapheme/graphemeDisplay/compact/compact';
+import DataGallery, {type SortOption} from 'cyber-components/display/dataGallery';
+import GlyphCard from '../../../display/glyphs/glyphCard';
+import Modal from "cyber-components/container/modal/modal.tsx";
+import Button from "cyber-components/interactable/buttons/button/button.tsx";
 
 /**
  * Simple glyph gallery: name on top, SVG in the middle.
@@ -34,8 +31,8 @@ import CompactGraphemeDisplay from '../galleryGrapheme/graphemeDisplay/compact/c
  */
 export default function GlyphGallery() {
     // Data hooks
-    const { glyphsWithUsage, isLoading, error, cascadeRemove } = useGlyphs();
-    const { graphemesComplete, refresh: refreshGraphemes } = useGraphemes();
+    const {glyphsWithUsage, isLoading, error, cascadeRemove} = useGlyphs();
+    const {graphemesComplete, refresh: refreshGraphemes} = useGraphemes();
 
     // Gallery state
     const [searchQuery, setSearchQuery] = useState('');
@@ -136,7 +133,7 @@ export default function GlyphGallery() {
 
     // Renderers for DataGallery
     const renderGlyph = useCallback((glyph: GlyphWithUsage) => (
-        <GlyphCard glyph={glyph} onDelete={handleDelete} />
+        <GlyphCard glyph={glyph} onDelete={handleDelete}/>
     ), [handleDelete]);
 
     return (
@@ -146,9 +143,14 @@ export default function GlyphGallery() {
                 data={paginatedGlyphs}
                 keyExtractor={(glyph) => glyph.id}
 
-                // Renderers - only compact view for glyphs
+                // Renderers - use compact view for responsive multi-column grid
+                // minItemWidth/maxItemWidth creates fluid growth: cards are at least 160px
+                // and grow equally (1fr) to fill available space, shrinking when a new column fits
                 renderDetailed={renderGlyph}
+                renderCompact={renderGlyph}
+                viewMode="compact"
                 minItemWidth="160px"
+                maxItemWidth="1fr"
                 itemGap="1rem"
 
                 // Search
@@ -192,44 +194,60 @@ export default function GlyphGallery() {
 
                 // Accessibility
                 ariaLabel="Glyph gallery"
+
+                // ... other props
+                styling={{
+                    content: {
+                        style: {padding: '0.2rem'}       // inline style
+                    }
+                }}
             />
 
             {/* Delete Confirmation Modal */}
             <Modal
                 isOpen={glyphToDelete !== null}
-                setIsOpen={(open) => { if (!open) setGlyphToDelete(null); }}
+                setIsOpen={(open) => {
+                    if (!open) setGlyphToDelete(null);
+                }}
                 onClose={() => setGlyphToDelete(null)}
                 allowClose={true}
             >
-                <div style={{ padding: '1rem', minWidth: 360 }}>
-                    <h2 style={{ marginTop: 0 }}>Delete glyph</h2>
+                <div style={{padding: '1rem', minWidth: 360}}>
+                    <h2 style={{marginTop: 0}}>Delete glyph</h2>
 
                     <p>
                         Are you sure you would like to delete this glyph?
                         {graphemesByGlyph.get(glyphToDelete ?? -1)?.length ? (
                             <>
-                                {' '}The following grapheme(s) reference this glyph and will also be deleted unless you unlink the glyph from those graphemes first:
+                                {' '}The following grapheme(s) reference this glyph and will also be deleted unless you
+                                unlink the glyph from those graphemes first:
                             </>
                         ) : null}
                     </p>
 
                     {/* List of affected graphemes */}
                     {graphemesByGlyph.get(glyphToDelete ?? -1)?.length ? (
-                        <div style={{ display: 'grid', gap: '0.5rem', marginTop: '0.5rem', maxHeight: '200px', overflowY: 'auto' }}>
+                        <div style={{
+                            display: 'grid',
+                            gap: '0.5rem',
+                            marginTop: '0.5rem',
+                            maxHeight: '200px',
+                            overflowY: 'auto'
+                        }}>
                             {graphemesByGlyph.get(glyphToDelete ?? -1)?.map((gp) => (
-                                <CompactGraphemeDisplay key={gp.id} graphemeData={gp} />
+                                <CompactGraphemeDisplay key={gp.id} graphemeData={gp}/>
                             ))}
                         </div>
                     ) : null}
 
-                    <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
+                    <div style={{display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem'}}>
                         <Button onClick={() => setGlyphToDelete(null)} disabled={isDeleting}>
                             Cancel
                         </Button>
                         <Button
                             onClick={() => glyphToDelete !== null && confirmDelete(glyphToDelete)}
                             disabled={isDeleting}
-                            style={{ background: 'var(--danger)', color: 'white' }}
+                            style={{background: 'var(--danger)', color: 'white'}}
                         >
                             {isDeleting ? 'Deleting...' : 'Delete glyph'}
                         </Button>
@@ -240,69 +258,12 @@ export default function GlyphGallery() {
     );
 }
 
-/**
- * Glyph Card Component - Reusable renderer for the gallery
- */
-
-interface GlyphCardProps {
-    glyph: GlyphWithUsage;
-    onDelete: (id: number) => void;
-}
-
-function GlyphCard({ glyph, onDelete }: GlyphCardProps) {
-    const usage = glyph.usageCount ?? 0;
-    const usageText = usage === 0 ? 'Not used' : `Used by ${usage} grapheme${usage === 1 ? '' : 's'}`;
-
-    return (
-        <HoverToolTip content={usageText}>
-            <div
-                className={classNames(flex.flexColumn)}
-                style={{
-                    position: 'relative',
-                    alignItems: 'center',
-                    textAlign: 'center',
-                    padding: '0.5rem',
-                    border: '1px solid var(--border-primary)',
-                    borderRadius: 8,
-                    background: 'var(--surface-base)',
-                    height: '100%',
-                }}
-            >
-                {/* top-right trash button */}
-                <div style={{ position: 'absolute', top: 8, right: 8 }}>
-                    <IconButton
-                        iconName="trash"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onDelete(glyph.id);
-                        }}
-                        aria-label={`Delete glyph ${glyph.name}`}
-                        style={{ color: 'var(--danger)' }}
-                    />
-                </div>
-
-                <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>{glyph.name}</div>
-                <div
-                    style={{
-                        width: '100%',
-                        height: 120,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                    }}
-                    dangerouslySetInnerHTML={{ __html: glyph.svg_data }}
-                />
-            </div>
-        </HoverToolTip>
-    );
-}
-
 // Sort options for the gallery
 const SORT_OPTIONS: SortOption[] = [
-    { value: 'name-asc', displayComponent: <span>Name (A-Z)</span> },
-    { value: 'name-desc', displayComponent: <span>Name (Z-A)</span> },
-    { value: 'usage-desc', displayComponent: <span>Most Used</span> },
-    { value: 'usage-asc', displayComponent: <span>Least Used</span> },
+    {value: 'name-asc', displayComponent: <span>Name (A-Z)</span>},
+    {value: 'name-desc', displayComponent: <span>Name (Z-A)</span>},
+    {value: 'usage-desc', displayComponent: <span>Most Used</span>},
+    {value: 'usage-asc', displayComponent: <span>Least Used</span>},
 ];
 
 // Results per page options

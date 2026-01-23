@@ -1,4 +1,4 @@
-import {sizing, template} from "utils-styles";
+import {flex, sizing, template} from "utils-styles";
 
 import './App.css'
 
@@ -45,13 +45,22 @@ function App() {
                 Threlogean
             </h1>
             <RouterTabContainer
-                className={classNames(sizing.parentSize)}
+                className={classNames(sizing.parentSize, flex.flexGrow)}
                 basePath=""
                 contentContainerProps={{
                     className: classNames(tabContainerBorderStyle, sizing.paddingLHeight)
                 }}
                 sections={sections}
             />
+            <div className={classNames(flex.flexRow, flex.justifyContentSpaceBetween)}>
+                <span>
+                    Ethymolog: An open-source conlang lexicon and script management tool.
+                </span>
+
+                <span>
+                    By Kerbash
+                </span>
+            </div>
         </Background>
     )
 }

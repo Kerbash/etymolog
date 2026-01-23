@@ -1,0 +1,36 @@
+/**
+ * GlyphGallery Styles
+ *
+ * Provides styling for glyph cards, particularly for SVG rendering
+ * within constrained containers.
+ */
+
+/**
+ * SVG Container
+ *
+ * This class targets the container that holds the raw SVG content
+ * inserted via dangerouslySetInnerHTML. The key challenge is that
+ * SVGs may have fixed width/height attributes or no viewBox, causing
+ * them to overflow their container.
+ *
+ * Solution:
+ * - The container uses overflow: hidden as a safety net
+ * - We target nested SVGs to apply max-width/max-height constraints
+ * - width/height: auto allows the SVG to scale while maintaining aspect ratio
+ *
+ * Note: For best results, SVGs should have a viewBox attribute and
+ * avoid fixed width/height attributes. This CSS handles cases where
+ * that's not possible.
+ */
+.svgContainer {
+    // Ensure any child SVG scales properly within bounds
+    svg {
+        max-width: 100%;
+        max-height: 100%;
+        width: auto;
+        height: auto;
+
+        // Remove any fixed dimensions that might be set inline
+        // This only works if the SVG doesn't have !important inline styles
+    }
+}

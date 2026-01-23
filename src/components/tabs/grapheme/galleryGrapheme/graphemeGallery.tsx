@@ -58,8 +58,6 @@ export default function GraphemeGallery({
     // Map legacy view mode to DataGallery view mode
     const mapViewMode = (mode: ViewMode): GalleryViewMode =>
         mode === 'expanded' ? 'detailed' : 'compact';
-    const mapViewModeReverse = (mode: GalleryViewMode): ViewMode =>
-        mode === 'detailed' ? 'expanded' : 'compact';
 
     // Gallery state
     const [viewMode, setViewMode] = useState<GalleryViewMode>(mapViewMode(defaultViewMode));
