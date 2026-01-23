@@ -9,7 +9,7 @@
  */
 
 // External imports
-import { Link } from "react-router-dom";
+import { Link, Routes, Route } from "react-router-dom";
 import classNames from "classnames";
 
 // Package components
@@ -44,7 +44,7 @@ function GraphemeNav() {
                 iconName="plus-lg"
                 className={buttonStyles.primary}
             >
-                Add Glyph
+                New Grapheme
             </IconButton>
         </nav>
     );
@@ -59,24 +59,22 @@ function GraphemeNav() {
  */
 function GraphemeHome() {
     return (
-        <div className={classNames(flex.flexColumn, sizing.parentSize)}>
+        <>
             <GraphemeNav />
             <GraphemeView />
-        </div>
+        </>
     );
 }
 
 /**
- * Tabs
- * ====================================================================================================================
- * CreateGlyphPage
+ * CreateGraphemePage
  *
- * Page shown when creating a new glyph. Kept as a simple wrapper so the
- * `RouterTabContainer` can render /script-maker/create as a section.
+ * Page shown when creating a new grapheme. Accessible at /script-maker/create
+ * as a subpath of the Graphemes tab.
  */
-function CreateGlyphPage() {
+function CreateGraphemePage() {
     return (
-        <div className={classNames(flex.flexColumn, sizing.parentSize)}>
+        <>
             <nav className={classNames(flex.flexRow, flex.flexGapM)} style={{ marginBottom: '1rem' }}>
                 <IconButton
                     as={Link}
@@ -87,6 +85,24 @@ function CreateGlyphPage() {
                 </IconButton>
             </nav>
             <NewGraphemeForm />
+        </>
+    );
+}
+
+/**
+ * GraphemesTab
+ *
+ * Container for the Graphemes tab that handles nested routing.
+ * - /script-maker/ -> GraphemeHome (gallery view)
+ * - /script-maker/create -> CreateGraphemePage (create form)
+ */
+function GraphemesTab() {
+    return (
+        <div className={classNames(flex.flexColumn, sizing.parentSize)}>
+            <Routes>
+                <Route index element={<GraphemeHome />} />
+                <Route path="create" element={<CreateGraphemePage />} />
+            </Routes>
         </div>
     );
 }
@@ -117,9 +133,8 @@ function GlyphsTab() {
  * `RouterTabContainer`.
  *
  * Sections configured here:
- * - graphemes (index) -> `GraphemeHome`
- * - glyphs             -> `GlyphsTab`
- * - create             -> `CreateGlyphPage` (hidden toggle but reachable at `/script-maker/create`)
+ * - graphemes (index) -> `GraphemesTab` (includes /create as a subpath)
+ * - glyphs            -> `GlyphsTab`
  *
  * The RouterTabContainer expects a `basePath` which is used to match
  * and navigate to the section routes (we use `/script-maker`).
@@ -128,20 +143,15 @@ export default function GraphemeMain() {
     const sections = [
         {
             // Use empty path as the default so `/script-maker` maps to graphemes
+            // The GraphemesTab handles nested routes including /script-maker/create
             path: '',
             toggle: 'Graphemes',
-            content: <GraphemeHome />
+            content: <GraphemesTab />
         },
         {
             path: 'glyphs',
             toggle: 'Glyphs',
             content: <GlyphsTab />
-        },
-        // Keep the create page reachable at /script-maker/create but hide its toggle
-        {
-            path: 'create',
-            toggle: <div style={{ display: 'none' }}>Create</div>,
-            content: <CreateGlyphPage />
         }
     ];
 
