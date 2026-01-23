@@ -157,7 +157,13 @@ export default function GraphemeMain() {
 
     return (
         <div className={classNames(flex.flexColumn, sizing.parentSize)}>
-            <RouterTabContainer basePath="/script-maker" sections={sections} />
+            <RouterTabContainer
+                basePath="/script-maker"
+                sections={sections}
+                contentContainerProps={{
+                    className: classNames(classNames(sizing.paddingL))
+                }}
+            />
         </div>
     );
 }

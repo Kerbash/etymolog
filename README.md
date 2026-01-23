@@ -103,6 +103,85 @@ Routing notes:
 
 ---
 
+## SQL structure
+
+The app stores its local database using SQL.js (SQLite in the browser). The schema is defined and created in `src/db/database.ts` (see `createTables`) and mirrors the TypeScript interfaces in `src/db/types.ts`.
+
+Quick facts
+- Persistent key in localStorage: `etymolog_db_v3` (`DB_STORAGE_KEY`).
+- Foreign keys enabled at runtime via `PRAGMA foreign_keys = ON`.
+- Migrations are run on startup; v3 adds `category` columns if missing (see `runMigrations`).
+
+Tables
+
+1) `glyphs` — atomic visual symbols (SVG drawings)
+- id: INTEGER PRIMARY KEY AUTOINCREMENT
+- name: TEXT NOT NULL
+- svg_data: TEXT NOT NULL
+- category: TEXT (nullable)
+- notes: TEXT (nullable)
+- created_at: TEXT DEFAULT (datetime('now'))
+- updated_at: TEXT DEFAULT (datetime('now'))
+
+Indexes:
+- `idx_glyphs_name` on `glyphs(name)` (fast name lookup)
+
+
+2) `graphemes` — composed written units
+- id: INTEGER PRIMARY KEY AUTOINCREMENT
+- name: TEXT NOT NULL
+- category: TEXT (nullable)
+- notes: TEXT (nullable)
+- created_at: TEXT DEFAULT (datetime('now'))
+- updated_at: TEXT DEFAULT (datetime('now'))
+
+Indexes:
+- `idx_graphemes_name` on `graphemes(name)`
+
+
+3) `grapheme_glyphs` — junction table linking glyphs to graphemes (ordered)
+- id: INTEGER PRIMARY KEY AUTOINCREMENT
+- grapheme_id: INTEGER NOT NULL — FOREIGN KEY references `graphemes(id)` ON DELETE CASCADE
+- glyph_id: INTEGER NOT NULL — FOREIGN KEY references `glyphs(id)` ON DELETE RESTRICT
+- position: INTEGER NOT NULL DEFAULT 0 — ordering of glyphs within a grapheme
+- transform: TEXT (nullable) — reserved for rotation/scale/offset metadata
+
+Constraints and indexes:
+- UNIQUE(grapheme_id, glyph_id, position) to avoid duplicate slot entries
+- `idx_grapheme_glyphs_grapheme` on `(grapheme_id)`
+- `idx_grapheme_glyphs_glyph` on `(glyph_id)`
+- `idx_grapheme_glyphs_position` on `(grapheme_id, position)` (fast ordering)
+
+Behavior note:
+- Deleting a grapheme cascades and removes its `grapheme_glyphs` rows.
+- Deleting a glyph is restricted if it's referenced by any `grapheme_glyphs` row (unless the app forces removal).
+
+
+4) `phonemes` — pronunciations associated with a grapheme
+- id: INTEGER PRIMARY KEY AUTOINCREMENT
+- grapheme_id: INTEGER NOT NULL — FOREIGN KEY references `graphemes(id)` ON DELETE CASCADE
+- phoneme: TEXT NOT NULL (IPA or other notation)
+- use_in_auto_spelling: INTEGER DEFAULT 0 (stored as 0/1; mapped to boolean in TypeScript)
+- context: TEXT (nullable)
+
+Indexes:
+- `idx_phonemes_grapheme_id` on `(grapheme_id)`
+
+
+Relationship summary
+- Glyph ←(N:M)→ Grapheme via `grapheme_glyphs` (with `position` ordering). The junction uses ON DELETE RESTRICT for `glyph_id` to protect glyphs from accidental removal.
+- Grapheme ←(1:N)→ Phoneme. Phonemes are cascade-deleted when their parent grapheme is deleted.
+
+Practical implications
+- Creating a glyph writes to `glyphs`.
+- Creating a grapheme writes to `graphemes`, then to `grapheme_glyphs` for each linked glyph (preserving `position`), and optional `phonemes` rows for pronunciations.
+- Deleting a grapheme will remove associated phonemes and junction rows automatically (cascade). Attempting to delete a glyph that is in use will fail unless the app explicitly forces removal and cleans references.
+
+Notes for developers
+- The schema is created in `createTables(database)` and logged as "v3 schema with category".
+- Migrations currently alter existing tables to add `category` columns when detecting older schemas — full data-preserving migrations are TODO.
+- Boolean flags (like `use_in_auto_spelling`) are stored as INTEGER (0/1) in SQLite and mapped to booleans in TypeScript interfaces in `src/db/types.ts`.
+
 ## Database API
 
 ### Initialization
