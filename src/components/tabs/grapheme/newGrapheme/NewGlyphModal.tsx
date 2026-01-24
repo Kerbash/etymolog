@@ -2,14 +2,11 @@ import { useState, useRef } from "react";
 import classNames from "classnames";
 import Modal from "cyber-components/container/modal/modal";
 import { SmartForm, useSmartForm } from "smart-form/smartForm";
-import LabelShiftTextInput from "smart-form/input/fancy/redditStyle/labelShiftTextInput/labelShiftTextInput.tsx";
-import HoverToolTip from "cyber-components/interactable/information/hoverToolTip/hoverToolTip.tsx";
-import SvgDrawerInput from "smart-form/input/basic/svgDrawerInput/svgDrawerInput.tsx";
-import TextInputValidatorFactory from "smart-form/commonValidatorFactory/textValidatorFactory/textValidatorFactory.ts";
 import IconButton from "cyber-components/interactable/buttons/iconButton/iconButton.tsx";
 import { buttonStyles } from "cyber-components/interactable/buttons/button/button";
-import { flex, graphic, sizing } from "utils-styles";
+import { flex, graphic } from "utils-styles";
 import { useEtymologApi, type Glyph } from "../../../../db";
+import { GlyphFormFields, type GlyphFormData } from "../../../form/glyphForm";
 import styles from "./newGrapheme.module.scss";
 
 interface NewGlyphModalProps {
@@ -42,12 +39,7 @@ export default function NewGlyphModal({ isOpen, setIsOpen, onGlyphCreated }: New
             try {
                 setError(null);
 
-                const data = formData as unknown as {
-                    glyphSvg: string;
-                    glyphName: string;
-                    category?: string;
-                    notes?: string;
-                };
+                const data = formData as unknown as GlyphFormData;
 
                 // Validate required fields
                 if (!data.glyphSvg || data.glyphSvg.trim() === '') {
@@ -122,54 +114,10 @@ export default function NewGlyphModal({ isOpen, setIsOpen, onGlyphCreated }: New
                     isFormValid={isFormValid}
                     className={classNames(flex.flexCol, flex.flexGapM)}
                 >
-                    <div className={classNames(sizing.parentWidth, flex.flex, flex.justifyContentCenter)}>
-                        {/* SVG Drawing Canvas */}
-                        <HoverToolTip
-                            className={classNames(sizing.fitContent)}
-                            content={"Draw your glyph here"}
-                        >
-                            <SvgDrawerInput
-                                {...registerField("glyphSvg", {})}
-                            />
-                        </HoverToolTip>
-                    </div>
-
-                    {/* Glyph Name Input */}
-                    <HoverToolTip content={"The name of this glyph"}>
-                        <LabelShiftTextInput
-                            displayName={"Glyph Name"}
-                            asInput={true}
-                            {...registerField("glyphName", {
-                                validation: TextInputValidatorFactory({
-                                    required: {
-                                        value: true,
-                                        message: "Glyph name is required"
-                                    },
-                                })
-                            })}
-                        />
-                    </HoverToolTip>
-
-                    {/* Category Input */}
-                    <HoverToolTip content={"Category to organize your glyphs (e.g., Vowels, Consonants, Numbers)"}>
-                        <LabelShiftTextInput
-                            displayName={"Category"}
-                            asInput={true}
-                            {...registerField("category", {})}
-                        />
-                    </HoverToolTip>
-
-                    {/* Notes Input */}
-                    <HoverToolTip
-                        className={classNames(sizing.parentWidth)}
-                        content={"Additional notes about this glyph"}
-                    >
-                        <LabelShiftTextInput
-                            displayName={"Notes"}
-                            asInput={false}
-                            {...registerField("notes", {})}
-                        />
-                    </HoverToolTip>
+                    <GlyphFormFields
+                        registerField={registerField}
+                        mode="create"
+                    />
 
                     <div className={classNames(flex.flex, flex.flexGapM, styles.modalButtons)}>
                         <IconButton

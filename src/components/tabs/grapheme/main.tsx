@@ -21,7 +21,10 @@ import { buttonStyles } from "cyber-components/interactable/buttons/button/butto
 import NewGraphemeForm from "./newGrapheme/newGrapheme.tsx";
 import GraphemeView from "./galleryGrapheme/galleryGrapheme.tsx";
 import GlyphGallery from "./galleryGlyphs/galleryGlyphs.tsx";
+import { GlyphEditPage } from "./editGlyph";
+
 import { flex, sizing } from "utils-styles";
+import GraphemeEditPage from "./editGrapheme/GraphemeEditPage.tsx";
 
 /**
  * Small navigation used inside the grapheme/glyph screens.
@@ -30,14 +33,6 @@ import { flex, sizing } from "utils-styles";
 function GraphemeNav() {
     return (
         <nav className={classNames(flex.flexRow, flex.flexGapM)} style={{ marginBottom: '1rem' }}>
-            <IconButton
-                as={Link}
-                to="/script-maker"
-                iconName="grid-3x3-gap"
-            >
-                Gallery
-            </IconButton>
-
             <IconButton
                 as={Link}
                 to="/script-maker/create"
@@ -95,6 +90,7 @@ function CreateGraphemePage() {
  * Container for the Graphemes tab that handles nested routing.
  * - /script-maker/ -> GraphemeHome (gallery view)
  * - /script-maker/create -> CreateGraphemePage (create form)
+ * - /script-maker/grapheme/db/:id -> GraphemeEditPage (edit form)
  */
 function GraphemesTab() {
     return (
@@ -102,6 +98,7 @@ function GraphemesTab() {
             <Routes>
                 <Route index element={<GraphemeHome />} />
                 <Route path="create" element={<CreateGraphemePage />} />
+                <Route path="grapheme/db/:id" element={<GraphemeEditPage />} />
             </Routes>
         </div>
     );
@@ -110,16 +107,24 @@ function GraphemesTab() {
 /**
  * GlyphsTab
  *
- * Simple glyph-focused gallery. Renders the shared `GraphemeNav` and the
- * `GlyphGallery` component which displays each glyph name and its SVG.
+ * Glyph-focused gallery with nested routing.
+ * - /script-maker/glyphs -> Gallery view
+ * - /script-maker/glyphs/db/:id -> GlyphEditPage (edit form)
  */
 function GlyphsTab() {
     return (
         <div className={classNames(flex.flexColumn, sizing.parentSize)}>
-            <GraphemeNav />
-            <div style={{ padding: '1rem' }}>
-                <GlyphGallery />
-            </div>
+            <Routes>
+                <Route index element={
+                    <>
+                        <GraphemeNav />
+                        <div style={{ padding: '1rem' }}>
+                            <GlyphGallery />
+                        </div>
+                    </>
+                } />
+                <Route path="db/:id" element={<GlyphEditPage />} />
+            </Routes>
         </div>
     );
 }
@@ -154,6 +159,7 @@ export default function GraphemeMain() {
             content: <GlyphsTab />
         }
     ];
+
 
     return (
         <div className={classNames(flex.flexColumn, sizing.parentSize)}>

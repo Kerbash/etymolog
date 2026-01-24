@@ -1,0 +1,49 @@
+/* GraphemeEditPage styles */
+
+.pageContainer {
+    padding: 1rem;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.nav {
+    margin-bottom: 1.5rem;
+}
+
+.formContainer {
+    padding-bottom: 5rem;
+}
+
+.errorMessage {
+    padding: 1rem;
+    background: var(--error-light, #fee);
+    border: 1px solid var(--error-base, #f00);
+    border-radius: 4px;
+    color: var(--error-dark, #c00);
+    margin-bottom: 1rem;
+}
+
+.buttonRow {
+    margin-top: 2rem;
+    justify-content: flex-start;
+}
+
+.deleteButton {
+    margin-left: auto;
+}
+
+.modalContent {
+    padding: 1.5rem;
+    min-width: 400px;
+    max-width: 600px;
+}
+
+.warningText {
+    color: var(--warning, #f90);
+    font-weight: 500;
+}
+
+.modalButtons {
+    justify-content: flex-end;
+    margin-top: 1.5rem;
+}

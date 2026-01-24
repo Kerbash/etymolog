@@ -14,8 +14,8 @@
 import { useState, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import type { GraphemeComplete } from '../../../../db/types';
-import DetailedGraphemeDisplay from './graphemeDisplay/detailed/detailed.tsx';
-import CompactGraphemeDisplay from './graphemeDisplay/compact/compact.tsx';
+import DetailedGraphemeDisplay from '../../../display/grapheme/detailed/detailed.tsx';
+import CompactGraphemeDisplay from '../../../display/grapheme/compact/compact.tsx';
 import IconButton from 'cyber-components/interactable/buttons/iconButton/iconButton.tsx';
 import { buttonStyles } from 'cyber-components/interactable/buttons/button/button.tsx';
 import { DataGallery, type GalleryViewMode, type SortOption } from 'cyber-components/display/dataGallery';
@@ -138,8 +138,38 @@ export default function GraphemeGallery({
 
     // Renderers
     const renderDetailed = useCallback((grapheme: GraphemeComplete) => (
-        <DetailedGraphemeDisplay graphemeData={grapheme} />
-    ), []);
+        <div
+            onClick={() => onGraphemeClick?.(grapheme)}
+            style={{
+                cursor: onGraphemeClick ? 'pointer' : 'default',
+                transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+                borderRadius: '8px',
+            }}
+            className={onGraphemeClick ? 'grapheme-clickable' : undefined}
+            role={onGraphemeClick ? 'button' : undefined}
+            tabIndex={onGraphemeClick ? 0 : undefined}
+            onKeyDown={onGraphemeClick ? (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onGraphemeClick(grapheme);
+                }
+            } : undefined}
+            onMouseEnter={(e) => {
+                if (onGraphemeClick) {
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+                }
+            }}
+            onMouseLeave={(e) => {
+                if (onGraphemeClick) {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = 'none';
+                }
+            }}
+        >
+            <DetailedGraphemeDisplay graphemeData={grapheme} />
+        </div>
+    ), [onGraphemeClick]);
 
     const renderCompact = useCallback((grapheme: GraphemeComplete) => (
         <CompactGraphemeDisplay
@@ -202,6 +232,7 @@ export default function GraphemeGallery({
             // View mode
             viewMode={viewMode}
             setViewMode={setViewMode}
+            showDisplaySwitch={true}
 
             // Pagination
             curPage={validCurPage}

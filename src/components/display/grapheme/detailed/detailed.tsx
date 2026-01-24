@@ -1,5 +1,5 @@
 import DOMPurify from 'dompurify';
-import type { GraphemeComplete } from '../../../../../../db/types';
+import type { GraphemeComplete } from '../../../../db/types.ts';
 import './detailed.css';
 
 interface DetailedGraphemeDisplayProps {

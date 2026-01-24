@@ -73,21 +73,159 @@ Even though this is a PWA running entirely client-side, we maintain clean separa
 
 The Script Maker UI is available at the `/script-maker` route. It exposes nested subtabs for managing graphemes and glyphs:
 
-- Graphemes (default): shows the grapheme gallery and composition tools.
-- Glyphs: shows the glyph library (name on top, SVG preview in the middle).
-- Create Glyph: available at `/script-maker/create` (reachable from the UI but not shown as a top-level subtab).
+- **Graphemes** (default): shows the grapheme gallery and composition tools.
+- **Glyphs**: shows the glyph library (name on top, SVG preview in the middle).
 
-Key component locations:
+#### Routes
 
+| Route | Component | Description |
+|-------|-----------|-------------|
+| `/script-maker` | `GraphemeHome` | Grapheme gallery (default view) |
+| `/script-maker/create` | `CreateGraphemePage` | Create a new grapheme |
+| `/script-maker/grapheme/db/:id` | `GraphemeEditPage` | Edit an existing grapheme |
+| `/script-maker/glyphs` | `GlyphsTab` | Glyph gallery |
+| `/script-maker/glyphs/db/:id` | `GlyphEditPage` | Edit an existing glyph |
+
+#### Key Component Locations
+
+**Tab Structure:**
 - `src/components/tabs/grapheme/main.tsx` — `GraphemeMain` (router-backed tab container for the Script Maker area)
-- `src/components/tabs/grapheme/galleryGrapheme/graphemeGallery.tsx` — Grapheme gallery UI
-- `src/components/tabs/grapheme/galleryGlyphs/galleryGlyphs.tsx` — Glyph gallery UI
-- `src/components/tabs/grapheme/newGrapheme/newGrapheme.tsx` — Create glyph form
 
-Routing notes:
+**Galleries:**
+- `src/components/tabs/grapheme/galleryGrapheme/graphemeGallery.tsx` — Grapheme gallery component (DataGallery-based)
+- `src/components/tabs/grapheme/galleryGrapheme/galleryGrapheme.tsx` — Grapheme gallery view (connects to context)
+- `src/components/tabs/grapheme/galleryGlyphs/galleryGlyphs.tsx` — Glyph gallery UI
+
+**Create Forms:**
+- `src/components/tabs/grapheme/newGrapheme/newGrapheme.tsx` — Create grapheme form
+- `src/components/tabs/grapheme/newGrapheme/NewGlyphModal.tsx` — Create glyph modal (used within grapheme creation)
+
+**Edit Pages:**
+- `src/components/tabs/grapheme/editGlyph/GlyphEditPage.tsx` — Glyph editing page
+- `src/components/tabs/grapheme/editGrapheme/GraphemeEditPage.tsx` — Grapheme editing page
+
+**Shared Form Components:**
+- `src/components/form/glyphForm/GlyphFormFields.tsx` — Reusable glyph form fields (SVG drawer, name, category, notes)
+- `src/components/form/glyphForm/EditGlyphModal.tsx` — Modal wrapper for editing glyphs inline (used in GraphemeFormFields)
+- `src/components/form/graphemeForm/GraphemeFormFields.tsx` — Reusable grapheme form fields (glyph selection with inline editing, name, category, notes, pronunciations)
+
+**Display Components:**
+- `src/components/display/glyphs/glyphCard/glyphCard.tsx` — Versatile glyph card with configurable interaction modes:
+  - `interactionMode='route'` (default): Navigate to edit page
+  - `interactionMode='modal'`: Trigger onClick callback for inline modal editing
+  - `interactionMode='none'`: Display only, no click interaction
+- `src/components/display/grapheme/compact/compact.tsx` — Compact grapheme display (clickable)
+- `src/components/display/grapheme/detailed/detailed.tsx` — Detailed grapheme display
+
+#### Form Architecture
+
+The form components follow a modular pattern where create and edit pages share common form field components:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Shared Form Components                       │
+├─────────────────────────────────────────────────────────────────┤
+│  GlyphFormFields                 GraphemeFormFields             │
+│  ├── SVG Drawer                  ├── Glyph Selection Area       │
+│  ├── Name Input                  │   └── GlyphCard (modal mode) │
+│  ├── Category Input              ├── Name Input                 │
+│  └── Notes Input                 ├── Category Input             │
+│                                  ├── Notes Input                │
+│                                  └── Pronunciation Table        │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+              ┌───────────────┼───────────────┐
+              ▼               ▼               ▼
+┌─────────────────────┐ ┌─────────────────────┐ ┌─────────────────────┐
+│   NewGlyphModal     │ │   EditGlyphModal    │ │   GlyphEditPage     │
+│   (mode: "create")  │ │   (mode: "edit")    │ │   (mode: "edit")    │
+│   Inline in form    │ │   Inline in form    │ │   Standalone page   │
+└─────────────────────┘ └─────────────────────┘ └─────────────────────┘
+              ▼                               ▼
+┌─────────────────────────┐    ┌─────────────────────────┐
+│   NewGraphemeForm       │    │   GraphemeEditPage      │
+│   (mode: "create")      │    │   (mode: "edit")        │
+└─────────────────────────┘    └─────────────────────────┘
+```
+
+#### GlyphCard Interaction Modes
+
+The `GlyphCard` component supports three interaction modes for flexibility:
+
+| Mode | Prop Value | Behavior | Use Case |
+|------|------------|----------|----------|
+| Route | `interactionMode="route"` | Navigates to `/script-maker/glyphs/db/:id` | Glyph gallery (standalone editing) |
+| Modal | `interactionMode="modal"` | Calls `onClick` callback | GraphemeFormFields (inline editing) |
+| None | `interactionMode="none"` | No click interaction | Display-only contexts |
+
+```tsx
+// Route mode (default) - navigates to edit page
+<GlyphCard glyph={glyph} onDelete={handleDelete} />
+
+// Modal mode - triggers onClick for inline editing
+<GlyphCard 
+    glyph={glyph} 
+    interactionMode="modal"
+    onClick={(glyph) => openEditModal(glyph)}
+    onDelete={handleRemove}
+/>
+
+// Display only - no interaction
+<GlyphCard glyph={glyph} interactionMode="none" hideDelete />
+```
+
+#### Routing Notes
 
 - The app uses `RouterTabContainer` for nested route-based subtabs under `/script-maker`.
-- Subtabs map to `/script-maker` (graphemes) and `/script-maker/glyphs` (glyphs). The create page is `/script-maker/create`.
+- Subtabs map to `/script-maker` (graphemes) and `/script-maker/glyphs` (glyphs).
+- Edit pages are accessed by clicking on gallery items (GlyphCard or CompactGraphemeDisplay).
+- Each edit page includes delete functionality with confirmation modals.
+
+#### SmartForm Integration (IMPORTANT)
+
+The form components use the `smart-form` package for form state management. **Understanding the correct usage pattern is critical** to avoid stale state bugs.
+
+**✅ CORRECT Pattern - Call registerField on every render:**
+```tsx
+function MyFormFields({ registerField }) {
+    // Call registerField directly each render - SmartForm handles internal state
+    const nameField = registerField("name", { validation: ... });
+    const emailField = registerField("email", {});
+    
+    return (
+        <>
+            <LabelShiftTextInput {...nameField} displayName="Name" />
+            <LabelShiftTextInput {...emailField} displayName="Email" />
+        </>
+    );
+}
+```
+
+**❌ WRONG Pattern - DO NOT cache registerField results in refs:**
+```tsx
+function MyFormFields({ registerField }) {
+    // WRONG! This causes stale state - fieldState values never update!
+    const fieldsRef = useRef({});
+    if (!fieldsRef.current.name) {
+        fieldsRef.current.name = registerField("name", {});
+    }
+    
+    // fieldsRef.current.name.fieldState contains STALE values!
+    return <LabelShiftTextInput {...fieldsRef.current.name} />;
+}
+```
+
+**Why this matters:**
+- `registerField` is wrapped in `useCallback` with `fieldStates` as a dependency
+- Each call returns **fresh** `fieldState` values from React state
+- SmartForm handles registration internally via pending refs (won't re-register existing fields)
+- Handlers are stable via internal caching
+- The `fieldState.isEmpty.value`, `fieldState.warning.value`, etc. **must be read fresh** each render
+
+**Performance Note:** Calling `registerField` on every render is intentional and efficient. SmartForm:
+1. Uses internal caching for handlers (stable references)
+2. Only processes new field registrations once via `useLayoutEffect`
+3. Returns computed values from React state (necessary for reactivity)
 
 ---
 
@@ -631,30 +769,77 @@ const grapheme = await saveGrapheme({
 ## File Structure
 
 ```
-src/db/
-├── index.ts              # Barrel exports (context, API, types, legacy)
-├── database.ts           # SQL.js initialization & schema
-├── types.ts              # TypeScript interfaces for data models
-├── glyphService.ts       # Glyph CRUD operations (backend layer)
-├── graphemeService.ts    # Grapheme & phoneme CRUD (backend layer)
-├── formHandler.ts        # Form-to-DB transformation (legacy)
-├── useGlyphs.ts          # React hook for glyphs (deprecated)
-├── useGraphemes.ts       # React hook for graphemes (deprecated)
-├── api/                  # API Layer (virtual backend)
-│   ├── index.ts          # API barrel exports
-│   ├── types.ts          # API types (ApiResponse, Settings, etc.)
-│   ├── glyphApi.ts       # Glyph API with standardized responses
-│   ├── graphemeApi.ts    # Grapheme & Phoneme APIs
-│   ├── settingsApi.ts    # Settings management API
-│   └── databaseApi.ts    # Database management API
-├── context/              # React Context (frontend interface)
-│   ├── index.ts          # Context barrel exports
-│   └── EtymologContext.tsx  # Provider & hooks
-└── __tests__/
-    ├── setup.ts                  # Test environment setup
-    ├── glyphService.test.ts      # Glyph CRUD tests
-    ├── graphemeService.test.ts   # Grapheme & phoneme tests
-    └── edgeCases.test.ts         # Integration & edge case tests
+src/
+├── components/
+│   ├── background/
+│   │   └── background.tsx           # App background wrapper
+│   ├── display/
+│   │   ├── glyphs/
+│   │   │   └── glyphCard/
+│   │   │       ├── glyphCard.tsx        # Versatile glyph card (route/modal/none modes)
+│   │   │       └── glyphCard.module.scss
+│   │   └── grapheme/
+│   │       ├── compact/
+│   │       │   └── compact.tsx          # Compact grapheme display (clickable)
+│   │       └── detailed/
+│   │           └── detailed.tsx         # Detailed grapheme display
+│   ├── form/
+│   │   ├── glyphForm/
+│   │   │   ├── index.ts                 # Barrel exports
+│   │   │   ├── GlyphFormFields.tsx      # Shared glyph form fields
+│   │   │   ├── glyphFormFields.module.scss
+│   │   │   ├── EditGlyphModal.tsx       # Modal for inline glyph editing
+│   │   │   └── editGlyphModal.module.scss
+│   │   ├── graphemeForm/
+│   │   │   ├── index.ts
+│   │   │   ├── GraphemeFormFields.tsx   # Shared grapheme form fields (with inline glyph editing)
+│   │   │   └── graphemeFormFields.module.scss
+│   │   └── customInput/
+│   │       └── pronunciationTableInput/ # IPA pronunciation table input
+│   └── tabs/
+│       └── grapheme/
+│           ├── main.tsx                 # Script Maker routing container
+│           ├── galleryGrapheme/
+│           │   ├── galleryGrapheme.tsx  # Grapheme gallery view wrapper
+│           │   └── graphemeGallery.tsx  # Grapheme gallery component
+│           ├── galleryGlyphs/
+│           │   └── galleryGlyphs.tsx    # Glyph gallery component
+│           ├── newGrapheme/
+│           │   ├── newGrapheme.tsx      # Create grapheme form
+│           │   └── NewGlyphModal.tsx    # Create glyph modal
+│           ├── editGlyph/
+│           │   ├── index.ts
+│           │   ├── GlyphEditPage.tsx    # Edit glyph page
+│           │   └── glyphEditPage.module.scss
+│           └── editGrapheme/
+│               ├── index.ts
+│               ├── GraphemeEditPage.tsx # Edit grapheme page
+│               └── graphemeEditPage.module.scss
+├── db/
+│   ├── index.ts              # Barrel exports (context, API, types, legacy)
+│   ├── database.ts           # SQL.js initialization & schema
+│   ├── types.ts              # TypeScript interfaces for data models
+│   ├── glyphService.ts       # Glyph CRUD operations (backend layer)
+│   ├── graphemeService.ts    # Grapheme & phoneme CRUD (backend layer)
+│   ├── formHandler.ts        # Form-to-DB transformation (legacy)
+│   ├── useGlyphs.ts          # React hook for glyphs (deprecated)
+│   ├── useGraphemes.ts       # React hook for graphemes (deprecated)
+│   ├── api/                  # API Layer (virtual backend)
+│   │   ├── index.ts          # API barrel exports
+│   │   ├── types.ts          # API types (ApiResponse, Settings, etc.)
+│   │   ├── glyphApi.ts       # Glyph API with standardized responses
+│   │   ├── graphemeApi.ts    # Grapheme & Phoneme APIs
+│   │   ├── settingsApi.ts    # Settings management API
+│   │   └── databaseApi.ts    # Database management API
+│   ├── context/              # React Context (frontend interface)
+│   │   ├── index.ts          # Context barrel exports
+│   │   └── EtymologContext.tsx  # Provider & hooks
+│   └── __tests__/
+│       ├── setup.ts                  # Test environment setup
+│       ├── glyphService.test.ts      # Glyph CRUD tests
+│       ├── graphemeService.test.ts   # Grapheme & phoneme tests
+│       └── edgeCases.test.ts         # Integration & edge case tests
+└── ...
 ```
 
 ---

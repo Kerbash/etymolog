@@ -1,5 +1,5 @@
 import DOMPurify from 'dompurify';
-import type { GraphemeComplete } from '../../../../../../db/types';
+import type { GraphemeComplete } from '../../../../db/types.ts';
 import styles from './compact.module.scss';
 import classNames from 'classnames';
 

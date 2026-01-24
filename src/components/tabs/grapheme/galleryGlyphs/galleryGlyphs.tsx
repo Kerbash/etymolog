@@ -18,7 +18,7 @@
 
 import {useState, useMemo, useCallback} from 'react';
 import {useEtymolog, type GlyphWithUsage, type GraphemeComplete} from '../../../../db';
-import CompactGraphemeDisplay from '../galleryGrapheme/graphemeDisplay/compact/compact';
+import CompactGraphemeDisplay from '../../../display/grapheme/compact/compact';
 import DataGallery, {type SortOption} from 'cyber-components/display/dataGallery';
 import GlyphCard from '../../../display/glyphs/glyphCard';
 import Modal from "cyber-components/container/modal/modal.tsx";
