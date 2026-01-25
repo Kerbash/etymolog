@@ -25,6 +25,9 @@ import { GlyphEditPage } from "./editGlyph";
 
 import { flex, sizing } from "utils-styles";
 import GraphemeEditPage from "./editGrapheme/GraphemeEditPage.tsx";
+import NewGlyphModal from "./newGlyph/NewGlyphModal.tsx";
+import NewGlyphPage from "./newGlyph/NewGlyphPage.tsx";
+import { useState } from "react";
 
 /**
  * Small navigation used inside the grapheme/glyph screens.
@@ -84,6 +87,11 @@ function CreateGraphemePage() {
     );
 }
 
+// Keep a lightweight CreateGlyphPage that renders the full-page form
+function CreateGlyphPage() {
+    return <NewGlyphPage />;
+}
+
 /**
  * GraphemesTab
  *
@@ -117,13 +125,23 @@ function GlyphsTab() {
             <Routes>
                 <Route index element={
                     <>
-                        <GraphemeNav />
+                        <nav className={classNames(flex.flexRow, flex.flexGapM)} style={{ marginBottom: '1rem' }}>
+                            <IconButton
+                                as={Link}
+                                to="/script-maker/glyphs/create"
+                                iconName="plus-lg"
+                                className={buttonStyles.primary}
+                            >
+                                New Glyph
+                            </IconButton>
+                        </nav>
                         <div style={{ padding: '1rem' }}>
                             <GlyphGallery />
                         </div>
                     </>
                 } />
                 <Route path="db/:id" element={<GlyphEditPage />} />
+                <Route path="create" element={<CreateGlyphPage />} />
             </Routes>
         </div>
     );

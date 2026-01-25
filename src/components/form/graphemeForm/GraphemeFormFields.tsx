@@ -29,7 +29,7 @@ import TextInputValidatorFactory from "smart-form/commonValidatorFactory/textVal
 import IconButton from "cyber-components/interactable/buttons/iconButton/iconButton.tsx";
 import { buttonStyles } from "cyber-components/interactable/buttons/button/button";
 import { PronunciationTableInput, type PronunciationRowValue } from "../customInput/pronunciationTableInput";
-import NewGlyphModal from "../../tabs/grapheme/newGrapheme/NewGlyphModal";
+import NewGlyphModal from "../../tabs/grapheme/newGlyph/NewGlyphModal.tsx";
 import { EditGlyphModal } from "../glyphForm";
 import GlyphCard from "../../display/glyphs/glyphCard/glyphCard";
 import { flex, graphic, sizing } from "utils-styles";
