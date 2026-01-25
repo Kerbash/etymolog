@@ -17,8 +17,11 @@ import type { GraphemeComplete } from '../../../../db/types';
 import DetailedGraphemeDisplay from '../../../display/grapheme/detailed/detailed.tsx';
 import CompactGraphemeDisplay from '../../../display/grapheme/compact/compact.tsx';
 import IconButton from 'cyber-components/interactable/buttons/iconButton/iconButton.tsx';
+import Modal from 'cyber-components/container/modal/modal.tsx';
+import Button from 'cyber-components/interactable/buttons/button/button.tsx';
 import { buttonStyles } from 'cyber-components/interactable/buttons/button/button.tsx';
 import { DataGallery, type GalleryViewMode, type SortOption } from 'cyber-components/display/dataGallery';
+import { useEtymolog } from '../../../../db';
 
 // Map our legacy ViewMode to DataGallery's GalleryViewMode
 export type ViewMode = 'expanded' | 'compact';
@@ -55,6 +58,12 @@ export default function GraphemeGallery({
     defaultViewMode = 'expanded',
     onGraphemeClick,
 }: GraphemeGalleryProps) {
+    const { api, refresh } = useEtymolog();
+
+    // Local delete modal state
+    const [graphemeToDelete, setGraphemeToDelete] = useState<number | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
+
     // Map legacy view mode to DataGallery view mode
     const mapViewMode = (mode: ViewMode): GalleryViewMode =>
         mode === 'expanded' ? 'detailed' : 'compact';
@@ -136,6 +145,32 @@ export default function GraphemeGallery({
         }
     }, [onGraphemeClick]);
 
+    // New: open delete modal for a grapheme
+    const handleDelete = useCallback((id: number, e?: React.MouseEvent) => {
+        e?.stopPropagation();
+        setGraphemeToDelete(id);
+    }, []);
+
+    const confirmDelete = useCallback(async (id: number | null) => {
+        if (id === null) return;
+        setIsDeleting(true);
+        try {
+            const result = api.grapheme.delete(id);
+            if (!result.success) {
+                console.error('Failed to delete grapheme:', result.error?.message);
+            } else {
+                // Refresh context so UI updates immediately
+                try { refresh?.(); } catch (e) { /* ignore refresh errors */ }
+            }
+            // Close modal
+            setGraphemeToDelete(null);
+        } catch (err) {
+            console.error('Failed to delete grapheme', err);
+        } finally {
+            setIsDeleting(false);
+        }
+    }, [api, refresh]);
+
     // Renderers
     const renderDetailed = useCallback((grapheme: GraphemeComplete) => (
         <div
@@ -144,6 +179,7 @@ export default function GraphemeGallery({
                 cursor: onGraphemeClick ? 'pointer' : 'default',
                 transition: 'transform 0.2s ease, box-shadow 0.2s ease',
                 borderRadius: '8px',
+                position: 'relative', // for top-right button
             }}
             className={onGraphemeClick ? 'grapheme-clickable' : undefined}
             role={onGraphemeClick ? 'button' : undefined}
@@ -167,16 +203,36 @@ export default function GraphemeGallery({
                 }
             }}
         >
+            {/* Top-right delete button */}
+            <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 10 }}>
+                <IconButton
+                    iconName="trash"
+                    iconColor={'var(--status-bad)'}
+                    onClick={(e: React.MouseEvent) => handleDelete(grapheme.id, e)}
+                    aria-label={`Delete grapheme ${grapheme.name}`}
+                />
+            </div>
+
             <DetailedGraphemeDisplay graphemeData={grapheme} />
         </div>
-    ), [onGraphemeClick]);
+    ), [onGraphemeClick, handleDelete]);
 
     const renderCompact = useCallback((grapheme: GraphemeComplete) => (
-        <CompactGraphemeDisplay
-            graphemeData={grapheme}
-            onClick={onGraphemeClick ? () => onGraphemeClick(grapheme) : undefined}
-        />
-    ), [onGraphemeClick]);
+        <div style={{ position: 'relative' }}>
+            <div style={{ position: 'absolute', top: 6, right: 6, zIndex: 10 }}>
+                <IconButton
+                    iconName="trash"
+                    iconColor={'var(--status-bad)'}
+                    onClick={(e: React.MouseEvent) => handleDelete(grapheme.id, e)}
+                    aria-label={`Delete grapheme ${grapheme.name}`}
+                />
+            </div>
+            <CompactGraphemeDisplay
+                graphemeData={grapheme}
+                onClick={onGraphemeClick ? () => onGraphemeClick(grapheme) : undefined}
+            />
+        </div>
+    ), [onGraphemeClick, handleDelete]);
 
     // Custom empty slot with create button
     const emptySlot = useCallback(({ searchQuery, hasActiveFilters }: { searchQuery?: string; hasActiveFilters?: boolean }) => {
@@ -207,65 +263,96 @@ export default function GraphemeGallery({
     }, []);
 
     return (
-        <DataGallery
-            // Data
-            data={paginatedGraphemes}
-            keyExtractor={(grapheme) => grapheme.id}
+        <>
+            <DataGallery
+                // Data
+                data={paginatedGraphemes}
+                keyExtractor={(grapheme) => grapheme.id}
 
-            // Renderers
-            renderDetailed={renderDetailed}
-            renderCompact={renderCompact}
-            minItemWidth="200px"
-            itemGap="1rem"
+                // Renderers
+                renderDetailed={renderDetailed}
+                renderCompact={renderCompact}
+                minItemWidth="200px"
+                itemGap="1rem"
 
-            // Search
-            searchFn={handleSearch}
-            searchQuery={searchQuery}
-            onSearchQueryChange={setSearchQuery}
-            searchPlaceholder="Search by name, pronunciation..."
+                // Search
+                searchFn={handleSearch}
+                searchQuery={searchQuery}
+                onSearchQueryChange={setSearchQuery}
+                searchPlaceholder="Search by name, pronunciation..."
 
-            // Sorting
-            sortOptions={SORT_OPTIONS}
-            sortBy={sortBy}
-            setSortBy={setSortBy}
+                // Sorting
+                sortOptions={SORT_OPTIONS}
+                sortBy={sortBy}
+                setSortBy={setSortBy}
 
-            // View mode
-            viewMode={viewMode}
-            setViewMode={setViewMode}
-            showDisplaySwitch={true}
+                // View mode
+                viewMode={viewMode}
+                setViewMode={setViewMode}
+                showDisplaySwitch={true}
 
-            // Pagination
-            curPage={validCurPage}
-            setCurPage={setCurPage}
-            maxPage={maxPage}
-            maxResultPerPage={maxResultPerPage}
-            setMaxResultPerPage={setMaxResultPerPage}
-            maxResultOptions={RESULTS_PER_PAGE_OPTIONS}
-            totalCount={filteredAndSortedGraphemes.length}
+                // Pagination
+                curPage={validCurPage}
+                setCurPage={setCurPage}
+                maxPage={maxPage}
+                maxResultPerPage={maxResultPerPage}
+                setMaxResultPerPage={setMaxResultPerPage}
+                maxResultOptions={RESULTS_PER_PAGE_OPTIONS}
+                totalCount={filteredAndSortedGraphemes.length}
 
-            // State
-            isLoading={isLoading}
-            error={error}
-            emptySlot={emptySlot}
+                // State
+                isLoading={isLoading}
+                error={error}
+                emptySlot={emptySlot}
 
-            // Interaction
-            onItemActivate={handleItemActivate}
+                // Interaction
+                onItemActivate={handleItemActivate}
 
-            // Keyboard navigation
-            keyboardNavigation={{
-                enabled: true,
-                mode: 'roving',
-                wrapAround: true,
-            }}
+                // Keyboard navigation
+                keyboardNavigation={{
+                    enabled: true,
+                    mode: 'roving',
+                    wrapAround: true,
+                }}
 
-            // Virtualization (auto-enables for 100+ items)
-            virtualization={{
-                autoEnableThreshold: 100,
-                estimatedItemHeight: viewMode === 'detailed' ? 150 : 200,
-            }}
+                // Virtualization (auto-enables for 100+ items)
+                virtualization={{
+                    autoEnableThreshold: 100,
+                    estimatedItemHeight: viewMode === 'detailed' ? 150 : 200,
+                }}
 
-            // Accessibility
-            ariaLabel="Grapheme gallery"
-        />
+                // Accessibility
+                ariaLabel="Grapheme gallery"
+            />
+
+            {/* Delete Confirmation Modal */}
+            <Modal
+                isOpen={graphemeToDelete !== null}
+                setIsOpen={(open) => {
+                    if (!open) setGraphemeToDelete(null);
+                }}
+                onClose={() => setGraphemeToDelete(null)}
+                allowClose={true}
+            >
+                <div style={{ padding: '1rem', minWidth: 320 }}>
+                    <h2 style={{ marginTop: 0 }}>Delete grapheme</h2>
+
+                    <p>Are you sure you would like to delete this grapheme?</p>
+
+                    <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
+                        <Button onClick={() => setGraphemeToDelete(null)} disabled={isDeleting}>
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={() => confirmDelete(graphemeToDelete)}
+                            disabled={isDeleting}
+                            style={{ background: 'var(--danger)', color: 'white' }}
+                        >
+                            {isDeleting ? 'Deleting...' : 'Delete grapheme'}
+                        </Button>
+                    </div>
+                </div>
+            </Modal>
+        </>
     );
 }

@@ -345,3 +345,43 @@ export function glyphNameExists(name: string, excludeId?: number): boolean {
 
     return (result[0]?.values[0]?.[0] as number ?? 0) > 0;
 }
+
+/**
+ * Clean up orphaned glyphs (glyphs with no grapheme usage).
+ *
+ * This function identifies and deletes glyphs that are not used by any grapheme.
+ * It's designed to be called when the autoManageGlyphs setting is enabled.
+ *
+ * @returns The number of orphaned glyphs that were deleted
+ */
+export function cleanupOrphanedGlyphs(): number {
+    const db = getDatabase();
+
+    // Find all glyphs that have no grapheme_glyphs references
+    const result = db.exec(`
+        SELECT g.id
+        FROM glyphs g
+        LEFT JOIN grapheme_glyphs gg ON g.id = gg.glyph_id
+        WHERE gg.id IS NULL
+    `);
+
+    if (result.length === 0 || result[0].values.length === 0) {
+        return 0;
+    }
+
+    const orphanedGlyphIds = result[0].values.map((row: unknown[]) => row[0] as number);
+
+    // Delete each orphaned glyph
+    let deletedCount = 0;
+    for (const glyphId of orphanedGlyphIds) {
+        db.run('DELETE FROM glyphs WHERE id = ?', [glyphId]);
+        deletedCount++;
+    }
+
+    if (deletedCount > 0) {
+        persistDatabase();
+    }
+
+    return deletedCount;
+}
+

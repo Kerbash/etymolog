@@ -37,7 +37,9 @@ import {
     deleteAllPhonemesForGrapheme as serviceDeleteAllPhonemesForGrapheme,
     getAutoSpellingPhonemes as serviceGetAutoSpellingPhonemes,
 } from '../graphemeService';
+import { cleanupOrphanedGlyphs } from '../glyphService';
 import { isDatabaseInitialized } from '../database';
+import { getCurrentSettings } from './settingsApi';
 
 /**
  * Helper to create a standardized error response.
@@ -248,6 +250,7 @@ function updateGrapheme(id: number, request: UpdateGraphemeRequest): ApiResponse
 
 /**
  * Update a grapheme's glyph composition.
+ * If autoManageGlyphs setting is enabled, also cleans up orphaned glyphs.
  */
 function updateGraphemeGlyphs(id: number, request: UpdateGraphemeGlyphsRequest): ApiResponse<void> {
     const dbError = checkDbInitialized<void>();
@@ -270,6 +273,16 @@ function updateGraphemeGlyphs(id: number, request: UpdateGraphemeGlyphsRequest):
             position: g.position,
             transform: g.transform,
         })));
+
+        // Check if auto-manage is enabled and cleanup orphaned glyphs
+        const settings = getCurrentSettings();
+        if (settings.autoManageGlyphs) {
+            const deletedCount = cleanupOrphanedGlyphs();
+            if (deletedCount > 0) {
+                console.log(`[Auto-manage] Cleaned up ${deletedCount} orphaned glyph(s)`);
+            }
+        }
+
         return successResponse(undefined);
     } catch (error) {
         return errorResponse(
@@ -281,6 +294,7 @@ function updateGraphemeGlyphs(id: number, request: UpdateGraphemeGlyphsRequest):
 
 /**
  * Delete a grapheme.
+ * If autoManageGlyphs setting is enabled, also cleans up orphaned glyphs.
  */
 function deleteGrapheme(id: number): ApiResponse<void> {
     const dbError = checkDbInitialized<void>();
@@ -291,6 +305,16 @@ function deleteGrapheme(id: number): ApiResponse<void> {
         if (!success) {
             return errorResponse('NOT_FOUND', `Grapheme with ID ${id} not found`);
         }
+
+        // Check if auto-manage is enabled and cleanup orphaned glyphs
+        const settings = getCurrentSettings();
+        if (settings.autoManageGlyphs) {
+            const deletedCount = cleanupOrphanedGlyphs();
+            if (deletedCount > 0) {
+                console.log(`[Auto-manage] Cleaned up ${deletedCount} orphaned glyph(s)`);
+            }
+        }
+
         return successResponse(undefined);
     } catch (error) {
         return errorResponse(

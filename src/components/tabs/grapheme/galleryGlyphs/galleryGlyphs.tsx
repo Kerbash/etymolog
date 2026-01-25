@@ -23,6 +23,7 @@ import DataGallery, {type SortOption} from 'cyber-components/display/dataGallery
 import GlyphCard from '../../../display/glyphs/glyphCard';
 import Modal from "cyber-components/container/modal/modal.tsx";
 import Button from "cyber-components/interactable/buttons/button/button.tsx";
+import CyberSwitch from "cyber-components/interactable/switch/switch/switch.tsx";
 
 /**
  * Simple glyph gallery: name on top, SVG in the middle.
@@ -30,7 +31,7 @@ import Button from "cyber-components/interactable/buttons/button/button.tsx";
  */
 export default function GlyphGallery() {
     // Use the unified context
-    const { api, data, isLoading, error } = useEtymolog();
+    const { api, data, settings, isLoading, error } = useEtymolog();
     const { glyphsWithUsage, graphemesComplete } = data;
 
     // Gallery state
@@ -117,6 +118,11 @@ export default function GlyphGallery() {
         setGlyphToDelete(id);
     }, []);
 
+    // Toggle auto-manage glyphs setting
+    const handleAutoManageGlyphsToggle = useCallback((value: boolean) => {
+        api.settings.update({ autoManageGlyphs: value });
+    }, [api]);
+
     const confirmDelete = useCallback(async (id: number) => {
         setIsDeleting(true);
         try {
@@ -195,6 +201,24 @@ export default function GlyphGallery() {
 
                 // Accessibility
                 ariaLabel="Glyph gallery"
+
+                // Toolbar settings slot
+                toolbarEndSlot={
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: '0.5rem' }}>
+                        <label
+                            htmlFor="auto-manage-glyphs"
+                            style={{ fontSize: '0.875rem', whiteSpace: 'nowrap', cursor: 'pointer' }}
+                            title="When enabled, automatically manages orphaned glyphs that are not used by any grapheme"
+                        >
+                            Auto-manage
+                        </label>
+                        <CyberSwitch
+                            value={settings.autoManageGlyphs}
+                            onChange={handleAutoManageGlyphsToggle}
+                            width="2.5em"
+                        />
+                    </div>
+                }
 
                 // ... other props
                 styling={{

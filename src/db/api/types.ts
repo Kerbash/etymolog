@@ -45,7 +45,14 @@ export type ApiErrorCode =
 
 /**
  * Application settings managed by the API layer.
- * These settings are stored in memory and optionally persisted to localStorage.
+ *
+ * Settings are stored in two locations:
+ * - Global settings (localStorage): App-wide preferences that persist across all conlangs
+ * - Conlang settings (SQLite): Per-conlang settings that travel with the database file
+ *
+ * Currently all settings are stored in localStorage for simplicity,
+ * but conlang-specific settings like autoManageGlyphs are designed to be
+ * migrated to SQLite storage in the future.
  */
 export interface EtymologSettings {
     /**
@@ -64,6 +71,13 @@ export interface EtymologSettings {
      * Auto-save interval in milliseconds (0 = disabled).
      */
     autoSaveInterval: number;
+
+    /**
+     * When true, automatically manages orphaned glyphs.
+     * Orphaned glyphs (not used by any grapheme) may be cleaned up automatically.
+     * This is a conlang-specific setting.
+     */
+    autoManageGlyphs: boolean;
 }
 
 /**
@@ -73,6 +87,7 @@ export const DEFAULT_SETTINGS: EtymologSettings = {
     simpleScriptSystem: false,
     defaultGalleryView: 'compact',
     autoSaveInterval: 0,
+    autoManageGlyphs: false,
 };
 
 /**

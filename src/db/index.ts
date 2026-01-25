@@ -128,7 +128,8 @@ export {
     deleteGlyph,
     forceDeleteGlyph,
     getGlyphCount,
-    glyphNameExists
+    glyphNameExists,
+    cleanupOrphanedGlyphs
 } from './glyphService';
 
 // =============================================================================
