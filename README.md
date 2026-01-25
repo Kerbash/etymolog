@@ -14,6 +14,25 @@ A conlang (constructed language) script creation and management tool. Create cus
 
 ---
 
+## Table of Contents
+
+1. [Quick Start](#quick-start)
+2. [Use Cases & Requirements](#use-cases--requirements)
+3. [Application Architecture](#application-architecture)
+4. [Route Structure](#route-structure)
+5. [Component Architecture](#component-architecture)
+6. [Form Architecture](#form-architecture)
+7. [Data Architecture](#data-architecture)
+8. [Two-Layer Architecture](#two-layer-architecture)
+9. [API Reference](#api-reference)
+10. [SQL Structure](#sql-structure)
+11. [File Structure](#file-structure)
+12. [Testing](#testing)
+13. [Development](#development)
+14. [Known Issues & Fixes](#known-issues--fixes)
+
+---
+
 ## Quick Start
 
 ### Using the Etymolog Context (Recommended)
@@ -69,119 +88,261 @@ Even though this is a PWA running entirely client-side, we maintain clean separa
 
 ---
 
-### Script Maker (Graphemes & Glyphs)
+## Use Cases & Requirements
 
-The Script Maker UI is available at the `/script-maker` route. It exposes nested subtabs for managing graphemes and glyphs:
+### Primary Use Cases
 
-- **Graphemes** (default): shows the grapheme gallery and composition tools.
-- **Glyphs**: shows the glyph library (name on top, SVG preview in the middle).
+| Use Case | Description | Primary Route |
+|----------|-------------|---------------|
+| **UC1: Create Glyph** | Draw and save an atomic visual symbol | `/script-maker/glyphs/create` or modal in grapheme form |
+| **UC2: Browse Glyphs** | View all saved glyphs in a searchable gallery | `/script-maker/glyphs` |
+| **UC3: Edit Glyph** | Modify an existing glyph's drawing, name, or metadata | `/script-maker/glyphs/db/:id` |
+| **UC4: Delete Glyph** | Remove a glyph (with protection if in use) | Gallery or edit page |
+| **UC5: Create Grapheme** | Compose glyphs into a written character with pronunciations | `/script-maker/create` |
+| **UC6: Browse Graphemes** | View all graphemes in a searchable gallery | `/script-maker` |
+| **UC7: Edit Grapheme** | Modify grapheme composition, metadata, or pronunciations | `/script-maker/grapheme/db/:id` |
+| **UC8: Delete Grapheme** | Remove a grapheme (cascades to phonemes) | Gallery or edit page |
+| **UC9: Manage Pronunciations** | Add, edit, or remove phonemes for a grapheme | Within grapheme forms |
+| **UC10: Import/Export** | Save/load the entire database | Settings/future |
 
-#### Routes
+### Functional Requirements
+
+| ID | Requirement | Status |
+|----|-------------|--------|
+| **FR1** | Users can draw SVG glyphs using pen, shapes, and selection tools | ✅ Implemented |
+| **FR2** | Glyphs are reusable across multiple graphemes | ✅ Implemented |
+| **FR3** | Graphemes can contain ordered sequences of glyphs | ✅ Implemented |
+| **FR4** | Each grapheme can have multiple phonemes (pronunciations) | ✅ Implemented |
+| **FR5** | Phonemes can be marked for auto-spelling feature | ✅ Implemented |
+| **FR6** | Glyphs in use cannot be deleted without explicit force | ✅ Implemented |
+| **FR7** | All data persists locally via SQL.js + localStorage | ✅ Implemented |
+| **FR8** | Forms support real-time validation | ✅ Implemented (SmartForm) |
+| **FR9** | Galleries support search, sort, and pagination | ✅ Implemented |
+| **FR10** | Inline glyph editing within grapheme forms | ✅ Implemented (Modal) |
+
+### Non-Functional Requirements
+
+| ID | Requirement | Implementation |
+|----|-------------|----------------|
+| **NFR1** | Modularity | Form fields extracted to reusable components |
+| **NFR2** | Performance | Memoization, virtualization in galleries |
+| **NFR3** | Accessibility | ARIA attributes, keyboard navigation |
+| **NFR4** | Maintainability | Two-layer architecture, typed APIs |
+| **NFR5** | Testability | 141 test cases covering services |
+
+---
+
+## Application Architecture
+
+### High-Level Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                                  App.tsx                                     │
+│                           (EtymologProvider)                                │
+│                                    │                                         │
+│                          RouterTabContainer                                  │
+│                    ┌───────────────┼───────────────┐                        │
+│                    │               │               │                        │
+│               ┌────▼────┐   ┌──────▼──────┐  ┌─────▼─────┐                  │
+│               │ Lexicon │   │Script Maker │  │Graphotactic│                  │
+│               │  /lexicon │  │/script-maker│  │    (WIP)  │                  │
+│               └─────────┘   └──────┬──────┘  └───────────┘                  │
+│                                    │                                         │
+│                          ┌─────────┴─────────┐                              │
+│                          │                   │                              │
+│                    ┌─────▼─────┐       ┌─────▼─────┐                        │
+│                    │ Graphemes │       │  Glyphs   │                        │
+│                    │  (default)│       │ /glyphs   │                        │
+│                    └───────────┘       └───────────┘                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Tab Sections
+
+| Tab | Path | Description | Status |
+|-----|------|-------------|--------|
+| Lexicon | `/lexicon` | Word/vocabulary management | 🚧 Basic |
+| Part of Speech | `/part-of-speech` | Grammar categories | 🚧 Placeholder |
+| Script Maker | `/script-maker` | Grapheme & glyph management | ✅ Complete |
+| Graphotactic | `/graphotactic` | Writing system rules | 🚧 Placeholder |
+
+---
+
+## Route Structure
+
+### Complete Route Map
+
+```
+/
+├── /lexicon                        → LexiconMain
+│   ├── (index)                     → LexiconHome
+│   ├── /create                     → CreateLexiconForm
+│   └── /view                       → LexiconView
+│       └── /view/:id               → LexiconView (with selection)
+│
+├── /part-of-speech                 → Placeholder
+│
+├── /script-maker                   → GraphemeMain (RouterTabContainer)
+│   ├── (index: Graphemes Tab)      
+│   │   ├── (index)                 → GraphemeHome (gallery + nav)
+│   │   ├── /create                 → CreateGraphemePage
+│   │   └── /grapheme/db/:id        → GraphemeEditPage
+│   │
+│   └── /glyphs (Glyphs Tab)
+│       ├── (index)                 → GlyphsTab (gallery + nav)
+│       ├── /create                 → NewGlyphPage
+│       └── /db/:id                 → GlyphEditPage
+│
+└── /graphotactic                   → GraphotacticMain (placeholder)
+```
+
+### Route Details
 
 | Route | Component | Description |
 |-------|-----------|-------------|
-| `/script-maker` | `GraphemeHome` | Grapheme gallery (default view) |
-| `/script-maker/create` | `CreateGraphemePage` | Create a new grapheme |
-| `/script-maker/grapheme/db/:id` | `GraphemeEditPage` | Edit an existing grapheme |
-| `/script-maker/glyphs` | `GlyphsTab` | Glyph gallery |
-| `/script-maker/glyphs/db/:id` | `GlyphEditPage` | Edit an existing glyph |
+| `/script-maker` | `GraphemeHome` | Grapheme gallery with search/sort/pagination |
+| `/script-maker/create` | `CreateGraphemePage` | Create new grapheme with glyph selection |
+| `/script-maker/grapheme/db/:id` | `GraphemeEditPage` | Edit existing grapheme |
+| `/script-maker/glyphs` | `GlyphsTab` | Glyph gallery with search/sort/pagination |
+| `/script-maker/glyphs/create` | `NewGlyphPage` | Create new glyph (standalone page) |
+| `/script-maker/glyphs/db/:id` | `GlyphEditPage` | Edit existing glyph |
 
-#### Key Component Locations
+---
 
-**Tab Structure:**
-- `src/components/tabs/grapheme/main.tsx` — `GraphemeMain` (router-backed tab container for the Script Maker area)
+## Component Architecture
 
-**Galleries:**
-- `src/components/tabs/grapheme/galleryGrapheme/graphemeGallery.tsx` — Grapheme gallery component (DataGallery-based)
-- `src/components/tabs/grapheme/galleryGrapheme/galleryGrapheme.tsx` — Grapheme gallery view (connects to context)
-- `src/components/tabs/grapheme/galleryGlyphs/galleryGlyphs.tsx` — Glyph gallery UI
+### Component Hierarchy
 
-**Create Forms:**
-- `src/components/tabs/grapheme/newGrapheme/newGrapheme.tsx` — Create grapheme form
-- `src/components/tabs/grapheme/newGrapheme/NewGlyphModal.tsx` — Create glyph modal (used within grapheme creation)
+```
+App.tsx
+└── EtymologProvider (Context)
+    └── RouterTabContainer (cyber-components)
+        └── GraphemeMain (/script-maker)
+            └── RouterTabContainer (nested tabs)
+                ├── GraphemesTab
+                │   ├── GraphemeHome
+                │   │   ├── GraphemeNav
+                │   │   └── GraphemeView
+                │   │       └── DataGallery (cyber-components)
+                │   │           └── CompactGraphemeDisplay
+                │   ├── CreateGraphemePage
+                │   │   └── NewGraphemeForm
+                │   │       └── SmartForm
+                │   │           └── GraphemeFormFields
+                │   │               ├── GlyphCard (modal mode)
+                │   │               ├── LabelShiftTextInput (×3)
+                │   │               ├── PronunciationTableInput
+                │   │               ├── NewGlyphModal
+                │   │               │   └── GlyphForm
+                │   │               │       └── GlyphFormFields
+                │   │               └── EditGlyphModal
+                │   │                   └── GlyphForm
+                │   │                       └── GlyphFormFields
+                │   └── GraphemeEditPage
+                │       └── SmartForm
+                │           └── GraphemeFormFields (mode="edit")
+                │
+                └── GlyphsTab
+                    ├── GlyphGallery
+                    │   └── DataGallery
+                    │       └── GlyphCard (route mode)
+                    ├── NewGlyphPage
+                    │   └── GlyphForm
+                    │       └── GlyphFormFields
+                    └── GlyphEditPage
+                        └── SmartForm
+                            └── GlyphFormFields (mode="edit")
+```
 
-**Edit Pages:**
-- `src/components/tabs/grapheme/editGlyph/GlyphEditPage.tsx` — Glyph editing page
-- `src/components/tabs/grapheme/editGrapheme/GraphemeEditPage.tsx` — Grapheme editing page
+### Component Categories
 
-**Shared Form Components:**
-- `src/components/form/glyphForm/GlyphFormFields.tsx` — Reusable glyph form fields (SVG drawer, name, category, notes)
-- `src/components/form/glyphForm/EditGlyphModal.tsx` — Modal wrapper for editing glyphs inline (used in GraphemeFormFields)
-- `src/components/form/graphemeForm/GraphemeFormFields.tsx` — Reusable grapheme form fields (glyph selection with inline editing, name, category, notes, pronunciations)
+| Category | Components | Location |
+|----------|------------|----------|
+| **Tab Containers** | `GraphemeMain`, `LexiconMain`, `GraphotacticMain` | `src/components/tabs/*/main.tsx` |
+| **Galleries** | `GraphemeView`, `GlyphGallery` | `src/components/tabs/grapheme/gallery*/` |
+| **Create Pages** | `CreateGraphemePage`, `NewGlyphPage` | `src/components/tabs/grapheme/new*/` |
+| **Edit Pages** | `GraphemeEditPage`, `GlyphEditPage` | `src/components/tabs/grapheme/edit*/` |
+| **Form Components** | `GlyphFormFields`, `GraphemeFormFields` | `src/components/form/*/` |
+| **Display Components** | `GlyphCard`, `CompactGraphemeDisplay`, `DetailedGraphemeDisplay` | `src/components/display/*/` |
+| **Modal Components** | `NewGlyphModal`, `EditGlyphModal` | Various locations |
 
-**Display Components:**
-- `src/components/display/glyphs/glyphCard/glyphCard.tsx` — Versatile glyph card with configurable interaction modes:
-  - `interactionMode='route'` (default): Navigate to edit page
-  - `interactionMode='modal'`: Trigger onClick callback for inline modal editing
-  - `interactionMode='none'`: Display only, no click interaction
-- `src/components/display/grapheme/compact/compact.tsx` — Compact grapheme display (clickable)
-- `src/components/display/grapheme/detailed/detailed.tsx` — Detailed grapheme display
+---
 
-#### Form Architecture
+## Form Architecture
 
-The form components follow a modular pattern where create and edit pages share common form field components:
+### Form System Overview
+
+The application uses a **modular form architecture** built on the `smart-form` package. Forms are composed of:
+
+1. **Form Containers**: Wrap SmartForm with submit logic
+2. **Form Fields Components**: Reusable field groups
+3. **Modals**: Allow inline creation/editing
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    Shared Form Components                       │
+│                    FORM FIELD COMPONENTS                        │
 ├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
 │  GlyphFormFields                 GraphemeFormFields             │
-│  ├── SVG Drawer                  ├── Glyph Selection Area       │
-│  ├── Name Input                  │   └── GlyphCard (modal mode) │
-│  ├── Category Input              ├── Name Input                 │
-│  └── Notes Input                 ├── Category Input             │
-│                                  ├── Notes Input                │
-│                                  └── Pronunciation Table        │
+│  ├── SvgDrawerInput              ├── Glyph Selection Area       │
+│  ├── LabelShiftTextInput (Name)  │   ├── GlyphCard (modal mode) │
+│  ├── LabelShiftTextInput (Cat)   │   └── Add/Select buttons     │
+│  └── LabelShiftTextInput (Notes) ├── LabelShiftTextInput (Name) │
+│                                  ├── LabelShiftTextInput (Cat)  │
+│                                  ├── LabelShiftTextInput (Notes)│
+│                                  └── PronunciationTableInput    │
+│                                      └── (uses internal SmartForm │
+│                                          as="div" for rows)     │
 └─────────────────────────────────────────────────────────────────┘
                               │
               ┌───────────────┼───────────────┐
+              │               │               │
               ▼               ▼               ▼
 ┌─────────────────────┐ ┌─────────────────────┐ ┌─────────────────────┐
-│   NewGlyphModal     │ │   EditGlyphModal    │ │   GlyphEditPage     │
-│   (mode: "create")  │ │   (mode: "edit")    │ │   (mode: "edit")    │
-│   Inline in form    │ │   Inline in form    │ │   Standalone page   │
+│      GlyphForm      │ │   NewGlyphModal     │ │   EditGlyphModal    │
+│  (Standalone Form)  │ │   (Modal Wrapper)   │ │   (Modal Wrapper)   │
+│  mode: create/edit  │ │   mode: "create"    │ │   mode: "edit"      │
+│  ┌───────────────┐  │ │  ┌───────────────┐  │ │  ┌───────────────┐  │
+│  │  SmartForm    │  │ │  │  Modal        │  │ │  │  Modal        │  │
+│  │  └──Fields    │  │ │  │  └──GlyphForm │  │ │  │  └──GlyphForm │  │
+│  └───────────────┘  │ │  └───────────────┘  │ │  └───────────────┘  │
 └─────────────────────┘ └─────────────────────┘ └─────────────────────┘
-              ▼                               ▼
-┌─────────────────────────┐    ┌─────────────────────────┐
-│   NewGraphemeForm       │    │   GraphemeEditPage      │
-│   (mode: "create")      │    │   (mode: "edit")        │
-└─────────────────────────┘    └─────────────────────────┘
+              │                   │                       │
+              │                   └───────────────────────┘
+              │                             │
+              │                   Used by GraphemeFormFields
+              │                   for inline glyph management
+              │
+              ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                      PAGE COMPONENTS                              │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  NewGlyphPage           GlyphEditPage          NewGraphemeForm   │
+│  ├── Nav (back link)    ├── Nav (back link)    ├── SmartForm     │
+│  └── GlyphForm          └── SmartForm          │   └── Fields    │
+│      (mode: create)         (mode: edit)                         │
+│                             + Delete button    GraphemeEditPage  │
+│                                                ├── SmartForm     │
+│                                                │   └── Fields    │
+│                                                └── Submit/Delete │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
-#### GlyphCard Interaction Modes
+### Form Data Flow
 
-The `GlyphCard` component supports three interaction modes for flexibility:
-
-| Mode | Prop Value | Behavior | Use Case |
-|------|------------|----------|----------|
-| Route | `interactionMode="route"` | Navigates to `/script-maker/glyphs/db/:id` | Glyph gallery (standalone editing) |
-| Modal | `interactionMode="modal"` | Calls `onClick` callback | GraphemeFormFields (inline editing) |
-| None | `interactionMode="none"` | No click interaction | Display-only contexts |
-
-```tsx
-// Route mode (default) - navigates to edit page
-<GlyphCard glyph={glyph} onDelete={handleDelete} />
-
-// Modal mode - triggers onClick for inline editing
-<GlyphCard 
-    glyph={glyph} 
-    interactionMode="modal"
-    onClick={(glyph) => openEditModal(glyph)}
-    onDelete={handleRemove}
-/>
-
-// Display only - no interaction
-<GlyphCard glyph={glyph} interactionMode="none" hideDelete />
+```
+User Input → SmartForm (validation) → Submit Handler → API Layer → Database
+                                            │
+                                            ▼
+                                    Context auto-refresh
+                                            │
+                                            ▼
+                                    UI updates reactively
 ```
 
-#### Routing Notes
-
-- The app uses `RouterTabContainer` for nested route-based subtabs under `/script-maker`.
-- Subtabs map to `/script-maker` (graphemes) and `/script-maker/glyphs` (glyphs).
-- Edit pages are accessed by clicking on gallery items (GlyphCard or CompactGraphemeDisplay).
-- Each edit page includes delete functionality with confirmation modals.
-
-#### SmartForm Integration (IMPORTANT)
+### SmartForm Integration (CRITICAL)
 
 The form components use the `smart-form` package for form state management. **Understanding the correct usage pattern is critical** to avoid stale state bugs.
 
@@ -222,10 +383,30 @@ function MyFormFields({ registerField }) {
 - Handlers are stable via internal caching
 - The `fieldState.isEmpty.value`, `fieldState.warning.value`, etc. **must be read fresh** each render
 
-**Performance Note:** Calling `registerField` on every render is intentional and efficient. SmartForm:
-1. Uses internal caching for handlers (stable references)
-2. Only processes new field registrations once via `useLayoutEffect`
-3. Returns computed values from React state (necessary for reactivity)
+### Glyph Form Components
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| `GlyphFormFields` | `src/components/form/glyphForm/GlyphFormFields.tsx` | Reusable glyph fields (SVG, name, category, notes) |
+| `GlyphForm` | `src/components/form/glyphForm/GlyphForm.tsx` | Standalone form wrapper with SmartForm + submit logic |
+| `NewGlyphModal` | `src/components/tabs/grapheme/newGlyph/NewGlyphModal.tsx` | Modal for creating glyph inline |
+| `EditGlyphModal` | `src/components/form/glyphForm/EditGlyphModal.tsx` | Modal for editing glyph inline |
+| `NewGlyphPage` | `src/components/tabs/grapheme/newGlyph/NewGlyphPage.tsx` | Standalone page for glyph creation |
+| `GlyphEditPage` | `src/components/tabs/grapheme/editGlyph/GlyphEditPage.tsx` | Standalone page for glyph editing |
+
+### Grapheme Form Components
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| `GraphemeFormFields` | `src/components/form/graphemeForm/GraphemeFormFields.tsx` | Reusable grapheme fields with glyph selection |
+| `NewGraphemeForm` | `src/components/tabs/grapheme/newGrapheme/newGrapheme.tsx` | Create grapheme form with SmartForm |
+| `GraphemeEditPage` | `src/components/tabs/grapheme/editGrapheme/GraphemeEditPage.tsx` | Edit grapheme page |
+
+### Custom Inputs
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| `PronunciationTableInput` | `src/components/form/customInput/pronunciationTableInput/` | IPA pronunciation table with add/remove rows |
 
 ---
 
@@ -275,31 +456,54 @@ function MyFormFields({ registerField }) {
 
 3. **Future-Proof**: The `transform` field in the junction table allows for future features like glyph rotation, scaling, or positioning within a grapheme.
 
-### Data Flow
+### Type Definitions
 
-```
-┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
-│   Glyph Form     │     │    Database      │     │  Grapheme Form   │
-│                  │     │                  │     │                  │
-│ Draw SVG         │────▶│ createGlyph()    │     │ Select glyph(s)  │
-│ Enter name       │     │                  │     │ Enter name       │
-│ Add notes        │     │ Creates:         │◄────│ Add phonemes     │
-│                  │     │ - 1 glyph        │     │                  │
-└──────────────────┘     │                  │     └──────────────────┘
-                         │ createGrapheme() │
-                         │                  │
-                         │ Creates:         │
-                         │ - 1 grapheme     │
-                         │ - N glyph links  │
-                         │ - N phonemes     │
-                         └──────────────────┘
+```typescript
+// Core Types (src/db/types.ts)
+
+interface Glyph {
+    id: number;
+    name: string;
+    svg_data: string;
+    category: string | null;
+    notes: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
+interface Grapheme {
+    id: number;
+    name: string;
+    category: string | null;
+    notes: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
+interface Phoneme {
+    id: number;
+    grapheme_id: number;
+    phoneme: string;
+    use_in_auto_spelling: boolean;
+    context: string | null;
+}
+
+// Composite Types
+interface GraphemeComplete extends Grapheme {
+    glyphs: Glyph[];      // Ordered by position
+    phonemes: Phoneme[];
+}
+
+interface GlyphWithUsage extends Glyph {
+    usageCount: number;   // Number of graphemes using this glyph
+}
 ```
 
 ---
 
 ## Two-Layer Architecture
 
-Etymolog uses a **virtual frontend/backend** architecture to separate UI concerns from data operations. Even though this is a PWA running entirely client-side, we maintain clean separation as if it were a client-server application.
+Etymolog uses a **virtual frontend/backend** architecture to separate UI concerns from data operations.
 
 ### Architecture Overview
 
@@ -364,48 +568,6 @@ Etymolog uses a **virtual frontend/backend** architecture to separate UI concern
    - SQL.js database management
    - Persistence to localStorage
 
-### Using the Context
-
-```tsx
-import { EtymologProvider, useEtymolog } from './db';
-
-// Wrap your app with the provider
-function App() {
-  return (
-    <EtymologProvider>
-      <MyApp />
-    </EtymologProvider>
-  );
-}
-
-// Use the hook in components
-function GlyphList() {
-  const { api, data, isLoading, error } = useEtymolog();
-
-  if (isLoading) return <Spinner />;
-  if (error) return <ErrorDisplay error={error} />;
-
-  const handleCreate = () => {
-    const result = api.glyph.create({
-      name: 'New Glyph',
-      svg_data: '<svg>...</svg>'
-    });
-    
-    if (!result.success) {
-      console.error('Failed:', result.error?.message);
-    }
-    // Data auto-refreshes, no manual refresh needed
-  };
-
-  return (
-    <div>
-      <button onClick={handleCreate}>Add Glyph</button>
-      {data.glyphs.map(g => <GlyphCard key={g.id} glyph={g} />)}
-    </div>
-  );
-}
-```
-
 ### Convenience Hooks
 
 ```tsx
@@ -425,34 +587,9 @@ const { settings, updateSettings } = useEtymologSettings();
 const { isLoading, isReady, error } = useEtymologStatus();
 ```
 
-### Settings API
+---
 
-Application settings are managed through the settings API. Settings are **not stored in the database** but are persisted to localStorage separately.
-
-#### Available Settings
-
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `simpleScriptSystem` | `boolean` | `false` | Reserved for future use. When enabled, may simplify the script system by treating each grapheme as a single glyph. |
-| `defaultGalleryView` | `'compact' \| 'detailed' \| 'expanded'` | `'compact'` | Default view mode for galleries. |
-| `autoSaveInterval` | `number` | `0` | Auto-save interval in milliseconds. 0 = disabled. |
-
-#### Usage
-
-```tsx
-const { settings, updateSettings, resetSettings } = useEtymologSettings();
-
-// Read current settings
-console.log(settings.simpleScriptSystem); // false
-
-// Update settings (partial update supported)
-updateSettings({ simpleScriptSystem: true });
-
-// Reset to defaults
-resetSettings();
-```
-
-Settings are persisted to localStorage and automatically loaded on app start.
+## API Reference
 
 ### API Response Format
 
@@ -478,11 +615,7 @@ type ApiErrorCode =
   | 'UNKNOWN_ERROR';
 ```
 
-### Complete API Reference
-
-The `api` object from `useEtymolog()` provides the following methods:
-
-#### Glyph API (`api.glyph`)
+### Glyph API (`api.glyph`)
 
 | Method | Description | Returns |
 |--------|-------------|---------|
@@ -497,7 +630,7 @@ The `api` object from `useEtymolog()` provides the following methods:
 | `cascadeDelete(id)` | Delete glyph and all graphemes using it | `ApiResponse<void>` |
 | `checkNameExists(name, excludeId?)` | Check if name is taken | `ApiResponse<boolean>` |
 
-#### Grapheme API (`api.grapheme`)
+### Grapheme API (`api.grapheme`)
 
 | Method | Description | Returns |
 |--------|-------------|---------|
@@ -511,7 +644,7 @@ The `api` object from `useEtymolog()` provides the following methods:
 | `updateGlyphs(id, request)` | Replace grapheme's glyph composition | `ApiResponse<void>` |
 | `delete(id)` | Delete grapheme (cascades to phonemes) | `ApiResponse<void>` |
 
-#### Phoneme API (`api.phoneme`)
+### Phoneme API (`api.phoneme`)
 
 | Method | Description | Returns |
 |--------|-------------|---------|
@@ -523,7 +656,7 @@ The `api` object from `useEtymolog()` provides the following methods:
 | `deleteAllForGrapheme(graphemeId)` | Delete all phonemes for a grapheme | `ApiResponse<number>` |
 | `getAutoSpelling()` | Get all phonemes marked for auto-spelling | `ApiResponse<Phoneme[]>` |
 
-#### Settings API (`api.settings`)
+### Settings API (`api.settings`)
 
 | Method | Description | Returns |
 |--------|-------------|---------|
@@ -531,7 +664,7 @@ The `api` object from `useEtymolog()` provides the following methods:
 | `update(settings)` | Update settings (partial) | `ApiResponse<EtymologSettings>` |
 | `reset()` | Reset settings to defaults | `ApiResponse<EtymologSettings>` |
 
-#### Database API (`api.database`)
+### Database API (`api.database`)
 
 | Method | Description | Returns |
 |--------|-------------|---------|
@@ -541,228 +674,78 @@ The `api` object from `useEtymolog()` provides the following methods:
 | `clear()` | Clear all data (keeps schema) | `ApiResponse<void>` |
 | `reset()` | Drop and recreate all tables | `ApiResponse<void>` |
 
-### Migration from Legacy Hooks
-
-The old hooks (`useGlyphs`, `useGraphemes`) are deprecated but still available:
-
-```tsx
-// Old way (deprecated)
-import { useGlyphs, useGraphemes } from './db';
-const { glyphs, create } = useGlyphs();
-const { graphemesComplete } = useGraphemes();
-
-// New way (recommended)
-import { useEtymolog } from './db';
-const { api, data } = useEtymolog();
-// api.glyph.create(), data.glyphs, data.graphemesComplete
-```
-
 ---
 
-## SQL structure
+## SQL Structure
 
-The app stores its local database using SQL.js (SQLite in the browser). The schema is defined and created in `src/db/database.ts` (see `createTables`) and mirrors the TypeScript interfaces in `src/db/types.ts`.
+### Database Details
 
-Quick facts
-- Persistent key in localStorage: `etymolog_db_v3` (`DB_STORAGE_KEY`).
-- Foreign keys enabled at runtime via `PRAGMA foreign_keys = ON`.
-- Migrations are run on startup; v3 adds `category` columns if missing (see `runMigrations`).
+- **Storage Key**: `etymolog_db_v3`
+- **Engine**: SQL.js (SQLite in browser)
+- **Foreign Keys**: Enabled via `PRAGMA foreign_keys = ON`
 
-Tables
+### Tables
 
-1) `glyphs` — atomic visual symbols (SVG drawings)
-- id: INTEGER PRIMARY KEY AUTOINCREMENT
-- name: TEXT NOT NULL
-- svg_data: TEXT NOT NULL
-- category: TEXT (nullable)
-- notes: TEXT (nullable)
-- created_at: TEXT DEFAULT (datetime('now'))
-- updated_at: TEXT DEFAULT (datetime('now'))
+#### 1. `glyphs` — Atomic Visual Symbols
 
-Indexes:
-- `idx_glyphs_name` on `glyphs(name)` (fast name lookup)
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT |
+| `name` | TEXT | NOT NULL |
+| `svg_data` | TEXT | NOT NULL |
+| `category` | TEXT | NULLABLE |
+| `notes` | TEXT | NULLABLE |
+| `created_at` | TEXT | DEFAULT datetime('now') |
+| `updated_at` | TEXT | DEFAULT datetime('now') |
 
+**Indexes**: `idx_glyphs_name` on `name`
 
-2) `graphemes` — composed written units
-- id: INTEGER PRIMARY KEY AUTOINCREMENT
-- name: TEXT NOT NULL
-- category: TEXT (nullable)
-- notes: TEXT (nullable)
-- created_at: TEXT DEFAULT (datetime('now'))
-- updated_at: TEXT DEFAULT (datetime('now'))
+#### 2. `graphemes` — Composed Written Units
 
-Indexes:
-- `idx_graphemes_name` on `graphemes(name)`
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT |
+| `name` | TEXT | NOT NULL |
+| `category` | TEXT | NULLABLE |
+| `notes` | TEXT | NULLABLE |
+| `created_at` | TEXT | DEFAULT datetime('now') |
+| `updated_at` | TEXT | DEFAULT datetime('now') |
 
+**Indexes**: `idx_graphemes_name` on `name`
 
-3) `grapheme_glyphs` — junction table linking glyphs to graphemes (ordered)
-- id: INTEGER PRIMARY KEY AUTOINCREMENT
-- grapheme_id: INTEGER NOT NULL — FOREIGN KEY references `graphemes(id)` ON DELETE CASCADE
-- glyph_id: INTEGER NOT NULL — FOREIGN KEY references `glyphs(id)` ON DELETE RESTRICT
-- position: INTEGER NOT NULL DEFAULT 0 — ordering of glyphs within a grapheme
-- transform: TEXT (nullable) — reserved for rotation/scale/offset metadata
+#### 3. `grapheme_glyphs` — Junction Table
 
-Constraints and indexes:
-- UNIQUE(grapheme_id, glyph_id, position) to avoid duplicate slot entries
-- `idx_grapheme_glyphs_grapheme` on `(grapheme_id)`
-- `idx_grapheme_glyphs_glyph` on `(glyph_id)`
-- `idx_grapheme_glyphs_position` on `(grapheme_id, position)` (fast ordering)
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT |
+| `grapheme_id` | INTEGER | NOT NULL, FK → graphemes(id) ON DELETE CASCADE |
+| `glyph_id` | INTEGER | NOT NULL, FK → glyphs(id) ON DELETE RESTRICT |
+| `position` | INTEGER | NOT NULL DEFAULT 0 |
+| `transform` | TEXT | NULLABLE (reserved for future) |
 
-Behavior note:
-- Deleting a grapheme cascades and removes its `grapheme_glyphs` rows.
-- Deleting a glyph is restricted if it's referenced by any `grapheme_glyphs` row (unless the app forces removal).
+**Constraints**: UNIQUE(grapheme_id, glyph_id, position)
+**Indexes**: `idx_grapheme_glyphs_grapheme`, `idx_grapheme_glyphs_glyph`, `idx_grapheme_glyphs_position`
 
+#### 4. `phonemes` — Pronunciations
 
-4) `phonemes` — pronunciations associated with a grapheme
-- id: INTEGER PRIMARY KEY AUTOINCREMENT
-- grapheme_id: INTEGER NOT NULL — FOREIGN KEY references `graphemes(id)` ON DELETE CASCADE
-- phoneme: TEXT NOT NULL (IPA or other notation)
-- use_in_auto_spelling: INTEGER DEFAULT 0 (stored as 0/1; mapped to boolean in TypeScript)
-- context: TEXT (nullable)
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT |
+| `grapheme_id` | INTEGER | NOT NULL, FK → graphemes(id) ON DELETE CASCADE |
+| `phoneme` | TEXT | NOT NULL (IPA notation) |
+| `use_in_auto_spelling` | INTEGER | DEFAULT 0 (boolean) |
+| `context` | TEXT | NULLABLE |
 
-Indexes:
-- `idx_phonemes_grapheme_id` on `(grapheme_id)`
+**Indexes**: `idx_phonemes_grapheme_id`
 
+### Delete Behavior
 
-Relationship summary
-- Glyph ←(N:M)→ Grapheme via `grapheme_glyphs` (with `position` ordering). The junction uses ON DELETE RESTRICT for `glyph_id` to protect glyphs from accidental removal.
-- Grapheme ←(1:N)→ Phoneme. Phonemes are cascade-deleted when their parent grapheme is deleted.
-
-Practical implications
-- Creating a glyph writes to `glyphs`.
-- Creating a grapheme writes to `graphemes`, then to `grapheme_glyphs` for each linked glyph (preserving `position`), and optional `phonemes` rows for pronunciations.
-- Deleting a grapheme will remove associated phonemes and junction rows automatically (cascade). Attempting to delete a glyph that is in use will fail unless the app explicitly forces removal and cleans references.
-
-Notes for developers
-- The schema is created in `createTables(database)` and logged as "v3 schema with category".
-- Migrations currently alter existing tables to add `category` columns when detecting older schemas — full data-preserving migrations are TODO.
-- Boolean flags (like `use_in_auto_spelling`) are stored as INTEGER (0/1) in SQLite and mapped to booleans in TypeScript interfaces in `src/db/types.ts`.
-
-## Database API
-
-### Initialization
-
-```typescript
-import { initDatabase } from './db';
-
-// Initialize on app startup
-await initDatabase();
-```
-
-### Glyph Operations
-
-```typescript
-import { 
-  createGlyph, 
-  getGlyphById, 
-  getAllGlyphs,
-  getAllGlyphsWithUsage,
-  updateGlyph,
-  deleteGlyph 
-} from './db';
-
-// Create a glyph (atomic visual symbol)
-const glyph = createGlyph({
-  name: 'Base A',
-  svg_data: '<svg>...</svg>',
-  notes: 'The base form of letter A'
-});
-
-// Get all glyphs with usage count
-const glyphsWithUsage = getAllGlyphsWithUsage();
-// Returns: [{ ...glyph, usageCount: 3 }, ...]
-```
-
-### Grapheme Operations
-
-```typescript
-import { 
-  createGrapheme, 
-  getGraphemeComplete,
-  getAllGraphemesComplete,
-  setGraphemeGlyphs
-} from './db';
-
-// Create a grapheme using existing glyph(s)
-const grapheme = createGrapheme({
-  name: 'A',
-  notes: 'The letter A',
-  glyphs: [
-    { glyph_id: 1, position: 0 },  // Base glyph
-    { glyph_id: 5, position: 1 }   // Optional diacritical mark
-  ],
-  phonemes: [
-    { phoneme: 'a', use_in_auto_spelling: true },
-    { phoneme: 'æ', use_in_auto_spelling: false }
-  ]
-});
-
-// Get grapheme with all data (glyphs + phonemes)
-const complete = getGraphemeComplete(1);
-// Returns: { ...grapheme, glyphs: [...], phonemes: [...] }
-```
-
-### React Hooks (DEPRECATED)
-
-> **Note**: The `useGlyphs` and `useGraphemes` hooks are deprecated. Use `useEtymolog()` instead.
-
-```typescript
-// ❌ Old way (deprecated)
-import { useGlyphs, useGraphemes } from './db';
-const { glyphs, create } = useGlyphs();
-const { graphemesComplete } = useGraphemes();
-
-// ✅ New way (recommended)
-import { useEtymolog } from './db';
-const { api, data } = useEtymolog();
-// api.glyph.create(), data.glyphs, data.graphemesComplete
-```
-
----
-
-## Form Integration
-
-### Combined Workflow (Most Common)
-
-The most common workflow is to create a glyph and immediately use it in a grapheme:
-
-```typescript
-import { saveGlyphAndGrapheme } from './db';
-
-const result = await saveGlyphAndGrapheme({
-  // Glyph data
-  glyphSvg: '<svg>...</svg>',
-  glyphName: 'A',
-  glyphNotes: 'Base letter A',
-  // Grapheme data (optional - falls back to glyph name)
-  graphemeName: 'A',
-  // Pronunciations
-  pronunciations: [
-    { pronunciation: 'a', useInAutoSpelling: true }
-  ]
-});
-
-// Result: { glyph: {...}, grapheme: {...} }
-```
-
-### Separate Workflows
-
-For more complex use cases (like creating compound graphemes):
-
-```typescript
-import { saveGlyph, saveGrapheme } from './db';
-
-// Step 1: Create glyphs
-const baseGlyph = await saveGlyph({ glyphSvg: '...', glyphName: 'Base' });
-const accentGlyph = await saveGlyph({ glyphSvg: '...', glyphName: 'Accent' });
-
-// Step 2: Create grapheme using both glyphs
-const grapheme = await saveGrapheme({
-  graphemeName: 'Accented Base',
-  glyphIds: [baseGlyph.id, accentGlyph.id],  // Order matters!
-  pronunciations: [{ pronunciation: 'á', useInAutoSpelling: true }]
-});
-```
+| Operation | Behavior |
+|-----------|----------|
+| Delete Grapheme | Cascades to phonemes and grapheme_glyphs |
+| Delete Glyph (normal) | **RESTRICTED** if in use by any grapheme |
+| Delete Glyph (force) | Removes from grapheme_glyphs first |
+| Delete Glyph (cascade) | Deletes grapheme_glyphs AND related graphemes |
 
 ---
 
@@ -770,100 +753,144 @@ const grapheme = await saveGrapheme({
 
 ```
 src/
+├── main.tsx                         # App entry point
+├── App.tsx                          # Root component with providers
+├── App.css                          # Global styles
+├── index.css                        # CSS reset/base
+│
+├── db/                              # Database Layer
+│   ├── index.ts                     # Barrel exports
+│   ├── database.ts                  # SQL.js init & schema
+│   ├── types.ts                     # TypeScript interfaces
+│   ├── glyphService.ts              # Glyph CRUD (backend)
+│   ├── graphemeService.ts           # Grapheme/Phoneme CRUD (backend)
+│   ├── formHandler.ts               # Form-to-DB transformation
+│   ├── useGlyphs.ts                 # Legacy hook (deprecated)
+│   ├── useGraphemes.ts              # Legacy hook (deprecated)
+│   ├── sql.js.d.ts                  # SQL.js type declarations
+│   │
+│   ├── api/                         # API Layer (virtual backend)
+│   │   ├── index.ts
+│   │   ├── types.ts                 # ApiResponse, Settings types
+│   │   ├── glyphApi.ts
+│   │   ├── graphemeApi.ts
+│   │   ├── settingsApi.ts
+│   │   └── databaseApi.ts
+│   │
+│   ├── context/                     # React Context
+│   │   ├── index.ts
+│   │   └── EtymologContext.tsx      # Provider & hooks
+│   │
+│   └── __tests__/                   # Test suite
+│       ├── setup.ts
+│       ├── glyphService.test.ts
+│       ├── graphemeService.test.ts
+│       └── edgeCases.test.ts
+│
 ├── components/
 │   ├── background/
 │   │   └── background.tsx           # App background wrapper
-│   ├── display/
+│   │
+│   ├── display/                     # Display Components
 │   │   ├── glyphs/
 │   │   │   └── glyphCard/
-│   │   │       ├── glyphCard.tsx        # Versatile glyph card (route/modal/none modes)
+│   │   │       ├── glyphCard.tsx    # Versatile glyph card
 │   │   │       └── glyphCard.module.scss
 │   │   └── grapheme/
 │   │       ├── compact/
-│   │       │   └── compact.tsx          # Compact grapheme display (clickable)
+│   │       │   └── compact.tsx      # Compact grapheme display
 │   │       └── detailed/
-│   │           └── detailed.tsx         # Detailed grapheme display
-│   ├── form/
+│   │           └── detailed.tsx     # Detailed grapheme display
+│   │
+│   ├── form/                        # Form Components
 │   │   ├── glyphForm/
-│   │   │   ├── index.ts                 # Barrel exports
-│   │   │   ├── GlyphFormFields.tsx      # Shared glyph form fields
+│   │   │   ├── index.ts
+│   │   │   ├── GlyphForm.tsx        # Standalone glyph form
+│   │   │   ├── GlyphFormFields.tsx  # Reusable glyph fields
+│   │   │   ├── EditGlyphModal.tsx   # Modal for inline editing
 │   │   │   ├── glyphFormFields.module.scss
-│   │   │   ├── EditGlyphModal.tsx       # Modal for inline glyph editing
 │   │   │   └── editGlyphModal.module.scss
 │   │   ├── graphemeForm/
 │   │   │   ├── index.ts
-│   │   │   ├── GraphemeFormFields.tsx   # Shared grapheme form fields (with inline glyph editing)
+│   │   │   ├── GraphemeFormFields.tsx  # Reusable grapheme fields
 │   │   │   └── graphemeFormFields.module.scss
 │   │   └── customInput/
-│   │       └── pronunciationTableInput/ # IPA pronunciation table input
-│   └── tabs/
-│       └── grapheme/
-│           ├── main.tsx                 # Script Maker routing container
-│           ├── galleryGrapheme/
-│           │   ├── galleryGrapheme.tsx  # Grapheme gallery view wrapper
-│           │   └── graphemeGallery.tsx  # Grapheme gallery component
-│           ├── galleryGlyphs/
-│           │   └── galleryGlyphs.tsx    # Glyph gallery component
-│           ├── newGrapheme/
-│           │   ├── newGrapheme.tsx      # Create grapheme form
-│           │   └── NewGlyphModal.tsx    # Create glyph modal
-│           ├── editGlyph/
-│           │   ├── index.ts
-│           │   ├── GlyphEditPage.tsx    # Edit glyph page
-│           │   └── glyphEditPage.module.scss
-│           └── editGrapheme/
-│               ├── index.ts
-│               ├── GraphemeEditPage.tsx # Edit grapheme page
-│               └── graphemeEditPage.module.scss
-├── db/
-│   ├── index.ts              # Barrel exports (context, API, types, legacy)
-│   ├── database.ts           # SQL.js initialization & schema
-│   ├── types.ts              # TypeScript interfaces for data models
-│   ├── glyphService.ts       # Glyph CRUD operations (backend layer)
-│   ├── graphemeService.ts    # Grapheme & phoneme CRUD (backend layer)
-│   ├── formHandler.ts        # Form-to-DB transformation (legacy)
-│   ├── useGlyphs.ts          # React hook for glyphs (deprecated)
-│   ├── useGraphemes.ts       # React hook for graphemes (deprecated)
-│   ├── api/                  # API Layer (virtual backend)
-│   │   ├── index.ts          # API barrel exports
-│   │   ├── types.ts          # API types (ApiResponse, Settings, etc.)
-│   │   ├── glyphApi.ts       # Glyph API with standardized responses
-│   │   ├── graphemeApi.ts    # Grapheme & Phoneme APIs
-│   │   ├── settingsApi.ts    # Settings management API
-│   │   └── databaseApi.ts    # Database management API
-│   ├── context/              # React Context (frontend interface)
-│   │   ├── index.ts          # Context barrel exports
-│   │   └── EtymologContext.tsx  # Provider & hooks
-│   └── __tests__/
-│       ├── setup.ts                  # Test environment setup
-│       ├── glyphService.test.ts      # Glyph CRUD tests
-│       ├── graphemeService.test.ts   # Grapheme & phoneme tests
-│       └── edgeCases.test.ts         # Integration & edge case tests
-└── ...
+│   │       └── pronunciationTableInput/
+│   │           ├── index.ts
+│   │           ├── pronunciationTableInput.tsx
+│   │           └── pronunciationTableInput.module.scss
+│   │
+│   ├── graphics/                    # Visual elements
+│   │
+│   └── tabs/                        # Tab Sections
+│       ├── lexicon/
+│       │   ├── main.tsx
+│       │   ├── create/
+│       │   │   └── createLexicon.tsx
+│       │   └── view/
+│       │       └── lexiconView.tsx
+│       │
+│       ├── grapheme/                # Script Maker tab
+│       │   ├── main.tsx             # Tab container & routing
+│       │   │
+│       │   ├── galleryGrapheme/     # Grapheme Gallery
+│       │   │   ├── galleryGrapheme.tsx
+│       │   │   └── graphemeGallery.tsx
+│       │   │
+│       │   ├── galleryGlyphs/       # Glyph Gallery
+│       │   │   └── galleryGlyphs.tsx
+│       │   │
+│       │   ├── newGrapheme/         # Create Grapheme
+│       │   │   ├── newGrapheme.tsx
+│       │   │   ├── newGrapheme.module.scss
+│       │   │   └── NewGlyphModal.tsx
+│       │   │
+│       │   ├── newGlyph/            # Create Glyph
+│       │   │   ├── NewGlyphForm.tsx
+│       │   │   ├── NewGlyphModal.tsx
+│       │   │   └── NewGlyphPage.tsx
+│       │   │
+│       │   ├── editGrapheme/        # Edit Grapheme
+│       │   │   ├── index.ts
+│       │   │   ├── GraphemeEditPage.tsx
+│       │   │   └── graphemeEditPage.module.scss
+│       │   │
+│       │   └── editGlyph/           # Edit Glyph
+│       │       ├── index.ts
+│       │       ├── GlyphEditPage.tsx
+│       │       └── glyphEditPage.module.scss
+│       │
+│       └── graphotactic/
+│           └── main.tsx             # Placeholder
+│
+├── styles/                          # Shared styles
+│
+└── assets/                          # Static assets
 ```
 
 ---
 
 ## Testing
 
-The test suite covers 141 tests across 3 test files:
+### Test Suite Overview
 
-### Test Files
+| File | Tests | Description |
+|------|-------|-------------|
+| `glyphService.test.ts` | ~50 | Glyph CRUD operations |
+| `graphemeService.test.ts` | ~60 | Grapheme & phoneme operations |
+| `edgeCases.test.ts` | ~30 | Integration & boundary cases |
 
-| File | Description | Coverage |
-|------|-------------|----------|
-| `glyphService.test.ts` | Atomic glyph CRUD operations | Create, retrieve, update, delete, search, usage tracking |
-| `graphemeService.test.ts` | Grapheme composition & phonemes | Create, glyph linking, reordering, phoneme management |
-| `edgeCases.test.ts` | Integration & boundary tests | Glyph reuse, cascading deletes, concurrent operations |
+**Total: 141 tests**
 
 ### Key Test Scenarios
 
-- **Glyph Reusability**: Same glyph used across multiple graphemes
-- **Safe Delete**: Prevents deletion of glyphs that are in use
-- **Force Delete**: Removes glyphs even when referenced
-- **Cascade Deletes**: Phonemes are deleted when grapheme is deleted
-- **Unicode Support**: Full IPA character support for phonemes
-- **Position Ordering**: Glyphs maintain their order in graphemes
+- Glyph reusability across multiple graphemes
+- Safe delete (preventing deletion of in-use glyphs)
+- Force delete (removing glyph references)
+- Cascade deletes (phonemes deleted with graphemes)
+- Unicode/IPA support for phonemes
+- Position ordering for glyphs in graphemes
+- Concurrent operations
 
 ### Running Tests
 
@@ -871,10 +898,10 @@ The test suite covers 141 tests across 3 test files:
 # Run all tests
 pnpm test
 
-# Run tests in watch mode
+# Watch mode
 pnpm test:watch
 
-# Run with coverage
+# With coverage
 pnpm test --coverage
 ```
 
@@ -892,28 +919,55 @@ pnpm dev
 # Run tests
 pnpm test
 
-# Run tests in watch mode  
-pnpm test -- --watch
-
 # Build for production
 pnpm build
 ```
 
 ---
 
-## Database Migration
+## Known Issues & Fixes
 
-The database uses versioned storage keys. When upgrading from v1 (old schema without glyphs table) to v2:
+### Fixed: Nested Form Submission Bug (Jan 2026)
 
-- The database will automatically detect the old schema
-- Currently, this triggers a fresh database creation (data loss)
-- TODO: Implement proper migration to preserve existing data
+**Issue**: When creating a new glyph via the modal within the grapheme creation form, submitting the glyph form would also trigger the parent grapheme form to submit.
 
-To manually reset the database:
+**Root Cause**: The `useSmartForm` hook's submit handler called `event.preventDefault()` but not `event.stopPropagation()`. While HTML form submit events don't bubble by default, React's synthetic event system can still propagate events through the component tree when forms are nested (even through portals).
 
-```typescript
-import { resetDatabase } from './db';
+**Fix**: Added `event.stopPropagation()` to the submit handler in `packages/smart-form/smartForm/useSmartForm.tsx`:
 
-// Drops all tables and recreates fresh schema
-resetDatabase();
+```tsx
+const onSubmitFunc = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    // Stop propagation to prevent nested forms from triggering parent form submissions
+    event.stopPropagation();
+    // ... rest of handler
+};
 ```
+
+**Affected Components**:
+- `NewGlyphModal` rendered inside `GraphemeFormFields`
+- `EditGlyphModal` rendered inside `GraphemeFormFields`
+- Any SmartForm nested within another SmartForm
+
+### Database Migration Notes
+
+- Current version: v3 (with category columns)
+- Migration from v1/v2 currently triggers fresh database creation
+- TODO: Implement data-preserving migrations
+
+---
+
+## Contributing
+
+When adding new features, please:
+
+1. Follow the two-layer architecture (UI components use `useEtymolog()`)
+2. Add tests for new service methods
+3. Use `GlyphFormFields`/`GraphemeFormFields` for form consistency
+4. Ensure buttons in forms have `type="button"` unless they're submit buttons
+5. Update this README with route/component changes
+
+---
+
+*Last updated: January 2026*
+
