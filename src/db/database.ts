@@ -158,6 +158,83 @@ function createTables(database: Database): void {
         ON phonemes(grapheme_id)
     `);
 
+    // =========================================================================
+    // LEXICON TABLES
+    // =========================================================================
+
+    // Lexicon table - vocabulary entries
+    database.run(`
+        CREATE TABLE IF NOT EXISTS lexicon (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            lemma TEXT NOT NULL,
+            pronunciation TEXT,
+            is_native INTEGER DEFAULT 1,
+            auto_spell INTEGER DEFAULT 1,
+            meaning TEXT,
+            part_of_speech TEXT,
+            notes TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now'))
+        )
+    `);
+
+    // Indexes for lexicon
+    database.run(`
+        CREATE INDEX IF NOT EXISTS idx_lexicon_lemma 
+        ON lexicon(lemma)
+    `);
+    database.run(`
+        CREATE INDEX IF NOT EXISTS idx_lexicon_is_native 
+        ON lexicon(is_native)
+    `);
+
+    // Junction table: lexicon_spelling (ordered grapheme spelling)
+    database.run(`
+        CREATE TABLE IF NOT EXISTS lexicon_spelling (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            lexicon_id INTEGER NOT NULL,
+            grapheme_id INTEGER NOT NULL,
+            position INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (lexicon_id) REFERENCES lexicon(id) ON DELETE CASCADE,
+            FOREIGN KEY (grapheme_id) REFERENCES graphemes(id) ON DELETE RESTRICT,
+            UNIQUE(lexicon_id, grapheme_id, position)
+        )
+    `);
+
+    // Indexes for lexicon_spelling
+    database.run(`
+        CREATE INDEX IF NOT EXISTS idx_lexicon_spelling_lexicon 
+        ON lexicon_spelling(lexicon_id)
+    `);
+    database.run(`
+        CREATE INDEX IF NOT EXISTS idx_lexicon_spelling_position 
+        ON lexicon_spelling(lexicon_id, position)
+    `);
+
+    // Junction table: lexicon_ancestry (etymological relationships)
+    database.run(`
+        CREATE TABLE IF NOT EXISTS lexicon_ancestry (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            lexicon_id INTEGER NOT NULL,
+            ancestor_id INTEGER NOT NULL,
+            position INTEGER NOT NULL DEFAULT 0,
+            ancestry_type TEXT DEFAULT 'derived',
+            FOREIGN KEY (lexicon_id) REFERENCES lexicon(id) ON DELETE CASCADE,
+            FOREIGN KEY (ancestor_id) REFERENCES lexicon(id) ON DELETE SET NULL,
+            UNIQUE(lexicon_id, ancestor_id)
+        )
+    `);
+
+    // Indexes for lexicon_ancestry
+    database.run(`
+        CREATE INDEX IF NOT EXISTS idx_lexicon_ancestry_lexicon 
+        ON lexicon_ancestry(lexicon_id)
+    `);
+    database.run(`
+        CREATE INDEX IF NOT EXISTS idx_lexicon_ancestry_ancestor 
+        ON lexicon_ancestry(ancestor_id)
+    `);
+
     console.log('[DB] Tables created successfully (v3 schema with category)');
 }
 
@@ -289,11 +366,14 @@ export function clearDatabase(): void {
     if (!db) return;
 
     // Delete in order respecting foreign keys
+    db.run('DELETE FROM lexicon_ancestry');
+    db.run('DELETE FROM lexicon_spelling');
+    db.run('DELETE FROM lexicon');
     db.run('DELETE FROM phonemes');
     db.run('DELETE FROM grapheme_glyphs');
     db.run('DELETE FROM graphemes');
     db.run('DELETE FROM glyphs');
-    db.run(`DELETE FROM sqlite_sequence WHERE name IN ('glyphs', 'graphemes', 'grapheme_glyphs', 'phonemes')`);
+    db.run(`DELETE FROM sqlite_sequence WHERE name IN ('glyphs', 'graphemes', 'grapheme_glyphs', 'phonemes', 'lexicon', 'lexicon_spelling', 'lexicon_ancestry')`);
     persistDatabase();
     console.log('[DB] Database cleared');
 }
@@ -304,6 +384,9 @@ export function clearDatabase(): void {
 export function resetDatabase(): void {
     if (!db) return;
 
+    db.run('DROP TABLE IF EXISTS lexicon_ancestry');
+    db.run('DROP TABLE IF EXISTS lexicon_spelling');
+    db.run('DROP TABLE IF EXISTS lexicon');
     db.run('DROP TABLE IF EXISTS phonemes');
     db.run('DROP TABLE IF EXISTS grapheme_glyphs');
     db.run('DROP TABLE IF EXISTS graphemes');

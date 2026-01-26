@@ -105,15 +105,22 @@ Even though this is a PWA running entirely client-side, we maintain clean separa
 | **UC9: Manage Pronunciations** | Add, edit, or remove phonemes for a grapheme | Within grapheme forms | ✅ Complete |
 | **UC10: Import/Export** | Save/load the entire database as SQLite file | Future/settings | 🚧 Planned |
 | **UC11: Auto-Manage Glyphs** | Automatically delete orphaned glyphs when no longer used | Settings toggle in glyph gallery | ✅ Complete |
+| **UC12: Create Lexicon Entry** | Add vocabulary with lemma, pronunciation, meaning, spelling | `/lexicon/create` | ✅ Complete |
+| **UC13: Browse Lexicon** | View all words in searchable gallery with filters | `/lexicon` | ✅ Complete |
+| **UC14: Edit Lexicon Entry** | Modify word details, spelling, ancestry | `/lexicon/view/:id` | ✅ Complete |
+| **UC15: Delete Lexicon Entry** | Remove a word (protected if referenced as ancestor) | Gallery or edit page | ✅ Complete |
+| **UC16: View Etymology Tree** | Display recursive ancestry from any word to its roots | `/lexicon/view/:id` | ✅ Complete |
+| **UC17: Auto-Spell Word** | Generate spelling from pronunciation using grapheme phonemes | Within lexicon forms | ✅ Complete |
+| **UC18: External References** | Mark words as non-native for borrowed/ancestor words | Within lexicon forms | ✅ Complete |
 
 ### Secondary Use Cases
 
 | Use Case | Description | Status |
 |----------|-------------|--------|
-| **UC12: Configure Settings** | Toggle autoManageGlyphs, set gallery view preferences | Toolbar toggle | ✅ Complete |
-| **UC13: Lexicon Management** | Create and manage vocabulary entries | `/lexicon` | 🚧 Basic |
-| **UC14: Graphotactic Rules** | Define valid grapheme sequences | `/graphotactic` | 🚧 Placeholder |
-| **UC15: Search & Filter** | Search glyphs/graphemes by name, sort by various criteria | All galleries | ✅ Complete |
+| **UC19: Configure Settings** | Toggle autoManageGlyphs, set gallery view preferences | Toolbar toggle | ✅ Complete |
+| **UC20: Graphotactic Rules** | Define valid grapheme sequences | `/graphotactic` | 🚧 Placeholder |
+| **UC21: Part of Speech** | Manage grammatical categories | `/part-of-speech` | 🚧 Placeholder |
+| **UC22: Search & Filter** | Search glyphs/graphemes/lexicon by name, sort by various criteria | All galleries | ✅ Complete |
 
 ### Functional Requirements
 
@@ -130,6 +137,14 @@ Even though this is a PWA running entirely client-side, we maintain clean separa
 | **FR9** | Galleries support search, sort, and pagination | DataGallery component with search/filter/sort props | ✅ Implemented |
 | **FR10** | Inline glyph editing within grapheme forms | `NewGlyphModal` and `EditGlyphModal` components | ✅ Implemented |
 | **FR11** | Auto-manage orphaned glyphs setting (toggleable) | `autoManageGlyphs` setting with `cleanupOrphanedGlyphs()` on grapheme delete/update | ✅ Implemented |
+| **FR12** | Lexicon entries store lemma, pronunciation, meaning | `lexicon` table with lemma, pronunciation, meaning columns | ✅ Implemented |
+| **FR13** | Lexicon entries can have ordered grapheme spelling | Junction table `lexicon_spelling` with `position` field | ✅ Implemented |
+| **FR14** | Lexicon entries track etymological ancestry | Self-referential junction table `lexicon_ancestry` | ✅ Implemented |
+| **FR15** | Auto-spelling generates graphemes from pronunciation | `autoSpellService` with greedy longest-match algorithm | ✅ Implemented |
+| **FR16** | External/borrowed words marked with is_native flag | `is_native` boolean field in `lexicon` table | ✅ Implemented |
+| **FR17** | Recursive ancestry queries (full etymology tree) | Recursive CTE queries in `lexiconService` | ✅ Implemented |
+| **FR18** | Cycle detection prevents circular ancestry | `wouldCreateCycle()` validation before ancestry updates | ✅ Implemented |
+| **FR19** | Deleting ancestor removes relationship, not descendant | `ON DELETE SET NULL` on `ancestor_id` foreign key | ✅ Implemented |
 
 ### Non-Functional Requirements
 
@@ -520,6 +535,9 @@ function MyFormFields({ registerField }) {
 | Grapheme | Grapheme | A composition of one or more glyphs - represents a written character |
 | Pronunciation | Phoneme | A sound associated with a grapheme |
 | Auto-Spelling | `use_in_auto_spelling` | Whether this phoneme is used for automatic transliteration |
+| Word | Lexicon | A vocabulary entry with lemma, pronunciation, meaning |
+| Spelling | LexiconSpelling | Ordered graphemes that represent how a word is written |
+| Ancestry | LexiconAncestry | Etymological relationship between words (parent → child) |
 
 ### Data Model
 
@@ -536,16 +554,35 @@ function MyFormFields({ registerField }) {
 │ updated_at      │                                     └────────┬────────┘
 └─────────────────┘                                              │
                                                                  │ 1:N
-                                                                 ▼
-                                                        ┌─────────────────┐
-                                                        │    phonemes     │
-                                                        ├─────────────────┤
-                                                        │ id              │
-                                                        │ grapheme_id     │
-                                                        │ phoneme (IPA)   │
-                                                        │ use_in_auto_... │
-                                                        │ context         │
-                                                        └─────────────────┘
+                                                    ┌────────────┴────────────┐
+                                                    │                         │
+                                                    ▼                         ▼
+                                           ┌─────────────────┐    ┌───────────────────────┐
+                                           │    phonemes     │    │   lexicon_spelling    │
+                                           ├─────────────────┤    │   (junction table)    │
+                                           │ id              │    ├───────────────────────┤
+                                           │ grapheme_id     │    │ id                    │
+                                           │ phoneme (IPA)   │    │ lexicon_id       ─────┼──┐
+                                           │ use_in_auto_... │    │ grapheme_id      ◄────┘  │
+                                           │ context         │    │ position (order)       │
+                                           └─────────────────┘    └───────────────────────┘  │
+                                                                                             │
+┌─────────────────────────────────────────────────────────────────────────────────────────────┘
+│
+│    ┌─────────────────┐     ┌───────────────────────┐
+│    │     lexicon     │     │   lexicon_ancestry    │
+│    ├─────────────────┤     │   (self-referential)  │
+└───►│ id              │◄────┤ lexicon_id (child)    │
+     │ lemma           │     │ ancestor_id (parent)──┼──► lexicon.id
+     │ pronunciation   │     │ position (order)      │
+     │ is_native       │     │ ancestry_type         │
+     │ auto_spell      │     └───────────────────────┘
+     │ meaning         │
+     │ part_of_speech  │
+     │ notes           │
+     │ created_at      │
+     │ updated_at      │
+     └─────────────────┘
 ```
 
 ### Why This Architecture?
@@ -588,6 +625,21 @@ interface Phoneme {
     context: string | null;
 }
 
+interface Lexicon {
+    id: number;
+    lemma: string;                    // Citation form / searchable name
+    pronunciation: string | null;     // IPA notation (nullable for external words)
+    is_native: boolean;               // true = conlang word, false = external reference
+    auto_spell: boolean;              // Whether to auto-generate spelling
+    meaning: string | null;           // Word definition/gloss
+    part_of_speech: string | null;    // Freeform until PoS table exists
+    notes: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
+type AncestryType = 'derived' | 'borrowed' | 'compound' | 'blend' | 'calque' | 'other';
+
 // Composite Types
 interface GraphemeComplete extends Grapheme {
     glyphs: Glyph[];      // Ordered by position
@@ -596,6 +648,25 @@ interface GraphemeComplete extends Grapheme {
 
 interface GlyphWithUsage extends Glyph {
     usageCount: number;   // Number of graphemes using this glyph
+}
+
+interface LexiconComplete extends Lexicon {
+    spelling: Grapheme[];           // Ordered graphemes for written form
+    ancestors: LexiconAncestorEntry[];   // Direct parent words
+    descendants: LexiconDescendantEntry[]; // Words derived from this
+}
+
+interface LexiconAncestorEntry {
+    ancestor: Lexicon;
+    position: number;              // Order for compound words
+    ancestry_type: AncestryType;
+}
+
+interface LexiconAncestryNode {
+    entry: Lexicon;
+    ancestry_type: AncestryType | null;
+    position: number | null;
+    ancestors: LexiconAncestryNode[];  // Recursive tree structure
 }
 ```
 
@@ -613,7 +684,7 @@ Etymolog uses a **virtual frontend/backend** architecture to separate UI concern
 │  (React Components)                                                         │
 │                                                                             │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐       │
-│  │ GlyphGallery│  │GraphemeView │  │ NewGrapheme │  │ Settings    │       │
+│  │ GlyphGallery│  │GraphemeView │  │ LexiconView │  │ Settings    │       │
 │  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └─────────────┘       │
 │         │                │                │                │               │
 │         └────────────────┴────────────────┴────────────────┘               │
@@ -624,29 +695,27 @@ Etymolog uses a **virtual frontend/backend** architecture to separate UI concern
 │                              API LAYER                                      │
 │  (EtymologContext / Virtual Backend)                                        │
 │                                   │                                         │
-│         ┌─────────────────────────┼─────────────────────────┐               │
-│         │                         │                         │               │
-│  ┌──────▼──────┐  ┌───────────────▼───────────────┐  ┌──────▼──────┐       │
-│  │  glyphApi   │  │        graphemeApi            │  │ settingsApi │       │
-│  │  - create   │  │  - create                     │  │ - get       │       │
-│  │  - getAll   │  │  - getAllComplete             │  │ - update    │       │
-│  │  - delete   │  │  - delete                     │  │ - reset     │       │
-│  └──────┬──────┘  └───────────────┬───────────────┘  └─────────────┘       │
-│         │                         │                                         │
-├─────────┼─────────────────────────┼─────────────────────────────────────────┤
-│         │        BACKEND LAYER    │                                         │
-│         │    (Database Services)  │                                         │
-│         │                         │                                         │
-│  ┌──────▼──────┐  ┌───────────────▼───────────────┐                        │
-│  │glyphService │  │       graphemeService         │                        │
-│  └──────┬──────┘  └───────────────┬───────────────┘                        │
-│         │                         │                                         │
-│         └─────────────────────────┴─────────────────────────┐               │
-│                                                             │               │
-│                                   ┌─────────────────────────▼─────────────┐ │
-│                                   │          SQL.js Database              │ │
-│                                   │         (localStorage)                │ │
-│                                   └───────────────────────────────────────┘ │
+│  ┌────────────┬───────────────────┼───────────────────┬────────────┐       │
+│  │            │                   │                   │            │       │
+│  ▼            ▼                   ▼                   ▼            ▼       │
+│ glyphApi  graphemeApi        lexiconApi          phonemeApi   settingsApi  │
+│ - create  - create           - create            - add        - get        │
+│ - getAll  - getAllComplete   - getAllComplete    - update     - update     │
+│ - delete  - delete           - getAncestryTree   - delete     - reset      │
+│                              - applyAutoSpelling                            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                              BACKEND LAYER                                   │
+│  (Database Services)                                                        │
+│                                                                             │
+│  ┌────────────┬───────────────────┬───────────────────┬────────────┐       │
+│  │            │                   │                   │            │       │
+│  ▼            ▼                   ▼                   ▼            ▼       │
+│ glyphService graphemeService  lexiconService    autoSpellService           │
+│                                                                             │
+│                    ┌──────────────────────────────────┐                    │
+│                    │       SQL.js Database            │                    │
+│                    │        (localStorage)            │                    │
+│                    └──────────────────────────────────┘                    │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -678,7 +747,7 @@ const { api, data, settings, isLoading, error, refresh } = useEtymolog();
 const api = useEtymologApi();
 
 // Data only (reactive)
-const { glyphs, graphemesComplete, glyphCount } = useEtymologData();
+const { glyphs, graphemesComplete, lexiconComplete, glyphCount, lexiconCount } = useEtymologData();
 
 // Settings with update function
 const { settings, updateSettings } = useEtymologSettings();
@@ -787,6 +856,60 @@ type ApiErrorCode =
 | `clear()` | Clear all data (keeps schema) | `ApiResponse<void>` |
 | `reset()` | Drop and recreate all tables | `ApiResponse<void>` |
 
+### Lexicon API (`api.lexicon`)
+
+| Method | Description | Returns |
+|--------|-------------|---------|
+| `create(request)` | Create a lexicon entry with spelling and ancestry | `ApiResponse<LexiconComplete>` |
+| `getById(id)` | Get basic lexicon info | `ApiResponse<Lexicon>` |
+| `getByIdComplete(id)` | Get lexicon with spelling + ancestry + descendants | `ApiResponse<LexiconComplete>` |
+| `getAll()` | Get all lexicon entries (basic) | `ApiResponse<LexiconListResponse>` |
+| `getAllComplete()` | Get all lexicon entries with full data | `ApiResponse<LexiconCompleteListResponse>` |
+| `getAllWithUsage()` | Get all lexicon entries with descendant count | `ApiResponse<LexiconWithUsageListResponse>` |
+| `search(query)` | Search lexicon by lemma, pronunciation, or meaning | `ApiResponse<LexiconListResponse>` |
+| `getByNative(isNative)` | Filter lexicon by native/external flag | `ApiResponse<LexiconListResponse>` |
+| `update(id, request)` | Update lexicon metadata | `ApiResponse<Lexicon>` |
+| `delete(id)` | Delete lexicon entry (protected if referenced as ancestor) | `ApiResponse<void>` |
+| `updateSpelling(id, request)` | Replace lexicon's grapheme spelling | `ApiResponse<void>` |
+| `updateAncestry(id, request)` | Replace lexicon's etymology ancestry | `ApiResponse<void>` |
+| `getAncestryTree(id, maxDepth?)` | Get recursive ancestry tree | `ApiResponse<LexiconAncestryNode>` |
+| `getAllAncestorIds(id)` | Get all ancestor IDs (flattened) | `ApiResponse<number[]>` |
+| `getAllDescendantIds(id)` | Get all descendant IDs (flattened) | `ApiResponse<number[]>` |
+| `wouldCreateCycle(lexiconId, ancestorId)` | Check if adding ancestor creates cycle | `ApiResponse<boolean>` |
+| `generateAutoSpelling(pronunciation)` | Generate spelling from IPA | `ApiResponse<AutoSpellResult>` |
+| `previewAutoSpelling(pronunciation)` | Preview auto-spelling without saving | `ApiResponse<AutoSpellResult>` |
+| `applyAutoSpelling(id)` | Generate and save spelling for a lexicon entry | `ApiResponse<LexiconWithSpelling>` |
+
+#### Ancestry Types
+
+| Type | Description |
+|------|-------------|
+| `derived` | Word derived through sound change or affixation |
+| `borrowed` | Word borrowed from another language |
+| `compound` | Word formed by combining two or more roots |
+| `blend` | Word formed by blending parts of other words |
+| `calque` | Word formed by translating parts of a foreign word |
+| `other` | Other etymological relationship |
+
+#### Auto-Spelling Algorithm
+
+The auto-spelling feature converts IPA pronunciation to grapheme sequences:
+
+1. Get all phonemes marked with `use_in_auto_spelling = true`
+2. Build a phoneme → grapheme_id mapping
+3. Sort mappings by phoneme length (descending) for greedy longest-match
+4. Parse pronunciation string, matching longest phoneme at each position
+5. Return ordered grapheme IDs with match info
+
+```typescript
+interface AutoSpellResult {
+    success: boolean;
+    spelling: { grapheme_id: number; position: number }[];
+    segments: string[];        // Matched phoneme segments
+    unmatchedParts: string[];  // Any unmatched characters
+    error?: string;
+}
+
 ---
 
 ## SQL Structure
@@ -851,14 +974,58 @@ type ApiErrorCode =
 
 **Indexes**: `idx_phonemes_grapheme_id`
 
+#### 5. `lexicon` — Vocabulary Entries
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT |
+| `lemma` | TEXT | NOT NULL (citation form) |
+| `pronunciation` | TEXT | NULLABLE (IPA notation) |
+| `is_native` | INTEGER | DEFAULT 1 (boolean: 1=conlang, 0=external) |
+| `auto_spell` | INTEGER | DEFAULT 1 (boolean) |
+| `meaning` | TEXT | NULLABLE |
+| `part_of_speech` | TEXT | NULLABLE (freeform) |
+| `notes` | TEXT | NULLABLE |
+| `created_at` | TEXT | DEFAULT datetime('now') |
+| `updated_at` | TEXT | DEFAULT datetime('now') |
+
+**Indexes**: `idx_lexicon_lemma`, `idx_lexicon_is_native`
+
+#### 6. `lexicon_spelling` — Word Spelling (Ordered Graphemes)
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT |
+| `lexicon_id` | INTEGER | NOT NULL, FK → lexicon(id) ON DELETE CASCADE |
+| `grapheme_id` | INTEGER | NOT NULL, FK → graphemes(id) ON DELETE RESTRICT |
+| `position` | INTEGER | NOT NULL DEFAULT 0 |
+
+**Constraints**: UNIQUE(lexicon_id, grapheme_id, position)
+**Indexes**: `idx_lexicon_spelling_lexicon`, `idx_lexicon_spelling_position`
+
+#### 7. `lexicon_ancestry` — Etymological Relationships
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT |
+| `lexicon_id` | INTEGER | NOT NULL, FK → lexicon(id) ON DELETE CASCADE |
+| `ancestor_id` | INTEGER | NOT NULL, FK → lexicon(id) ON DELETE SET NULL |
+| `position` | INTEGER | NOT NULL DEFAULT 0 (order for compounds) |
+| `ancestry_type` | TEXT | DEFAULT 'derived' |
+
+**Constraints**: UNIQUE(lexicon_id, ancestor_id)
+**Indexes**: `idx_lexicon_ancestry_lexicon`, `idx_lexicon_ancestry_ancestor`
+
 ### Delete Behavior
 
 | Operation | Behavior |
 |-----------|----------|
-| Delete Grapheme | Cascades to phonemes and grapheme_glyphs |
+| Delete Grapheme | Cascades to phonemes and grapheme_glyphs; **RESTRICTED** if used in lexicon_spelling |
 | Delete Glyph (normal) | **RESTRICTED** if in use by any grapheme |
 | Delete Glyph (force) | Removes from grapheme_glyphs first |
 | Delete Glyph (cascade) | Deletes grapheme_glyphs AND related graphemes |
+| Delete Lexicon | Cascades to lexicon_spelling and lexicon_ancestry (as child) |
+| Delete Lexicon (as ancestor) | Sets `ancestor_id` to NULL in lexicon_ancestry (removes relationship) |
 
 ---
 
@@ -877,6 +1044,8 @@ src/
 │   ├── types.ts                     # TypeScript interfaces
 │   ├── glyphService.ts              # Glyph CRUD (backend)
 │   ├── graphemeService.ts           # Grapheme/Phoneme CRUD (backend)
+│   ├── lexiconService.ts            # Lexicon CRUD (backend)
+│   ├── autoSpellService.ts          # Auto-spelling from pronunciation
 │   ├── formHandler.ts               # Form-to-DB transformation
 │   ├── useGlyphs.ts                 # Legacy hook (deprecated)
 │   ├── useGraphemes.ts              # Legacy hook (deprecated)
@@ -887,6 +1056,7 @@ src/
 │   │   ├── types.ts                 # ApiResponse, Settings types
 │   │   ├── glyphApi.ts
 │   │   ├── graphemeApi.ts
+│   │   ├── lexiconApi.ts            # Lexicon API with ancestry queries
 │   │   ├── settingsApi.ts
 │   │   └── databaseApi.ts
 │   │
@@ -1132,17 +1302,22 @@ CREATE TABLE IF NOT EXISTS settings (
 
 **Impact**: Settings persist with conlang on export/import
 
-#### 3. Lexicon Feature Completion
+#### 3. Lexicon Feature ✅ COMPLETE
 
-**Current State**: Lexicon tab has placeholder components with basic structure
-**Missing Features**:
-- Word-to-grapheme linking
-- Etymology tracking
-- Automatic pronunciation generation from graphemes
-- Part-of-speech categorization
-- Search/filter by grapheme usage
+**Implemented Features**:
+- ✅ Lexicon entries with lemma, pronunciation, meaning, part_of_speech, notes
+- ✅ Ordered grapheme spelling via `lexicon_spelling` junction table
+- ✅ Etymology tracking via `lexicon_ancestry` self-referential junction table
+- ✅ Auto-spelling from IPA pronunciation using grapheme phoneme mappings
+- ✅ External/borrowed word support via `is_native` flag
+- ✅ Recursive ancestry tree queries with cycle detection
+- ✅ Bidirectional ancestry (ancestors + descendants)
+- ✅ Full CRUD API with standardized `ApiResponse<T>` format
 
-**Recommendation**: Prioritize after core script-maker features are stable
+**Pending UI Implementation**:
+- Lexicon gallery component
+- Lexicon create/edit forms
+- Etymology tree visualization
 
 #### 4. Performance Optimizations
 
@@ -1161,6 +1336,7 @@ CREATE TABLE IF NOT EXISTS settings (
 - Gallery logic is centralized in `DataGallery`
 - Database services are single-purpose
 - API layer wraps services consistently
+- Lexicon follows same patterns as grapheme (junction tables with position)
 
 **Conclusion**: No major duplication issues to address
 
@@ -1168,10 +1344,11 @@ CREATE TABLE IF NOT EXISTS settings (
 
 | Priority | Feature | Description |
 |----------|---------|-------------|
+| **High** | Lexicon UI Components | Gallery, forms, and etymology tree visualization |
 | **High** | Settings migration to SQLite | Make conlang settings portable |
 | **High** | Import/Export UI | Complete database backup/restore functionality |
-| **Medium** | Lexicon completion | Word management with grapheme linking |
 | **Medium** | Graphotactic rules | Define valid grapheme sequences |
+| **Medium** | Part of Speech table | Formal part_of_speech management with FK |
 | **Medium** | Glyph transforms | Rotation, scaling in grapheme composition |
 | **Low** | Collaborative editing | Future server migration support |
 
@@ -1183,10 +1360,11 @@ When adding new features, please:
 
 1. Follow the two-layer architecture (UI components use `useEtymolog()`)
 2. Add tests for new service methods
-3. Use `GlyphFormFields`/`GraphemeFormFields` for form consistency
+3. Use `GlyphFormFields`/`GraphemeFormFields`/`LexiconFormFields` for form consistency
 4. Ensure buttons in forms have `type="button"` unless they're submit buttons
 5. Update this README with route/component changes
+6. Follow the junction table pattern for ordered relationships (see `grapheme_glyphs`, `lexicon_spelling`)
 
 ---
 
-*Last updated: January 2026*
+*Last updated: January 25, 2026*

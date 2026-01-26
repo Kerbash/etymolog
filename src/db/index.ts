@@ -108,10 +108,30 @@ export type {
     Phoneme,
     CreatePhonemeInput,
     UpdatePhonemeInput,
+    // Lexicon types
+    Lexicon,
+    LexiconSpelling,
+    LexiconAncestry,
+    LexiconWithSpelling,
+    LexiconWithAncestry,
+    LexiconWithDescendants,
+    LexiconComplete,
+    LexiconAncestorEntry,
+    LexiconDescendantEntry,
+    LexiconAncestryNode,
+    LexiconWithUsage,
+    LexiconReference,
+    CreateLexiconInput,
+    UpdateLexiconInput,
+    CreateLexiconSpellingInput,
+    CreateLexiconAncestryInput,
+    AncestryType,
     // Form types
     GlyphFormData,
     GraphemeFormData,
-    PronunciationFormRow
+    PronunciationFormRow,
+    LexiconFormData,
+    LexiconAncestorFormRow
 } from './types';
 
 // =============================================================================
@@ -170,6 +190,56 @@ export {
     deleteAllPhonemesForGrapheme,
     getAutoSpellingPhonemes
 } from './graphemeService';
+
+// =============================================================================
+// LEXICON CRUD OPERATIONS
+// =============================================================================
+export {
+    createLexicon,
+    getLexiconById,
+    getLexiconWithSpelling,
+    getLexiconWithAncestry,
+    getLexiconWithDescendants,
+    getLexiconComplete,
+    getAllLexicon,
+    getAllLexiconWithSpelling,
+    getAllLexiconComplete,
+    getAllLexiconWithUsage,
+    searchLexicon,
+    getLexiconByNative,
+    updateLexicon,
+    deleteLexicon,
+    getLexiconCount,
+    // Spelling operations
+    getSpellingByLexiconId,
+    getLexiconSpellingEntries,
+    addSpellingToLexicon,
+    setLexiconSpelling,
+    clearLexiconSpelling,
+    // Ancestry operations
+    getAncestorsByLexiconId,
+    getDescendantsByLexiconId,
+    getLexiconAncestryEntries,
+    addAncestorToLexicon,
+    setLexiconAncestry,
+    removeAncestorFromLexicon,
+    clearLexiconAncestry,
+    // Recursive ancestry
+    getFullAncestryTree,
+    getAllAncestorIds,
+    getAllDescendantIds,
+    wouldCreateCycle
+} from './lexiconService';
+
+// =============================================================================
+// AUTO-SPELL SERVICE
+// =============================================================================
+export {
+    generateSpellingFromPronunciation,
+    previewAutoSpelling,
+    getAvailablePhonemeMap,
+    type AutoSpellResult
+} from './autoSpellService';
 
 // =============================================================================
 // FORM HANDLERS

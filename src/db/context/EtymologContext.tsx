@@ -34,6 +34,7 @@ import type {
     Glyph,
     GlyphWithUsage,
     GraphemeComplete,
+    LexiconComplete,
 } from '../types';
 
 // =============================================================================
@@ -51,10 +52,14 @@ export interface EtymologData {
     glyphsWithUsage: GlyphWithUsage[];
     /** All graphemes with complete data (glyphs + phonemes) */
     graphemesComplete: GraphemeComplete[];
+    /** All lexicon entries with complete data */
+    lexiconComplete: LexiconComplete[];
     /** Total glyph count */
     glyphCount: number;
     /** Total grapheme count */
     graphemeCount: number;
+    /** Total lexicon count */
+    lexiconCount: number;
 }
 
 /**
@@ -78,6 +83,7 @@ export interface EtymologContextValue {
     /** Refresh specific data types */
     refreshGlyphs: () => void;
     refreshGraphemes: () => void;
+    refreshLexicon: () => void;
 }
 
 /**
@@ -87,8 +93,10 @@ const EMPTY_DATA: EtymologData = {
     glyphs: [],
     glyphsWithUsage: [],
     graphemesComplete: [],
+    lexiconComplete: [],
     glyphCount: 0,
     graphemeCount: 0,
+    lexiconCount: 0,
 };
 
 // =============================================================================
@@ -199,11 +207,27 @@ export function EtymologProvider({ children }: EtymologProviderProps) {
         }
     }, [isReady]);
 
+    // Refresh lexicon data
+    const refreshLexicon = useCallback(() => {
+        if (!isReady) return;
+
+        const lexiconResponse = etymologApi.lexicon.getAllComplete();
+
+        if (lexiconResponse.success) {
+            setData(prev => ({
+                ...prev,
+                lexiconComplete: lexiconResponse.data?.entries ?? [],
+                lexiconCount: lexiconResponse.data?.total ?? 0,
+            }));
+        }
+    }, [isReady]);
+
     // Refresh all data
     const refresh = useCallback(() => {
         refreshGlyphs();
         refreshGraphemes();
-    }, [refreshGlyphs, refreshGraphemes]);
+        refreshLexicon();
+    }, [refreshGlyphs, refreshGraphemes, refreshLexicon]);
 
     // Load data when database becomes ready
     useEffect(() => {
@@ -270,8 +294,17 @@ export function EtymologProvider({ children }: EtymologProviderProps) {
                     return result;
                 },
             },
+            lexicon: {
+                ...etymologApi.lexicon,
+                create: wrapWithRefresh(etymologApi.lexicon.create, refreshLexicon),
+                update: wrapWithRefresh(etymologApi.lexicon.update, refreshLexicon),
+                delete: wrapWithRefresh(etymologApi.lexicon.delete, refreshLexicon),
+                updateSpelling: wrapWithRefresh(etymologApi.lexicon.updateSpelling, refreshLexicon),
+                updateAncestry: wrapWithRefresh(etymologApi.lexicon.updateAncestry, refreshLexicon),
+                applyAutoSpelling: wrapWithRefresh(etymologApi.lexicon.applyAutoSpelling, refreshLexicon),
+            },
         };
-    }, [refresh, refreshGlyphs, refreshGraphemes]);
+    }, [refresh, refreshGlyphs, refreshGraphemes, refreshLexicon]);
 
     // Context value
     const contextValue = useMemo((): EtymologContextValue => ({
@@ -284,7 +317,8 @@ export function EtymologProvider({ children }: EtymologProviderProps) {
         refresh,
         refreshGlyphs,
         refreshGraphemes,
-    }), [wrappedApi, data, settings, isLoading, isReady, error, refresh, refreshGlyphs, refreshGraphemes]);
+        refreshLexicon,
+    }), [wrappedApi, data, settings, isLoading, isReady, error, refresh, refreshGlyphs, refreshGraphemes, refreshLexicon]);
 
     return (
         <EtymologContext.Provider value={contextValue}>

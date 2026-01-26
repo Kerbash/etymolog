@@ -314,4 +314,5 @@ export interface EtymologApi {
     phoneme: PhonemeApi;
     settings: SettingsApi;
     database: DatabaseApi;
+    lexicon: import('./lexiconApi').LexiconApi;
 }

@@ -226,3 +226,231 @@ export interface GlyphReference {
     name: string;
     svg_data: string;
 }
+
+// =============================================================================
+// LEXICON TYPES (Vocabulary Entries)
+// =============================================================================
+
+/**
+ * A lexicon entry represents a word or vocabulary item in the conlang.
+ * It connects pronunciation, meaning, spelling (via graphemes), and etymology.
+ */
+export interface Lexicon {
+    id: number;
+    /** Citation form / searchable name */
+    lemma: string;
+    /** IPA pronunciation (nullable for external reference words) */
+    pronunciation: string | null;
+    /** Whether this word is native to the conlang (false = external reference) */
+    is_native: boolean;
+    /** Whether to auto-generate spelling from pronunciation */
+    auto_spell: boolean;
+    /** Word definition/gloss */
+    meaning: string | null;
+    /** Part of speech (freeform until PoS table exists) */
+    part_of_speech: string | null;
+    /** Additional notes */
+    notes: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
+/**
+ * Junction table entry linking a grapheme to a lexicon entry for spelling.
+ * Position determines the order of graphemes in the word's written form.
+ */
+export interface LexiconSpelling {
+    id: number;
+    lexicon_id: number;
+    grapheme_id: number;
+    position: number;
+}
+
+/**
+ * Junction table entry for etymological relationships between words.
+ * Links a child word to its ancestor/parent word(s).
+ */
+export interface LexiconAncestry {
+    id: number;
+    /** The child/derived word */
+    lexicon_id: number;
+    /** The parent/source word */
+    ancestor_id: number;
+    /** Order for compound words (root1 + root2) */
+    position: number;
+    /** Type of etymological relationship */
+    ancestry_type: AncestryType;
+}
+
+/**
+ * Types of etymological relationships.
+ */
+export type AncestryType = 'derived' | 'borrowed' | 'compound' | 'blend' | 'calque' | 'other';
+
+/**
+ * Input for creating a new lexicon entry.
+ */
+export interface CreateLexiconInput {
+    lemma: string;
+    pronunciation?: string;
+    is_native?: boolean;
+    auto_spell?: boolean;
+    meaning?: string;
+    part_of_speech?: string;
+    notes?: string;
+    /** Ordered array of grapheme IDs for spelling */
+    spelling?: CreateLexiconSpellingInput[];
+    /** Array of ancestor references */
+    ancestry?: CreateLexiconAncestryInput[];
+}
+
+/**
+ * Input for linking a grapheme to a lexicon entry for spelling.
+ */
+export interface CreateLexiconSpellingInput {
+    grapheme_id: number;
+    position: number;
+}
+
+/**
+ * Input for adding an ancestor to a lexicon entry.
+ */
+export interface CreateLexiconAncestryInput {
+    ancestor_id: number;
+    position: number;
+    ancestry_type?: AncestryType;
+}
+
+/**
+ * Input for updating a lexicon entry.
+ */
+export interface UpdateLexiconInput {
+    lemma?: string;
+    pronunciation?: string | null;
+    is_native?: boolean;
+    auto_spell?: boolean;
+    meaning?: string | null;
+    part_of_speech?: string | null;
+    notes?: string | null;
+}
+
+/**
+ * A lexicon entry with its spelling (ordered graphemes).
+ */
+export interface LexiconWithSpelling extends Lexicon {
+    /** Graphemes in order (sorted by position) */
+    spelling: Grapheme[];
+}
+
+/**
+ * A lexicon entry with its direct ancestors.
+ */
+export interface LexiconWithAncestry extends Lexicon {
+    /** Direct ancestor words with relationship metadata */
+    ancestors: LexiconAncestorEntry[];
+}
+
+/**
+ * An ancestor entry with relationship metadata.
+ */
+export interface LexiconAncestorEntry {
+    /** The ancestor lexicon entry */
+    ancestor: Lexicon;
+    /** Position in compound words */
+    position: number;
+    /** Type of etymological relationship */
+    ancestry_type: AncestryType;
+}
+
+/**
+ * A lexicon entry with its descendants (words derived from this word).
+ */
+export interface LexiconWithDescendants extends Lexicon {
+    /** Words derived from this word */
+    descendants: LexiconDescendantEntry[];
+}
+
+/**
+ * A descendant entry with relationship metadata.
+ */
+export interface LexiconDescendantEntry {
+    /** The descendant lexicon entry */
+    descendant: Lexicon;
+    /** Type of etymological relationship */
+    ancestry_type: AncestryType;
+}
+
+/**
+ * Complete lexicon entry with spelling, ancestors, and descendants.
+ * This is the full representation for display purposes.
+ */
+export interface LexiconComplete extends Lexicon {
+    /** Graphemes in order (sorted by position) */
+    spelling: Grapheme[];
+    /** Direct ancestor words */
+    ancestors: LexiconAncestorEntry[];
+    /** Words derived from this word */
+    descendants: LexiconDescendantEntry[];
+}
+
+/**
+ * Recursive ancestry tree node for full etymology visualization.
+ */
+export interface LexiconAncestryNode {
+    /** The lexicon entry */
+    entry: Lexicon;
+    /** Relationship type to the child (null for the root/queried word) */
+    ancestry_type: AncestryType | null;
+    /** Position in the child's compound (null for the root) */
+    position: number | null;
+    /** Recursive ancestors */
+    ancestors: LexiconAncestryNode[];
+}
+
+/**
+ * For displaying a lexicon entry with usage statistics.
+ */
+export interface LexiconWithUsage extends Lexicon {
+    /** Number of words that have this word as an ancestor */
+    descendantCount: number;
+}
+
+/**
+ * Lightweight reference for lexicon selection UI.
+ */
+export interface LexiconReference {
+    id: number;
+    lemma: string;
+    pronunciation: string | null;
+    meaning: string | null;
+}
+
+// =============================================================================
+// LEXICON FORM DATA TYPES (UI ↔ DB Bridge)
+// =============================================================================
+
+/**
+ * Form data for creating a lexicon entry.
+ */
+export interface LexiconFormData {
+    lemma: string;
+    pronunciation?: string;
+    isNative: boolean;
+    autoSpell: boolean;
+    meaning?: string;
+    partOfSpeech?: string;
+    notes?: string;
+    /** Selected grapheme IDs in order for spelling */
+    spellingGraphemeIds: number[];
+    /** Ancestor entries */
+    ancestors: LexiconAncestorFormRow[];
+}
+
+/**
+ * A single ancestor row from the form.
+ */
+export interface LexiconAncestorFormRow {
+    ancestorId: number;
+    ancestryType: AncestryType;
+}
+
