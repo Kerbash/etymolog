@@ -1,12 +1,14 @@
 import {Routes, Route, Link, useLocation} from "react-router-dom";
 import CreateLexiconForm from "./create/createLexicon.tsx";
 import LexiconView from "./view/lexiconView.tsx";
+import FlowChartExample from "./flowchart/FlowChartExample.tsx";
 
 function LexiconNav() {
     const location = useLocation();
     const isCreate = location.pathname.includes('/create');
     const isView = location.pathname.includes('/view');
-    const isHome = !isCreate && !isView;
+    const isFlowChart = location.pathname.includes('/flowchart');
+    const isHome = !isCreate && !isView && !isFlowChart;
 
     return (
         <nav style={{marginBottom: '1rem', display: 'flex', gap: '1rem'}}>
@@ -27,6 +29,12 @@ function LexiconNav() {
                 style={{fontWeight: isView ? 'bold' : 'normal'}}
             >
                 View
+            </Link>
+            <Link
+                to="/lexicon/flowchart"
+                style={{fontWeight: isFlowChart ? 'bold' : 'normal'}}
+            >
+                FlowChart
             </Link>
         </nav>
     );
@@ -50,6 +58,7 @@ export default function LexiconMain() {
                 <Route path="create" element={<CreateLexiconForm />} />
                 <Route path="view" element={<LexiconView />} />
                 <Route path="view/:id" element={<LexiconView />} />
+                <Route path="flowchart" element={<FlowChartExample />} />
             </Routes>
         </div>
     )
