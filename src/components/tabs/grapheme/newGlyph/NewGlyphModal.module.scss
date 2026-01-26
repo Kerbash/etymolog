@@ -1,0 +1,14 @@
+/* Modal-specific helper styles used by NewGlyphModal */
+.errorMessage {
+    padding: 1rem;
+    background: var(--error-light);
+    border: 1px solid var(--error-base);
+    border-radius: 4px;
+    color: var(--error-dark);
+    margin-bottom: 1rem;
+}
+
+.modalButtons {
+    justify-content: flex-end;
+    margin-top: 1.5rem;
+}

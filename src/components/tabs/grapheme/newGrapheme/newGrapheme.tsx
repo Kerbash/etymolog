@@ -3,6 +3,7 @@ import {graphic} from "utils-styles";
 
 import classNames from "classnames";
 import { useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 
 import {SmartForm, useSmartForm} from "smart-form/smartForm";
 import IconButton from "cyber-components/interactable/buttons/iconButton/iconButton.tsx";
@@ -12,6 +13,7 @@ import { GraphemeFormFields, type GraphemeFormData } from "../../../form/graphem
 
 export default function NewGraphemeForm() {
     const {registerField, unregisterField, registerForm, isFormValid} = useSmartForm({mode: "onChange"});
+    const navigate = useNavigate();
 
     // Use the unified context
     const { api, isLoading, error } = useEtymolog();
@@ -66,6 +68,14 @@ export default function NewGraphemeForm() {
 
                 // Reset form
                 setSelectedGlyphs([]);
+
+                // Navigate to the newly created grapheme's edit page
+                if (result.data && (result.data as any).id) {
+                    navigate(`/script-maker/grapheme/db/${(result.data as any).id}`);
+                } else {
+                    // fallback to main script-maker page
+                    navigate('/script-maker');
+                }
 
                 return { success: true, data: result.data };
             } catch (error) {

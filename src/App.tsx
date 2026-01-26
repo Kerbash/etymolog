@@ -4,6 +4,7 @@ import './App.css'
 
 import Background from "./components/background/background.tsx";
 import { EtymologProvider } from "./db";
+import { ProcessingLockModalProvider } from "cyber-components/graphics/loading/processingLockModal/processingLockModal";
 
 import classNames from "classnames";
 import RouterTabContainer, {tabContainerBorderStyle} from "cyber-components/container/tabContainer/routerTabContainer.tsx";
@@ -41,30 +42,32 @@ const sections = [
 
 function App() {
     return (
-        <EtymologProvider>
-            <Background>
-                <h1 className={classNames(template.primaryOutlineContainer, sizing.paddingS, sizing.parentWidth)}>
-                    Threlogean
-                </h1>
-                <RouterTabContainer
-                    className={classNames(sizing.parentSize, flex.flexGrow)}
-                    basePath=""
-                    contentContainerProps={{
-                        className: classNames(tabContainerBorderStyle, sizing.paddingLHeight)
-                    }}
-                    sections={sections}
-                />
-                <div className={classNames(flex.flexRow, flex.justifyContentSpaceBetween)}>
-                    <span>
-                        Ethymolog: An open-source conlang lexicon and script management tool.
-                    </span>
+        <ProcessingLockModalProvider>
+            <EtymologProvider>
+                <Background>
+                    <h1 className={classNames(template.primaryOutlineContainer, sizing.paddingS, sizing.parentWidth)}>
+                        Threlogean
+                    </h1>
+                    <RouterTabContainer
+                        className={classNames(sizing.parentSize, flex.flexGrow)}
+                        basePath=""
+                        contentContainerProps={{
+                            className: classNames(tabContainerBorderStyle, sizing.paddingLHeight)
+                        }}
+                        sections={sections}
+                    />
+                    <div className={classNames(flex.flexRow, flex.justifyContentSpaceBetween)}>
+                        <span>
+                            Ethymolog: An open-source conlang lexicon and script management tool.
+                        </span>
 
-                    <span>
-                        By Kerbash
-                    </span>
-                </div>
-            </Background>
-        </EtymologProvider>
+                        <span>
+                            By Kerbash
+                        </span>
+                    </div>
+                </Background>
+            </EtymologProvider>
+        </ProcessingLockModalProvider>
     )
 }
 
