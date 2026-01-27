@@ -1,0 +1,191 @@
+.detailed-lexicon-display {
+    display: flex;
+    gap: 1.5rem;
+    padding: 1rem;
+    background-color: var(--surface-raised);
+    border-radius: 8px;
+    border: 1px solid var(--border-primary);
+    min-height: 180px;
+}
+
+/* Left section - SVG and Lemma */
+.detailed-lexicon-left {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+    flex-shrink: 0;
+    min-width: 140px;
+}
+
+.detailed-lexicon-svg {
+    width: 120px;
+    height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--bg-tertiary);
+    border-radius: 6px;
+    padding: 0.5rem;
+    gap: 4px;
+}
+
+.detailed-lexicon-svg svg {
+    height: 100%;
+    width: auto;
+    max-width: 50px;
+    object-fit: contain;
+}
+
+.detailed-lexicon-no-spelling {
+    width: 120px;
+    height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--bg-tertiary);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    font-style: italic;
+    font-size: 0.875rem;
+}
+
+.detailed-lexicon-lemma {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.detailed-lexicon-pronunciation {
+    font-size: 1rem;
+    color: var(--text-secondary);
+    font-family: var(--font-mono, monospace);
+}
+
+.detailed-lexicon-badges {
+    display: flex;
+    gap: 0.375rem;
+    flex-wrap: wrap;
+}
+
+.external-badge {
+    font-size: 0.75rem;
+    padding: 0.125rem 0.5rem;
+    background-color: var(--status-warning);
+    color: var(--black);
+    border-radius: 12px;
+    font-weight: 600;
+}
+
+.auto-spell-badge {
+    font-size: 0.75rem;
+    padding: 0.125rem 0.5rem;
+    background-color: var(--status-info);
+    color: var(--white);
+    border-radius: 12px;
+}
+
+/* Right section - Details */
+.detailed-lexicon-right {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.detail-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.section-header {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+.meaning-text {
+    font-size: 0.9375rem;
+    color: var(--text-primary);
+    margin: 0;
+    line-height: 1.4;
+}
+
+.pos-value {
+    font-size: 0.875rem;
+    color: var(--text-primary);
+    padding: 0.125rem 0.5rem;
+    background-color: var(--bg-tertiary);
+    border-radius: 4px;
+    display: inline-block;
+    width: fit-content;
+}
+
+.grapheme-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+}
+
+.grapheme-name {
+    font-size: 0.8125rem;
+    padding: 0.125rem 0.5rem;
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+    border-radius: 4px;
+    border: 1px solid var(--border-secondary);
+}
+
+.etymology-section {
+    background-color: var(--bg-tertiary);
+    border-radius: 6px;
+    padding: 0.5rem;
+}
+
+.etymology-stats {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.etymology-stat {
+    font-size: 0.8125rem;
+    color: var(--text-primary);
+}
+
+.ancestor-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.ancestor-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8125rem;
+}
+
+.ancestor-type {
+    color: var(--text-secondary);
+    font-style: italic;
+    min-width: 70px;
+}
+
+.ancestor-lemma {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.notes-text {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    margin: 0;
+    font-style: italic;
+    line-height: 1.4;
+}

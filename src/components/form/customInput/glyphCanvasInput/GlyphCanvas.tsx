@@ -1,0 +1,231 @@
+/**
+ * GlyphCanvas Component
+ *
+ * A pannable/zoomable canvas for displaying selected glyphs.
+ * Uses react-zoom-pan-pinch for pan and zoom functionality.
+ *
+ * @module glyphCanvasInput/GlyphCanvas
+ */
+
+'use client';
+
+import { forwardRef, useImperativeHandle, useMemo, useRef } from 'react';
+import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
+import type { ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
+import classNames from 'classnames';
+import DOMPurify from 'dompurify';
+
+import type { GlyphCanvasProps, GlyphCanvasRef, CanvasGlyph } from './types';
+import { calculateGlyphLayout, calculateBounds } from './utils';
+
+import styles from './GlyphCanvas.module.scss';
+
+/**
+ * GlyphCanvas
+ *
+ * A display-only canvas that renders glyphs with pan and zoom support.
+ * Glyphs are positioned based on the configured writing direction.
+ *
+ * @example
+ * ```tsx
+ * const canvasRef = useRef<GlyphCanvasRef>(null);
+ *
+ * <GlyphCanvas
+ *   ref={canvasRef}
+ *   selectedGlyphIds={[1, 2, 3]}
+ *   glyphMap={glyphMap}
+ *   layout={{ direction: 'ltr' }}
+ * />
+ *
+ * // Later:
+ * canvasRef.current?.fitToView();
+ * ```
+ */
+const GlyphCanvas = forwardRef<GlyphCanvasRef, GlyphCanvasProps>(
+    function GlyphCanvas(
+        {
+            selectedGlyphIds,
+            glyphMap,
+            layout = {},
+            initialScale = 1,
+            minScale = 0.25,
+            maxScale = 3,
+            showControls = true,
+            emptyStateContent,
+            className,
+            style,
+            minHeight = '120px',
+        },
+        ref
+    ) {
+        const transformRef = useRef<ReactZoomPanPinchRef>(null);
+
+        // Get glyphs from IDs
+        const selectedGlyphs = useMemo(() => {
+            return selectedGlyphIds
+                .map(id => glyphMap.get(id))
+                .filter((g): g is NonNullable<typeof g> => g !== undefined);
+        }, [selectedGlyphIds, glyphMap]);
+
+        // Calculate positioned glyphs
+        const positionedGlyphs = useMemo(() => {
+            return calculateGlyphLayout(selectedGlyphs, layout);
+        }, [selectedGlyphs, layout]);
+
+        // Calculate canvas bounds
+        const bounds = useMemo(() => {
+            return calculateBounds(positionedGlyphs, layout);
+        }, [positionedGlyphs, layout]);
+
+        // SVG dimensions
+        const svgWidth = Math.max(bounds.width, 200);
+        const svgHeight = Math.max(bounds.height, 80);
+
+        // Expose imperative methods
+        useImperativeHandle(ref, () => ({
+            resetView: () => {
+                transformRef.current?.resetTransform();
+            },
+            fitToView: () => {
+                transformRef.current?.centerView();
+            },
+        }), []);
+
+        // Empty state
+        if (selectedGlyphIds.length === 0) {
+            return (
+                <div
+                    className={classNames(styles.canvasContainer, styles.empty, className)}
+                    style={{ ...style, minHeight }}
+                >
+                    {emptyStateContent ?? (
+                        <span className={styles.emptyText}>
+                            No glyphs selected. Click the keyboard button to add glyphs.
+                        </span>
+                    )}
+                </div>
+            );
+        }
+
+        return (
+            <div
+                className={classNames(styles.canvasContainer, className)}
+                style={{ ...style, minHeight }}
+            >
+                <TransformWrapper
+                    ref={transformRef}
+                    initialScale={initialScale}
+                    minScale={minScale}
+                    maxScale={maxScale}
+                    centerOnInit
+                    doubleClick={{ disabled: false, mode: 'reset' }}
+                    wheel={{ disabled: false, step: 0.1 }}
+                    panning={{ velocityDisabled: false }}
+                    pinch={{ disabled: false }}
+                >
+                    {({ zoomIn, zoomOut, resetTransform }) => (
+                        <>
+                            <TransformComponent
+                                wrapperStyle={{ width: '100%', height: '100%' }}
+                                contentStyle={{
+                                    width: svgWidth,
+                                    height: svgHeight,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                }}
+                            >
+                                <svg
+                                    width={svgWidth}
+                                    height={svgHeight}
+                                    viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+                                    className={styles.svg}
+                                    role="img"
+                                    aria-label={`Canvas with ${selectedGlyphIds.length} glyphs`}
+                                >
+                                    {positionedGlyphs.map((pg) => (
+                                        <GlyphNode key={`${pg.glyph.id}-${pg.index}`} positionedGlyph={pg} />
+                                    ))}
+                                </svg>
+                            </TransformComponent>
+
+                            {showControls && (
+                                <div className={styles.controls}>
+                                    <button
+                                        type="button"
+                                        className={styles.controlButton}
+                                        onClick={() => zoomIn()}
+                                        aria-label="Zoom in"
+                                    >
+                                        +
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className={styles.controlButton}
+                                        onClick={() => zoomOut()}
+                                        aria-label="Zoom out"
+                                    >
+                                        −
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className={styles.controlButton}
+                                        onClick={() => resetTransform()}
+                                        aria-label="Reset view"
+                                    >
+                                        ⟲
+                                    </button>
+                                </div>
+                            )}
+                        </>
+                    )}
+                </TransformWrapper>
+            </div>
+        );
+    }
+);
+
+/**
+ * Individual glyph node rendered on the canvas.
+ */
+function GlyphNode({ positionedGlyph }: { positionedGlyph: CanvasGlyph }) {
+    const { glyph, x, y, width, height } = positionedGlyph;
+
+    // Sanitize SVG data
+    const sanitizedSvg = useMemo(() => {
+        return DOMPurify.sanitize(glyph.svg_data, {
+            USE_PROFILES: { svg: true, svgFilters: true },
+        });
+    }, [glyph.svg_data]);
+
+    return (
+        <g
+            className={styles.glyphNode}
+            transform={`translate(${x}, ${y})`}
+        >
+            {/* Background */}
+            <rect
+                className={styles.glyphBackground}
+                width={width}
+                height={height}
+                rx={4}
+                ry={4}
+            />
+
+            {/* Glyph SVG content via foreignObject */}
+            <foreignObject
+                width={width}
+                height={height}
+                className={styles.glyphForeignObject}
+            >
+                <div
+                    className={styles.glyphContent}
+                    dangerouslySetInnerHTML={{ __html: sanitizedSvg }}
+                />
+            </foreignObject>
+        </g>
+    );
+}
+
+export default GlyphCanvas;
+export { GlyphCanvas };

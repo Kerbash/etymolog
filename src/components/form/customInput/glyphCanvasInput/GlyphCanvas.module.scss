@@ -1,0 +1,110 @@
+/**
+ * GlyphCanvas Styles
+ *
+ * Styles for the pannable/zoomable glyph canvas component.
+ */
+
+.canvasContainer {
+    position: relative;
+    width: 100%;
+    background: var(--surface-base);
+    border: 2px solid var(--border-primary);
+    border-radius: 8px;
+    overflow: hidden;
+
+    /* Allow touch scrolling */
+    touch-action: pan-x pan-y pinch-zoom;
+}
+
+.canvasContainer.empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-style: dashed;
+}
+
+.emptyText {
+    color: var(--text-secondary);
+    font-style: italic;
+    text-align: center;
+    padding: 1rem;
+    user-select: none;
+}
+
+.svg {
+    display: block;
+    user-select: none;
+}
+
+.glyphNode {
+    cursor: default;
+    outline: none;
+}
+
+.glyphBackground {
+    fill: var(--surface-raised);
+    stroke: var(--border-primary);
+    stroke-width: 1;
+    transition: all 0.15s ease;
+}
+
+.glyphForeignObject {
+    overflow: visible;
+}
+
+.glyphContent {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    box-sizing: border-box;
+
+    svg {
+        width: 100%;
+        height: 100%;
+        max-width: 100%;
+        max-height: 100%;
+    }
+}
+
+/* Zoom controls */
+.controls {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    display: flex;
+    gap: 4px;
+    z-index: 10;
+}
+
+.controlButton {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-primary);
+    border-radius: 4px;
+    background: var(--surface-raised);
+    color: var(--text-primary);
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &:hover {
+        background: var(--surface-raised-hover, var(--interactive-hover));
+        border-color: var(--interactive-base);
+    }
+
+    &:focus {
+        outline: 2px solid var(--status-info, dodgerblue);
+        outline-offset: 2px;
+    }
+
+    &:active {
+        transform: scale(0.95);
+    }
+}

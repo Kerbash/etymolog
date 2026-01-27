@@ -1,0 +1,180 @@
+.ancestryInput {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.label {
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.emptyState {
+    padding: 1rem;
+    border: 2px dashed var(--border-primary);
+    border-radius: 8px;
+    background: var(--surface-raised);
+    color: var(--text-secondary);
+    font-style: italic;
+    text-align: center;
+}
+
+.rowsContainer {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    border: 1px solid var(--border-primary);
+    border-radius: 6px;
+    background: var(--surface-raised);
+    flex-wrap: wrap;
+}
+
+.row.hasError {
+    border-color: var(--status-bad);
+    background-color: var(--status-bad-bg, #f8d7da);
+}
+
+.rowNumber {
+    font-weight: 600;
+    color: var(--text-secondary);
+    min-width: 1.5rem;
+    padding-top: 0.5rem;
+}
+
+.ancestorSelector {
+    flex: 1;
+    min-width: 200px;
+    position: relative;
+}
+
+.selectedAncestor {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: var(--surface-base);
+    border: 1px solid var(--border-primary);
+    border-radius: 4px;
+}
+
+.selectedLemma {
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.selectedPronunciation {
+    font-family: var(--font-mono, monospace);
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.searchContainer {
+    position: relative;
+}
+
+.searchInput {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border-primary);
+    border-radius: 4px;
+    background: var(--surface-base);
+    color: var(--text-primary);
+    font-size: 0.9375rem;
+}
+
+.searchInput:focus {
+    outline: none;
+    border-color: var(--color-primary);
+}
+
+.dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    max-height: 200px;
+    overflow-y: auto;
+    background: var(--surface-base);
+    border: 1px solid var(--border-primary);
+    border-top: none;
+    border-radius: 0 0 4px 4px;
+    z-index: 100;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.dropdownItem {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: none;
+    background: none;
+    cursor: pointer;
+    text-align: left;
+    color: var(--text-primary);
+}
+
+.dropdownItem:hover {
+    background: var(--surface-raised);
+}
+
+.optionLemma {
+    font-weight: 500;
+}
+
+.optionPronunciation {
+    font-family: var(--font-mono, monospace);
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+}
+
+.noOptions {
+    padding: 0.75rem;
+    color: var(--text-secondary);
+    font-style: italic;
+    text-align: center;
+}
+
+.moreOptions {
+    padding: 0.5rem 0.75rem;
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    text-align: center;
+    background: var(--bg-tertiary);
+}
+
+.typeSelect {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border-primary);
+    border-radius: 4px;
+    background: var(--surface-base);
+    color: var(--text-primary);
+    font-size: 0.9375rem;
+    min-width: 100px;
+}
+
+.typeSelect:focus {
+    outline: none;
+    border-color: var(--color-primary);
+}
+
+.errorMessage {
+    width: 100%;
+    margin-top: 0.25rem;
+    color: var(--status-bad);
+    font-size: 0.8125rem;
+}

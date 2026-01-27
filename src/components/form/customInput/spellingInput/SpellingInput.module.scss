@@ -1,0 +1,212 @@
+.spellingInput {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.label {
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.autoSpellPreview {
+    padding: 0.75rem;
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.autoSpellPreview.success {
+    background-color: var(--status-good-bg, #d4edda);
+    border: 1px solid var(--status-good, #28a745);
+}
+
+.autoSpellPreview.error {
+    background-color: var(--status-bad-bg, #f8d7da);
+    border: 1px solid var(--status-bad, #dc3545);
+}
+
+.previewLabel {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.previewGraphemes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.unmatched {
+    font-size: 0.75rem;
+    color: var(--status-warning);
+    font-style: italic;
+}
+
+.errorText {
+    color: var(--status-bad);
+    font-size: 0.875rem;
+}
+
+.selectedContainer {
+    border: 2px dashed var(--border-primary);
+    border-radius: 8px;
+    padding: 1rem;
+    min-height: 80px;
+    background: var(--surface-raised);
+}
+
+.selectedGraphemes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.emptyState {
+    color: var(--text-secondary);
+    font-style: italic;
+    text-align: center;
+    padding: 1rem;
+}
+
+.graphemeCard {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0.5rem;
+    border: 1px solid var(--border-primary);
+    border-radius: 6px;
+    background: var(--surface-base);
+    min-width: 60px;
+}
+
+.graphemeSvg {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.graphemeSvg svg {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.graphemeName {
+    font-size: 0.75rem;
+    color: var(--text-primary);
+    margin-top: 0.25rem;
+}
+
+.graphemeControls {
+    display: flex;
+    gap: 0.125rem;
+    margin-top: 0.25rem;
+}
+
+/* Picker Modal */
+.pickerModal {
+    padding: 1rem;
+    min-width: 400px;
+    max-width: 600px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.pickerTitle {
+    margin: 0 0 1rem 0;
+}
+
+.searchInput {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border-primary);
+    border-radius: 4px;
+    background: var(--surface-base);
+    color: var(--text-primary);
+    font-size: 1rem;
+    margin-bottom: 1rem;
+}
+
+.searchInput:focus {
+    outline: none;
+    border-color: var(--color-primary);
+}
+
+.graphemeGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 0.75rem;
+    overflow-y: auto;
+    max-height: 400px;
+    padding-right: 0.5rem;
+}
+
+.pickerCard {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0.75rem;
+    border: 1px solid var(--border-primary);
+    border-radius: 6px;
+    background: var(--surface-base);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.pickerCard:hover {
+    border-color: var(--color-primary);
+    background: var(--surface-raised);
+    transform: translateY(-2px);
+}
+
+.pickerSvg {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.pickerSvg svg {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.pickerName {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    margin-top: 0.375rem;
+}
+
+.pickerPhoneme {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    font-family: var(--font-mono, monospace);
+}
+
+.noResults {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 2rem;
+    color: var(--text-secondary);
+    font-style: italic;
+}

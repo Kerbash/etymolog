@@ -121,6 +121,9 @@ Even though this is a PWA running entirely client-side, we maintain clean separa
 | **UC20: Graphotactic Rules** | Define valid grapheme sequences | `/graphotactic` | 🚧 Placeholder |
 | **UC21: Part of Speech** | Manage grammatical categories | `/part-of-speech` | 🚧 Placeholder |
 | **UC22: Search & Filter** | Search glyphs/graphemes/lexicon by name, sort by various criteria | All galleries | ✅ Complete |
+| **UC23: Canvas-Based Glyph Input** | Select glyphs on a pannable canvas with keyboard overlay | Custom input component | ✅ Complete |
+| **UC24: Writing Direction Support** | Configure LTR, RTL, TTB, BTT for glyph sequences | GlyphCanvasInput direction prop | ✅ Complete |
+| **UC25: Modular Insertion Strategies** | Pluggable strategies for glyph insertion (append, prepend, cursor) | Strategy pattern | ✅ Complete |
 
 ### Functional Requirements
 
@@ -188,7 +191,7 @@ Even though this is a PWA running entirely client-side, we maintain clean separa
 
 | Tab | Path | Description | Status |
 |-----|------|-------------|--------|
-| Lexicon | `/lexicon` | Word/vocabulary management | 🚧 Basic |
+| Lexicon | `/lexicon` | Word/vocabulary management | ✅ Complete |
 | Part of Speech | `/part-of-speech` | Grammar categories | 🚧 Placeholder |
 | Script Maker | `/script-maker` | Grapheme & glyph management | ✅ Complete |
 | Graphotactic | `/graphotactic` | Writing system rules | 🚧 Placeholder |
@@ -202,10 +205,9 @@ Even though this is a PWA running entirely client-side, we maintain clean separa
 ```
 /
 ├── /lexicon                        → LexiconMain
-│   ├── (index)                     → LexiconHome
-│   ├── /create                     → CreateLexiconForm
-│   └── /view                       → LexiconView
-│       └── /view/:id               → LexiconView (with selection)
+│   ├── (index)                     → LexiconHome (gallery + search/filter)
+│   ├── /create                     → CreateLexiconPage (create form)
+│   └── /db/:id                     → LexiconViewPage (view/edit + etymology tree)
 │
 ├── /part-of-speech                 → Placeholder
 │
@@ -227,6 +229,9 @@ Even though this is a PWA running entirely client-side, we maintain clean separa
 
 | Route | Component | Description |
 |-------|-----------|-------------|
+| `/lexicon` | `LexiconHome` | Lexicon gallery with search/filter/sort |
+| `/lexicon/create` | `CreateLexiconPage` | Create new word with spelling and ancestry |
+| `/lexicon/db/:id` | `LexiconViewPage` | View/edit word + etymology tree |
 | `/script-maker` | `GraphemeHome` | Grapheme gallery with search/sort/pagination |
 | `/script-maker/create` | `CreateGraphemePage` | Create new grapheme with glyph selection |
 | `/script-maker/grapheme/db/:id` | `GraphemeEditPage` | Edit existing grapheme |
@@ -244,6 +249,26 @@ Even though this is a PWA running entirely client-side, we maintain clean separa
 App.tsx
 └── EtymologProvider (Context)
     └── RouterTabContainer (cyber-components)
+        ├── LexiconMain (/lexicon)
+        │   ├── LexiconHome
+        │   │   └── LexiconGallery
+        │   │       └── DataGallery (cyber-components)
+        │   │           ├── CompactLexiconDisplay
+        │   │           └── DetailedLexiconDisplay
+        │   ├── CreateLexiconPage
+        │   │   └── SmartForm
+        │   │       └── LexiconFormFields
+        │   │           ├── LabelShiftTextInput (×4)
+        │   │           ├── LabelShiftTextCustomKeyboardInput (IPA)
+        │   │           ├── SpellingInput
+        │   │           └── AncestryInput
+        │   └── LexiconViewPage
+        │       ├── DetailedLexiconDisplay
+        │       ├── EtymologyTree
+        │       │   └── EtymologyTreeNode (recursive)
+        │       └── SmartForm (edit mode)
+        │           └── LexiconFormFields
+        │
         └── GraphemeMain (/script-maker)
             └── RouterTabContainer (nested tabs)
                 ├── GraphemesTab
@@ -287,11 +312,12 @@ App.tsx
 | Category | Components | Location |
 |----------|------------|----------|
 | **Tab Containers** | `GraphemeMain`, `LexiconMain`, `GraphotacticMain` | `src/components/tabs/*/main.tsx` |
-| **Galleries** | `GraphemeView`, `GlyphGallery` | `src/components/tabs/grapheme/gallery*/` |
-| **Create Pages** | `CreateGraphemePage`, `NewGlyphPage` | `src/components/tabs/grapheme/new*/` |
-| **Edit Pages** | `GraphemeEditPage`, `GlyphEditPage` | `src/components/tabs/grapheme/edit*/` |
-| **Form Components** | `GlyphFormFields`, `GraphemeFormFields` | `src/components/form/*/` |
-| **Display Components** | `GlyphCard`, `CompactGraphemeDisplay`, `DetailedGraphemeDisplay` | `src/components/display/*/` |
+| **Galleries** | `GraphemeView`, `GlyphGallery`, `LexiconGallery` | `src/components/tabs/*/gallery*/` |
+| **Create Pages** | `CreateGraphemePage`, `NewGlyphPage`, `CreateLexiconPage` | `src/components/tabs/*/create*/` or `new*/` |
+| **Edit/View Pages** | `GraphemeEditPage`, `GlyphEditPage`, `LexiconViewPage` | `src/components/tabs/*/edit*/` or `view*/` |
+| **Form Components** | `GlyphFormFields`, `GraphemeFormFields`, `LexiconFormFields` | `src/components/form/*/` |
+| **Display Components** | `GlyphCard`, `CompactGraphemeDisplay`, `DetailedGraphemeDisplay`, `CompactLexiconDisplay`, `DetailedLexiconDisplay`, `EtymologyTree` | `src/components/display/*/` |
+| **Custom Inputs** | `PronunciationTableInput`, `SpellingInput`, `AncestryInput` | `src/components/form/customInput/*/` |
 | **Modal Components** | `NewGlyphModal`, `EditGlyphModal` | Various locations |
 
 ### Gallery Features
@@ -321,6 +347,19 @@ The grapheme gallery (`src/components/tabs/grapheme/galleryGrapheme/graphemeGall
 - **Keyboard Navigation**: Roving tabindex with arrow key support
 - **Auto-manage Toggle**: (See Glyph gallery) for glyph cleanup behavior
 - **Delete Control**: A small trash `IconButton` is now present at the top-right of each grapheme card (both detailed and compact renderers). Clicking it opens a confirmation modal ("Are you sure you would like to delete this grapheme?") matching the glyph-gallery flow. This modal performs the deletion via `api.grapheme.delete()` and closes the modal on success.
+
+
+#### LexiconGallery
+
+The lexicon gallery (`src/components/tabs/lexicon/galleryLexicon/LexiconGallery.tsx`) provides:
+
+- **Search & Filter**: Search words by lemma, pronunciation, or meaning
+- **Sorting**: Sort by lemma (A-Z, Z-A), descendant count (most/fewest), or created date (newest/oldest)
+- **Native Filter**: Filter by native words only, external words only, or all
+- **Pagination**: Configurable results per page (12, 24, 48, 96)
+- **Keyboard Navigation**: Roving tabindex with arrow key support
+- **Delete Control**: Delete button on each card with protection warning for words that have descendants
+- **Empty State**: Shows "Create first word" button when no entries exist
 
 
 ---
@@ -522,6 +561,152 @@ function MyFormFields({ registerField }) {
 | Component | Location | Purpose |
 |-----------|----------|---------|
 | `PronunciationTableInput` | `src/components/form/customInput/pronunciationTableInput/` | IPA pronunciation table with add/remove rows |
+| `SpellingInput` | `src/components/form/customInput/spellingInput/` | Grapheme selector for word spelling |
+| `AncestryInput` | `src/components/form/customInput/ancestryInput/` | Ancestor selector with cycle detection |
+| `GlyphCanvasInput` | `src/components/form/customInput/glyphCanvasInput/` | Canvas-based glyph sequence input with keyboard overlay |
+
+### GlyphCanvasInput Component
+
+A form input combining a pannable/zoomable canvas with a bottom-pinned keyboard overlay for glyph selection. Supports multiple writing directions and modular insertion strategies.
+
+#### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           GlyphCanvasInput                                  │
+│  (Main Form Component - SmartForm Integration)                              │
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                         GlyphCanvas                                  │   │
+│  │  (Pan/Zoom SVG Canvas - react-zoom-pan-pinch)                       │   │
+│  │                                                                      │   │
+│  │   ┌─────┐ ┌─────┐ ┌─────┐ ┌─────┐                                  │   │
+│  │   │ G1  │→│ G2  │→│ G3  │→│ G4  │  (Positioned by layout)         │   │
+│  │   └─────┘ └─────┘ └─────┘ └─────┘                                  │   │
+│  │                                                                      │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+│  [📊 Count] [🗑️ Clear] [⚡ Auto-spell] [⌨️ Open Keyboard]                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼ (Button trigger)
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      GlyphKeyboardOverlay                                   │
+│  (Fixed bottom overlay - wraps CustomKeyboard)                              │
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │ Select Glyph                                 [⌫] [🗑️] [✕]          │   │
+│  ├─────────────────────────────────────────────────────────────────────┤   │
+│  │ [🔍 Search...]                                                      │   │
+│  │ [All] [Consonants] [Vowels] [Diacritics] (Category tabs)           │   │
+│  │ ┌─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┐           │   │
+│  │ │ SVG │ SVG │ SVG │ SVG │ SVG │ SVG │ SVG │ SVG │ SVG │ (Glyph    │   │
+│  │ │  1  │  2  │  3  │  4  │  5  │  6  │  7  │  8  │  9  │  buttons) │   │
+│  │ └─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┘           │   │
+│  │                                                                      │   │
+│  │                                      [⌫ Backspace] (Remove last)    │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Features
+
+- **Pan & Zoom Canvas**: Uses `react-zoom-pan-pinch` for smooth navigation
+- **Writing Direction**: Supports LTR, RTL, TTB, BTT, and custom layouts
+- **Modular Insertion**: Pluggable strategies (append, prepend, cursor-based)
+- **Bottom-Pinned Keyboard**: Opens via button click (accessibility-first)
+- **Category Grouping**: Glyphs organized by `glyph.category`
+- **Search & Filter**: Find glyphs by name in keyboard overlay
+- **SmartForm Integration**: Works with `registerField` pattern
+- **Grapheme Support**: Accepts GraphemeComplete objects and renders combined SVGs
+- **HoverToolTip**: Glyph names shown on hover (not just as text fallback)
+- **Backspace Button**: Dedicated button to remove the last glyph from sequence
+
+#### Data Handling
+
+The component accepts different input formats through the `availableGlyphs` prop:
+
+| Input Type | Description | SVG Handling |
+|------------|-------------|--------------|
+| `Glyph[]` | Atomic glyphs | Uses `svg_data` directly |
+| `GlyphWithUsage[]` | Glyphs with usage stats | Uses `svg_data` directly |
+| `GraphemeComplete[]` | Composed graphemes | Combines nested `glyphs[].svg_data` horizontally |
+
+The utility function `graphemeUtils.ts` handles normalization:
+
+```typescript
+import { buildRenderableMap, normalizeToRenderable } from './utils';
+
+// Convert mixed input to uniform format
+const renderableMap = buildRenderableMap(availableGraphemes);
+const renderableGlyphs = availableGraphemes.map(normalizeToRenderable);
+```
+
+#### Usage
+
+```tsx
+import GlyphCanvasInput from '@/components/form/customInput/glyphCanvasInput';
+
+function MyForm({ registerField }) {
+  const glyphField = registerField('glyphSequence', {
+    validation: { notEmpty: true },
+  });
+
+  return (
+    <GlyphCanvasInput
+      {...glyphField}
+      availableGlyphs={graphemesComplete} // Works with GraphemeComplete[]
+      direction="ltr"
+      label="Glyph Sequence"
+      onSelectionChange={(ids) => console.log('Selected:', ids)}
+    />
+  );
+}
+```
+
+#### Writing Directions
+
+| Direction | Description | Layout |
+|-----------|-------------|--------|
+| `ltr` | Left-to-right (default) | `→ [G1] [G2] [G3]` |
+| `rtl` | Right-to-left | `[G3] [G2] [G1] ←` |
+| `ttb` | Top-to-bottom | Vertical column ↓ |
+| `btt` | Bottom-to-top | Vertical column ↑ |
+| `custom` | Custom callback | User-defined layout |
+
+#### Insertion Strategies
+
+```typescript
+// Append (default) - adds to end
+const appendStrategy = createAppendStrategy();
+
+// Prepend - adds to beginning
+const prependStrategy = createPrependStrategy();
+
+// Cursor-based - insert at position (future)
+const cursorStrategy = createCursorStrategy();
+```
+
+#### Module Structure
+
+```
+glyphCanvasInput/
+├── index.ts                      # Barrel exports
+├── types.ts                      # Type definitions (GlyphLike, GlyphForCanvas, etc.)
+├── GlyphCanvasInput.tsx          # Main component
+├── GlyphCanvasInput.module.scss  # Main styles
+├── GlyphCanvas.tsx               # Pan/zoom canvas
+├── GlyphCanvas.module.scss       # Canvas styles
+├── GlyphKeyboardOverlay.tsx      # Keyboard overlay with HoverToolTip
+├── GlyphKeyboardOverlay.module.scss  # Includes Backspace button styles
+├── strategies/
+│   ├── index.ts
+│   └── insertionStrategies.ts    # Append, prepend, cursor
+└── utils/
+    ├── index.ts
+    ├── layoutUtils.ts            # Position calculation
+    └── graphemeUtils.ts          # GraphemeComplete → RenderableGlyph conversion
+```
 
 ---
 
@@ -1079,11 +1264,22 @@ src/
 │   │   │   └── glyphCard/
 │   │   │       ├── glyphCard.tsx    # Versatile glyph card
 │   │   │       └── glyphCard.module.scss
-│   │   └── grapheme/
+│   │   ├── grapheme/
+│   │   │   ├── compact/
+│   │   │   │   └── compact.tsx      # Compact grapheme display
+│   │   │   └── detailed/
+│   │   │       └── detailed.tsx     # Detailed grapheme display
+│   │   └── lexicon/
 │   │       ├── compact/
-│   │       │   └── compact.tsx      # Compact grapheme display
-│   │       └── detailed/
-│   │           └── detailed.tsx     # Detailed grapheme display
+│   │       │   ├── CompactLexiconDisplay.tsx
+│   │       │   └── compact.module.scss
+│   │       ├── detailed/
+│   │       │   ├── DetailedLexiconDisplay.tsx
+│   │       │   └── detailed.css
+│   │       └── etymologyTree/
+│   │           ├── EtymologyTree.tsx
+│   │           ├── EtymologyTreeNode.tsx
+│   │           └── EtymologyTree.module.scss
 │   │
 │   ├── form/                        # Form Components
 │   │   ├── glyphForm/
@@ -1097,21 +1293,56 @@ src/
 │   │   │   ├── index.ts
 │   │   │   ├── GraphemeFormFields.tsx  # Reusable grapheme fields
 │   │   │   └── graphemeFormFields.module.scss
+│   │   ├── lexiconForm/
+│   │   │   ├── index.ts
+│   │   │   ├── LexiconFormFields.tsx
+│   │   │   └── LexiconFormFields.module.scss
 │   │   └── customInput/
-│   │       └── pronunciationTableInput/
+│   │       ├── pronunciationTableInput/
+│   │       │   ├── index.ts
+│   │       │   ├── pronunciationTableInput.tsx
+│   │       │   └── pronunciationTableInput.module.scss
+│   │       ├── spellingInput/
+│   │       │   ├── index.ts
+│   │       │   ├── SpellingInput.tsx
+│   │       │   └── SpellingInput.module.scss
+│   │       ├── ancestryInput/
+│   │       │   ├── index.ts
+│   │       │   ├── AncestryInput.tsx
+│   │       │   └── AncestryInput.module.scss
+│   │       └── glyphCanvasInput/       # NEW: Canvas-based glyph input
 │   │           ├── index.ts
-│   │           ├── pronunciationTableInput.tsx
-│   │           └── pronunciationTableInput.module.scss
+│   │           ├── types.ts             # Type definitions
+│   │           ├── GlyphCanvasInput.tsx # Main component
+│   │           ├── GlyphCanvasInput.module.scss
+│   │           ├── GlyphCanvas.tsx      # Pan/zoom canvas
+│   │           ├── GlyphCanvas.module.scss
+│   │           ├── GlyphKeyboardOverlay.tsx
+│   │           ├── GlyphKeyboardOverlay.module.scss
+│   │           ├── strategies/
+│   │           │   ├── index.ts
+│   │           │   └── insertionStrategies.ts
+│   │           └── utils/
+│   │               ├── index.ts
+│   │               └── layoutUtils.ts
 │   │
 │   ├── graphics/                    # Visual elements
 │   │
 │   └── tabs/                        # Tab Sections
 │       ├── lexicon/
-│       │   ├── main.tsx
-│       │   ├── create/
-│       │   │   └── createLexicon.tsx
-│       │   └── view/
-│       │       └── lexiconView.tsx
+│       │   ├── main.tsx             # Tab container & routing
+│       │   ├── LexiconHome.tsx      # Gallery + navigation
+│       │   ├── galleryLexicon/
+│       │   │   ├── index.ts
+│       │   │   └── LexiconGallery.tsx
+│       │   ├── createLexicon/
+│       │   │   ├── index.ts
+│       │   │   ├── CreateLexiconPage.tsx
+│       │   │   └── CreateLexiconPage.module.scss
+│       │   └── viewLexicon/
+│       │       ├── index.ts
+│       │       ├── LexiconViewPage.tsx
+│       │       └── LexiconViewPage.module.scss
 │       │
 │       ├── grapheme/                # Script Maker tab
 │       │   ├── main.tsx             # Tab container & routing
@@ -1162,8 +1393,9 @@ src/
 | `glyphService.test.ts` | ~50 | Glyph CRUD operations |
 | `graphemeService.test.ts` | ~60 | Grapheme & phoneme operations |
 | `edgeCases.test.ts` | ~30 | Integration & boundary cases |
+| `glyphCanvasInput.test.ts` | 20 | GlyphCanvasInput strategies & layout utils |
 
-**Total: 141 tests**
+**Total: 161 tests**
 
 ### Key Test Scenarios
 
@@ -1174,6 +1406,8 @@ src/
 - Unicode/IPA support for phonemes
 - Position ordering for glyphs in graphemes
 - Auto-cleanup of orphaned glyphs when setting enabled
+- Insertion strategies (append, prepend, cursor-based)
+- Layout calculations (LTR, RTL, TTB, BTT)
 - Concurrent operations
 
 ### Running Tests
@@ -1302,7 +1536,7 @@ CREATE TABLE IF NOT EXISTS settings (
 
 **Impact**: Settings persist with conlang on export/import
 
-#### 3. Lexicon Feature ✅ COMPLETE
+#### 3. Lexicon Feature ✅ COMPLETE (Backend + Frontend)
 
 **Implemented Features**:
 - ✅ Lexicon entries with lemma, pronunciation, meaning, part_of_speech, notes
@@ -1314,10 +1548,14 @@ CREATE TABLE IF NOT EXISTS settings (
 - ✅ Bidirectional ancestry (ancestors + descendants)
 - ✅ Full CRUD API with standardized `ApiResponse<T>` format
 
-**Pending UI Implementation**:
-- Lexicon gallery component
-- Lexicon create/edit forms
-- Etymology tree visualization
+**UI Components (Implemented)**:
+- ✅ `LexiconGallery` - searchable/sortable/filterable gallery with delete protection
+- ✅ `CreateLexiconPage` - create form with SmartForm, SpellingInput, AncestryInput
+- ✅ `LexiconViewPage` - view/edit page with delete functionality
+- ✅ `EtymologyTree` - visual tree component for ancestry relationships
+- ✅ `CompactLexiconDisplay` / `DetailedLexiconDisplay` - display cards
+- ✅ `SpellingInput` - grapheme selector with auto-spell preview
+- ✅ `AncestryInput` - ancestor selector with cycle detection
 
 #### 4. Performance Optimizations
 
@@ -1344,7 +1582,6 @@ CREATE TABLE IF NOT EXISTS settings (
 
 | Priority | Feature | Description |
 |----------|---------|-------------|
-| **High** | Lexicon UI Components | Gallery, forms, and etymology tree visualization |
 | **High** | Settings migration to SQLite | Make conlang settings portable |
 | **High** | Import/Export UI | Complete database backup/restore functionality |
 | **Medium** | Graphotactic rules | Define valid grapheme sequences |
@@ -1367,4 +1604,4 @@ When adding new features, please:
 
 ---
 
-*Last updated: January 25, 2026*
+*Last updated: January 26, 2026*
