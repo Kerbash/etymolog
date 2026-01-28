@@ -1,3 +1,5 @@
+@import '@styles/modal.module.scss';
+
 .topSection {
     display: grid;
     grid-template-columns: auto 1fr;
@@ -138,8 +140,10 @@
 
 // Modal Styles
 .modalContent {
-    background: var(--bg-primary);
-    padding: 2rem;
+    @extend .modalContentTemplate;
+    padding: 1rem;
+    min-width: 400px;
+    max-width: 90vw;
 }
 
 .errorMessage {

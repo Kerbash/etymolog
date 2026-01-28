@@ -38,6 +38,10 @@ export type {
     GlyphCanvasProps,
     GlyphCanvasInputProps,
     GlyphCanvasInputRef,
+    // Virtual glyph system types
+    VirtualGlyph,
+    GlyphSource,
+    KeyboardMode,
 } from './types';
 
 export { DEFAULT_WRITING_DIRECTION, DEFAULT_LAYOUT_CONFIG } from './types';
@@ -52,4 +56,15 @@ export {
 } from './strategies';
 
 // Utils
-export { calculateGlyphLayout, calculateBounds, mergeLayoutConfig } from './utils';
+export {
+    calculateGlyphLayout,
+    calculateBounds,
+    mergeLayoutConfig,
+    // Virtual glyph utilities
+    generateVirtualGlyphId,
+    generateIpaSvg,
+    createVirtualGlyph,
+    createVirtualGlyphs,
+    isVirtualGlyphId,
+    isVirtualGlyph,
+} from './utils';

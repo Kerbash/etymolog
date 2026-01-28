@@ -19,15 +19,13 @@ import { buttonStyles } from "cyber-components/interactable/buttons/button/butto
 
 // Local components & utilities
 import NewGraphemeForm from "./newGrapheme/newGrapheme.tsx";
-import GraphemeView from "./galleryGrapheme/galleryGrapheme.tsx";
+import GraphemeGallery from "./galleryGrapheme/graphemeGallery.tsx";
 import GlyphGallery from "./galleryGlyphs/galleryGlyphs.tsx";
 import { GlyphEditPage } from "./editGlyph";
 
 import { flex, sizing } from "utils-styles";
 import GraphemeEditPage from "./editGrapheme/GraphemeEditPage.tsx";
-import NewGlyphModal from "./newGlyph/NewGlyphModal.tsx";
 import NewGlyphPage from "./newGlyph/NewGlyphPage.tsx";
-import { useState } from "react";
 
 /**
  * Small navigation used inside the grapheme/glyph screens.
@@ -59,7 +57,7 @@ function GraphemeHome() {
     return (
         <>
             <GraphemeNav />
-            <GraphemeView />
+            <GraphemeGallery />
         </>
     );
 }

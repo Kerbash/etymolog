@@ -16,19 +16,20 @@
  */
 
 import classNames from "classnames";
-import { useState, useMemo, useEffect, useRef, useCallback } from "react";
-import type { LexiconComplete, LexiconAncestorFormRow } from "../../../db/types";
-import type { AutoSpellResult } from "../../../db/autoSpellService";
-import type { registerFieldReturnType } from "smart-form/types";
-import { useEtymolog } from "../../../db";
+import {useState, useMemo, useEffect, useRef, useCallback} from "react";
+import type {LexiconComplete, LexiconAncestorFormRow, AutoSpellResultExtended} from "../../../db/types";
+import type {registerFieldReturnType} from "smart-form/types";
+import {useEtymolog} from "../../../db";
+import {buildVirtualGlyphMap} from "../../../db/autoSpellService";
+import type {VirtualGlyph} from "../customInput/glyphCanvasInput/types";
 
 import LabelShiftTextInput from "smart-form/input/fancy/redditStyle/labelShiftTextInput/labelShiftTextInput.tsx";
 import LabelShiftTextCustomKeyboardInput from "smart-form/input/fancy/redditStyle/labelShiftTextCustomKeyboardInput";
 import HoverToolTip from "cyber-components/interactable/information/hoverToolTip/hoverToolTip.tsx";
 import TextInputValidatorFactory from "smart-form/commonValidatorFactory/textValidatorFactory/textValidatorFactory.ts";
-import { IPA_CHARACTERS } from "cyber-components/interactable/customKeyboard/ipaCharacters";
-import { AncestryInput } from "../customInput/ancestryInput";
-import { flex } from "utils-styles";
+import {IPA_CHARACTERS} from "cyber-components/interactable/customKeyboard/ipaCharacters";
+import {AncestryInput} from "../customInput/ancestryInput";
+import {flex} from "utils-styles";
 import styles from "./LexiconFormFields.module.scss";
 import {GlyphCanvasInput} from "@src/components/form/customInput/glyphCanvasInput";
 
@@ -79,14 +80,14 @@ function getSmartFieldValue(field: registerFieldReturnType): string {
 }
 
 export default function LexiconFormFields({
-    registerField,
-    mode,
-    initialData,
-    className,
-    onSpellingChange,
-    onAncestorsChange,
-}: LexiconFormFieldsProps) {
-    const { api, data } = useEtymolog();
+                                              registerField,
+                                              mode,
+                                              initialData,
+                                              className,
+                                              onSpellingChange,
+                                              onAncestorsChange,
+                                          }: LexiconFormFieldsProps) {
+    const {api, data} = useEtymolog();
 
     // Track if we've initialized the form with initial data
     const initializedRef = useRef(false);
@@ -115,7 +116,15 @@ export default function LexiconFormFields({
         initialData?.auto_spell ?? true
     );
 
-    const [autoSpellPreview, setAutoSpellPreview] = useState<AutoSpellResult | null>(null);
+    const [autoSpellPreview, setAutoSpellPreview] = useState<AutoSpellResultExtended | null>(null);
+
+    // Virtual glyphs from auto-spell (for IPA fallback characters)
+    const [autoSpellVirtualGlyphs, setAutoSpellVirtualGlyphs] = useState<Map<number, VirtualGlyph>>(new Map());
+
+    // Memoized callback for GlyphCanvasInput to prevent infinite loops
+    const handleSpellingChange = useCallback((ids: number[], _hasVirtualGlyphs?: boolean) => {
+        setSpellingIds(ids);
+    }, []);
 
     // Notify parent of spelling changes
     useEffect(() => {
@@ -200,13 +209,22 @@ export default function LexiconFormFields({
                 segments: [],
                 unmatchedParts: [],
                 error: 'Enter a pronunciation first',
+                hasVirtualGlyphs: false,
             });
+            setAutoSpellVirtualGlyphs(new Map());
             return;
         }
 
         const result = api.lexicon.previewAutoSpelling(pronunciation);
         if (result.success && result.data) {
             setAutoSpellPreview(result.data);
+            // Build virtual glyph map if the result contains virtual glyphs
+            if (result.data.hasVirtualGlyphs) {
+                const virtualMap = buildVirtualGlyphMap(result.data);
+                setAutoSpellVirtualGlyphs(virtualMap as Map<number, VirtualGlyph>);
+            } else {
+                setAutoSpellVirtualGlyphs(new Map());
+            }
         } else {
             setAutoSpellPreview({
                 success: false,
@@ -214,7 +232,9 @@ export default function LexiconFormFields({
                 segments: [],
                 unmatchedParts: [],
                 error: result.error?.message ?? 'Auto-spell failed',
+                hasVirtualGlyphs: false,
             });
+            setAutoSpellVirtualGlyphs(new Map());
         }
     }, [pronunciationField, api]);
 
@@ -237,6 +257,26 @@ export default function LexiconFormFields({
         <div className={classNames(styles.formFields, className)}>
             {/* Basic Info Section */}
             <div className={styles.section}>
+                {/* Spelling Section */}
+                <div className={styles.section}>
+                    <h3 className={styles.sectionHeader}>Spelling</h3>
+
+                    <GlyphCanvasInput
+                        {...spellingField}
+                        availableGlyphs={availableGraphemes}
+                        defaultValue={spellingIds}
+                        onSelectionChange={handleSpellingChange}
+                        autoSpellPreview={autoSpellEnabled ? autoSpellPreview : null}
+                        onRequestAutoSpell={autoSpellEnabled ? handleRequestAutoSpell : undefined}
+                        enableIpaMode={true}
+                        initialVirtualGlyphs={autoSpellVirtualGlyphs}
+                    />
+
+                    {/* Hidden state sync */}
+                    <input type="hidden" name="isNative" value={isNative.toString()}/>
+                    <input type="hidden" name="autoSpell" value={autoSpellEnabled.toString()}/>
+                </div>
+
                 <h3 className={styles.sectionHeader}>Basic Information</h3>
 
                 <div className={classNames(flex.flexCol, flex.flexGapM)}>
@@ -300,13 +340,14 @@ export default function LexiconFormFields({
                         />
                         <span>Native Word</span>
                     </label>
-                    <HoverToolTip content="Check if this word is native to the conlang. External/borrowed words may not have pronunciation.">
+                    <HoverToolTip
+                        content="Check if this word is native to the conlang. External/borrowed words may not have pronunciation.">
                         <span className={styles.helpIcon}>?</span>
                     </HoverToolTip>
                 </div>
 
                 <div className={styles.checkboxRow}>
-                    <label className={classNames(styles.checkboxLabel, { [styles.disabled]: !isNative })}>
+                    <label className={classNames(styles.checkboxLabel, {[styles.disabled]: !isNative})}>
                         <input
                             type="checkbox"
                             checked={autoSpellEnabled && isNative}
@@ -325,24 +366,6 @@ export default function LexiconFormFields({
                         External word: pronunciation is optional and auto-spell is disabled.
                     </div>
                 )}
-            </div>
-
-            {/* Spelling Section */}
-            <div className={styles.section}>
-                <h3 className={styles.sectionHeader}>Spelling</h3>
-
-                <GlyphCanvasInput
-                    {...spellingField}
-                    availableGlyphs={availableGraphemes}
-                    defaultValue={spellingIds}
-                    onSelectionChange={(ids) => setSpellingIds(ids)}
-                    autoSpellPreview={autoSpellEnabled ? autoSpellPreview : null}
-                    onRequestAutoSpell={autoSpellEnabled ? handleRequestAutoSpell : undefined}
-                />
-
-                {/* Hidden state sync */}
-                <input type="hidden" name="isNative" value={isNative.toString()} />
-                <input type="hidden" name="autoSpell" value={autoSpellEnabled.toString()} />
             </div>
 
             {/* Etymology Section */}

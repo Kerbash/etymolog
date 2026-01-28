@@ -13,7 +13,7 @@ import LexiconViewPage from './viewLexicon/LexiconViewPage';
 
 export default function LexiconMain() {
     return (
-        <div className={classNames(flex.flexColumn, sizing.parentSize)}>
+        <div className={classNames(flex.flexRow, flex.flexGapM, sizing.paddingM)} style={{ marginBottom: '1rem' }}>
             <Routes>
                 <Route index element={<LexiconHome />} />
                 <Route path="create" element={<CreateLexiconPage />} />

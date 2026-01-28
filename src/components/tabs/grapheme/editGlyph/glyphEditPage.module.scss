@@ -1,4 +1,5 @@
 /* GlyphEditPage styles */
+@import '@styles/modal.module.scss';
 
 .pageContainer {
     padding: 1rem;
@@ -29,9 +30,10 @@
 }
 
 .modalContent {
-    padding: 1.5rem;
+    @extend .modalContentTemplate;
+    padding: 1rem;
     min-width: 400px;
-    max-width: 600px;
+    max-width: 90vw;
 }
 
 .warningText {

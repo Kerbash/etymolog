@@ -4,6 +4,7 @@
  * Type system for the glyph canvas input component that supports:
  * - Directional writing systems (LTR, RTL, TTB, BTT, custom)
  * - Modular insertion/removal strategies
+ * - Virtual IPA glyph fallback system
  * - Future cursor-based selection
  *
  * @module glyphCanvasInput/types
@@ -12,6 +13,48 @@
 import type { CSSProperties, ReactNode } from 'react';
 import type { Glyph, GlyphWithUsage } from '../../../../db/types';
 import type { registerFieldReturnType } from 'smart-form/types';
+
+// =============================================================================
+// VIRTUAL GLYPH SYSTEM
+// =============================================================================
+
+/**
+ * Discriminator for glyph source type.
+ * - `real`: A glyph from the database
+ * - `virtual-ipa`: A virtual glyph generated for IPA fallback
+ */
+export type GlyphSource = 'real' | 'virtual-ipa';
+
+/**
+ * Virtual glyph for IPA character fallback.
+ * Used when no real glyph exists for an IPA character during auto-spell.
+ *
+ * Virtual glyphs have negative IDs (generated from hash) to distinguish
+ * them from real database glyphs which have positive IDs.
+ */
+export interface VirtualGlyph {
+    /** Negative ID generated from IPA character hash */
+    id: number;
+    /** The IPA character this virtual glyph represents */
+    ipaCharacter: string;
+    /** Display name (typically the IPA character itself) */
+    name: string;
+    /** Generated SVG data showing the IPA character */
+    svg_data: string;
+    /** Always 'IPA Fallback' for virtual glyphs */
+    category: string;
+    /** Optional notes/description */
+    notes: string | null;
+    /** Source discriminator - always 'virtual-ipa' */
+    source: 'virtual-ipa';
+}
+
+/**
+ * Keyboard mode for glyph selection.
+ * - `glyphs`: Show available glyphs from the database
+ * - `ipa`: Show IPA character keyboard for virtual glyph creation
+ */
+export type KeyboardMode = 'glyphs' | 'ipa';
 
 // =============================================================================
 // WRITING DIRECTION
@@ -197,6 +240,10 @@ export interface GlyphKeyboardOverlayProps {
     className?: string;
     /** Additional styles */
     style?: CSSProperties;
+    /** Enable IPA keyboard mode toggle */
+    enableIpaMode?: boolean;
+    /** Called when an IPA character is selected (creates virtual glyph) */
+    onIpaSelect?: (ipaChar: string, virtualGlyph: VirtualGlyph) => void;
 }
 
 // =============================================================================

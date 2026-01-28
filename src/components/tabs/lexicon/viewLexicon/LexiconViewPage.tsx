@@ -9,6 +9,7 @@ import { useState, useCallback, useRef, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useEtymolog } from '../../../../db';
 import type { UpdateLexiconInput, LexiconAncestorFormRow, LexiconComplete } from '../../../../db/types';
+import { isVirtualGlyphId } from '../../../form/customInput/glyphCanvasInput';
 import { SmartForm, useSmartForm } from 'smart-form/smartForm';
 import type { useSmartFormRef } from 'smart-form/types';
 import { LexiconFormFields } from '../../../form/lexiconForm';
@@ -103,9 +104,17 @@ export default function LexiconViewPage() {
                 throw new Error(updateResult.error?.message || 'Failed to update');
             }
 
-            // Update spelling
+            // Filter out virtual glyph IDs (negative IDs are virtual/temporary)
+            const realSpellingIds = spellingIds.filter(id => !isVirtualGlyphId(id));
+            const virtualCount = spellingIds.length - realSpellingIds.length;
+
+            if (virtualCount > 0) {
+                console.warn(`Filtered out ${virtualCount} virtual IPA glyph(s) - these need real graphemes to be saved`);
+            }
+
+            // Update spelling (only real grapheme IDs)
             const spellingResult = api.lexicon.updateSpelling(lexiconId, {
-                spelling: spellingIds.map((gid, idx) => ({
+                spelling: realSpellingIds.map((gid, idx) => ({
                     grapheme_id: gid,
                     position: idx,
                 })),

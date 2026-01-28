@@ -11,23 +11,25 @@
  * - Virtualization for large datasets
  */
 
-import { useState, useMemo, useCallback } from 'react';
-import { Link } from 'react-router-dom';
-import type { GraphemeComplete } from '../../../../db/types';
+import {useState, useMemo, useCallback} from 'react';
+import {Link, useNavigate} from 'react-router-dom';
+import type {GraphemeComplete} from '@src/db';
 import DetailedGraphemeDisplay from '../../../display/grapheme/detailed/detailed.tsx';
 import CompactGraphemeDisplay from '../../../display/grapheme/compact/compact.tsx';
 import IconButton from 'cyber-components/interactable/buttons/iconButton/iconButton.tsx';
 import Modal from 'cyber-components/container/modal/modal.tsx';
 import Button from 'cyber-components/interactable/buttons/button/button.tsx';
-import { buttonStyles } from 'cyber-components/interactable/buttons/button/button.tsx';
-import { DataGallery, type GalleryViewMode, type SortOption } from 'cyber-components/display/dataGallery';
-import { useEtymolog } from '../../../../db';
+import {buttonStyles} from 'cyber-components/interactable/buttons/button/button.tsx';
+import {DataGallery, type GalleryViewMode, type SortOption} from 'cyber-components/display/dataGallery';
+import {useEtymolog} from '@src/db';
 
 // Map our legacy ViewMode to DataGallery's GalleryViewMode
 export type ViewMode = 'expanded' | 'compact';
 
 interface GraphemeGalleryProps {
-    graphemes: GraphemeComplete[];
+    // Make graphemes optional so this component can act as a container when
+    // no prop is provided (it will source data from useEtymolog()).
+    graphemes?: GraphemeComplete[];
     isLoading?: boolean;
     error?: Error | null;
     /** Initial view mode */
@@ -38,10 +40,10 @@ interface GraphemeGalleryProps {
 
 // Sort options for the gallery
 const SORT_OPTIONS: SortOption[] = [
-    { value: 'name-asc', displayComponent: <span>Name (A-Z)</span> },
-    { value: 'name-desc', displayComponent: <span>Name (Z-A)</span> },
-    { value: 'glyphs-desc', displayComponent: <span>Most Glyphs</span> },
-    { value: 'glyphs-asc', displayComponent: <span>Fewest Glyphs</span> },
+    {value: 'name-asc', displayComponent: <span>Name (A-Z)</span>},
+    {value: 'name-desc', displayComponent: <span>Name (Z-A)</span>},
+    {value: 'glyphs-desc', displayComponent: <span>Most Glyphs</span>},
+    {value: 'glyphs-asc', displayComponent: <span>Fewest Glyphs</span>},
 ];
 
 // Results per page options
@@ -52,13 +54,26 @@ const RESULTS_PER_PAGE_OPTIONS = [12, 24, 48, 96];
  * Now uses DataGallery for consistent UI and features
  */
 export default function GraphemeGallery({
-    graphemes,
-    isLoading,
-    error,
-    defaultViewMode = 'expanded',
-    onGraphemeClick,
-}: GraphemeGalleryProps) {
-    const { api, refresh } = useEtymolog();
+                                            graphemes,
+                                            isLoading: isLoadingProp,
+                                            error: errorProp,
+                                            defaultViewMode = 'expanded',
+                                            onGraphemeClick,
+                                        }: GraphemeGalleryProps) {
+    // Use etymolog context for API + optionally data
+    const etymolog = useEtymolog();
+    const {
+        api,
+        refresh,
+        data: etymologData,
+        isLoading: etymologLoading,
+        error: etymologError
+    } = etymolog || ({} as any);
+
+    // Provide default grapheme list / loading / error from context when props aren't passed
+    const graphemesToRender: GraphemeComplete[] = graphemes ?? (etymologData?.graphemesComplete ?? []);
+    const isLoading = isLoadingProp ?? Boolean(etymologLoading);
+    const error = errorProp ?? (etymologError as Error | null | undefined) ?? null;
 
     // Local delete modal state
     const [graphemeToDelete, setGraphemeToDelete] = useState<number | null>(null);
@@ -75,9 +90,17 @@ export default function GraphemeGallery({
     const [curPage, setCurPage] = useState(1);
     const [maxResultPerPage, setMaxResultPerPage] = useState(24);
 
+    // Navigation / default click handler
+    const navigate = useNavigate();
+    const defaultOnGraphemeClick = useCallback((g: GraphemeComplete) => {
+        navigate(`/script-maker/grapheme/db/${g.id}`);
+    }, [navigate]);
+
+    const internalOnGraphemeClick = onGraphemeClick ?? defaultOnGraphemeClick;
+
     // Filter and sort graphemes
     const filteredAndSortedGraphemes = useMemo(() => {
-        let result = graphemes;
+        let result = graphemesToRender;
 
         // Filter by search query
         if (searchQuery.trim()) {
@@ -116,7 +139,7 @@ export default function GraphemeGallery({
         });
 
         return result;
-    }, [graphemes, searchQuery, sortBy]);
+    }, [graphemesToRender, searchQuery, sortBy]);
 
     // Calculate pagination
     const maxPage = Math.max(1, Math.ceil(filteredAndSortedGraphemes.length / maxResultPerPage));
@@ -140,10 +163,10 @@ export default function GraphemeGallery({
     }, []);
 
     const handleItemActivate = useCallback((grapheme: GraphemeComplete) => {
-        if (onGraphemeClick) {
-            onGraphemeClick(grapheme);
+        if (internalOnGraphemeClick) {
+            internalOnGraphemeClick(grapheme);
         }
-    }, [onGraphemeClick]);
+    }, [internalOnGraphemeClick]);
 
     // New: open delete modal for a grapheme
     const handleDelete = useCallback((id: number, e?: React.MouseEvent) => {
@@ -160,7 +183,10 @@ export default function GraphemeGallery({
                 console.error('Failed to delete grapheme:', result.error?.message);
             } else {
                 // Refresh context so UI updates immediately
-                try { refresh?.(); } catch (e) { /* ignore refresh errors */ }
+                try {
+                    refresh?.();
+                } catch (e) { /* ignore refresh errors */
+                }
             }
             // Close modal
             setGraphemeToDelete(null);
@@ -174,37 +200,33 @@ export default function GraphemeGallery({
     // Renderers
     const renderDetailed = useCallback((grapheme: GraphemeComplete) => (
         <div
-            onClick={() => onGraphemeClick?.(grapheme)}
+            onClick={() => internalOnGraphemeClick?.(grapheme)}
             style={{
-                cursor: onGraphemeClick ? 'pointer' : 'default',
+                cursor: 'pointer',
                 transition: 'transform 0.2s ease, box-shadow 0.2s ease',
                 borderRadius: '8px',
                 position: 'relative', // for top-right button
             }}
-            className={onGraphemeClick ? 'grapheme-clickable' : undefined}
-            role={onGraphemeClick ? 'button' : undefined}
-            tabIndex={onGraphemeClick ? 0 : undefined}
-            onKeyDown={onGraphemeClick ? (e) => {
+            className={'grapheme-clickable'}
+            role={'button'}
+            tabIndex={0}
+            onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
-                    onGraphemeClick(grapheme);
-                }
-            } : undefined}
-            onMouseEnter={(e) => {
-                if (onGraphemeClick) {
-                    e.currentTarget.style.transform = 'translateY(-2px)';
-                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+                    internalOnGraphemeClick(grapheme);
                 }
             }}
+            onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+            }}
             onMouseLeave={(e) => {
-                if (onGraphemeClick) {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = 'none';
-                }
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = 'none';
             }}
         >
             {/* Top-right delete button */}
-            <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 10 }}>
+            <div style={{position: 'absolute', top: 8, right: 8, zIndex: 10}}>
                 <IconButton
                     iconName="trash"
                     iconColor={'var(--status-bad)'}
@@ -213,13 +235,13 @@ export default function GraphemeGallery({
                 />
             </div>
 
-            <DetailedGraphemeDisplay graphemeData={grapheme} />
+            <DetailedGraphemeDisplay graphemeData={grapheme}/>
         </div>
-    ), [onGraphemeClick, handleDelete]);
+    ), [internalOnGraphemeClick, handleDelete]);
 
     const renderCompact = useCallback((grapheme: GraphemeComplete) => (
-        <div style={{ position: 'relative' }}>
-            <div style={{ position: 'absolute', top: 6, right: 6, zIndex: 10 }}>
+        <div style={{position: 'relative'}}>
+            <div style={{position: 'absolute', top: 6, right: 6, zIndex: 10}}>
                 <IconButton
                     iconName="trash"
                     iconColor={'var(--status-bad)'}
@@ -229,32 +251,35 @@ export default function GraphemeGallery({
             </div>
             <CompactGraphemeDisplay
                 graphemeData={grapheme}
-                onClick={onGraphemeClick ? () => onGraphemeClick(grapheme) : undefined}
+                onClick={() => internalOnGraphemeClick(grapheme)}
             />
         </div>
-    ), [onGraphemeClick, handleDelete]);
+    ), [internalOnGraphemeClick, handleDelete]);
 
     // Custom empty slot with create button
-    const emptySlot = useCallback(({ searchQuery, hasActiveFilters }: { searchQuery?: string; hasActiveFilters?: boolean }) => {
+    const emptySlot = useCallback(({searchQuery, hasActiveFilters}: {
+        searchQuery?: string;
+        hasActiveFilters?: boolean
+    }) => {
         if (searchQuery || hasActiveFilters) {
             return (
-                <div style={{ textAlign: 'center', padding: '2rem' }}>
+                <div style={{textAlign: 'center', padding: '2rem'}}>
                     <p>No graphemes match your search "{searchQuery}"</p>
-                    <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                    <p style={{fontSize: '0.875rem', color: 'var(--text-secondary)'}}>
                         Try adjusting your search terms
                     </p>
                 </div>
             );
         }
         return (
-            <div style={{ textAlign: 'center', padding: '2rem' }}>
+            <div style={{textAlign: 'center', padding: '2rem'}}>
                 <p>No graphemes found. Create one to get started!</p>
                 <IconButton
                     as={Link}
                     to="/script-maker/create"
                     iconName="plus-lg"
                     className={buttonStyles.primary}
-                    style={{ marginTop: '1rem' }}
+                    style={{marginTop: '1rem'}}
                 >
                     Add Your First Glyph
                 </IconButton>
@@ -323,6 +348,13 @@ export default function GraphemeGallery({
 
                 // Accessibility
                 ariaLabel="Grapheme gallery"
+
+                // ... other props
+                styling={{
+                    content: {
+                        style: {padding: '1rem 0.2rem'}       // inline style
+                    }
+                }}
             />
 
             {/* Delete Confirmation Modal */}
@@ -334,19 +366,19 @@ export default function GraphemeGallery({
                 onClose={() => setGraphemeToDelete(null)}
                 allowClose={true}
             >
-                <div style={{ padding: '1rem', minWidth: 320 }}>
-                    <h2 style={{ marginTop: 0 }}>Delete grapheme</h2>
+                <div style={{padding: '1rem', minWidth: 320}}>
+                    <h2 style={{marginTop: 0}}>Delete grapheme</h2>
 
                     <p>Are you sure you would like to delete this grapheme?</p>
 
-                    <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
+                    <div style={{display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem'}}>
                         <Button onClick={() => setGraphemeToDelete(null)} disabled={isDeleting}>
                             Cancel
                         </Button>
                         <Button
                             onClick={() => confirmDelete(graphemeToDelete)}
                             disabled={isDeleting}
-                            style={{ background: 'var(--danger)', color: 'white' }}
+                            style={{background: 'var(--danger)', color: 'white'}}
                         >
                             {isDeleting ? 'Deleting...' : 'Delete grapheme'}
                         </Button>

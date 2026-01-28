@@ -59,12 +59,13 @@ import type {
     GlyphCanvasInputRef,
     GlyphCanvasRef,
     InsertionStrategy,
+    VirtualGlyph,
 } from './types';
-import type { Glyph, GlyphWithUsage, GraphemeComplete } from '../../../../db/types';
+import type { Glyph, GlyphWithUsage, GraphemeComplete, AutoSpellResultExtended } from '../../../../db/types';
 import { defaultInsertionStrategy } from './strategies';
 import { GlyphCanvas } from './GlyphCanvas';
 import { GlyphKeyboardOverlay } from './GlyphKeyboardOverlay';
-import { buildRenderableMap, normalizeToRenderable, type RenderableGlyph } from './utils';
+import { buildRenderableMap, normalizeToRenderable, isVirtualGlyphId, createVirtualGlyph, type RenderableGlyph } from './utils';
 
 import styles from './GlyphCanvasInput.module.scss';
 
@@ -74,11 +75,15 @@ export interface GlyphCanvasInputProps extends _OrigProps {
     /** Optional explicit available glyphs/graphemes prop (supports Glyph, GlyphWithUsage, or GraphemeComplete) */
     availableGlyphs?: (Glyph | GlyphWithUsage | GraphemeComplete)[];
     /** Called whenever the selection changes (happy-path hook) */
-    onSelectionChange?: (ids: number[]) => void;
-    /** Optional auto-spell preview provided by parent */
-    autoSpellPreview?: any | null;
+    onSelectionChange?: (ids: number[], hasVirtualGlyphs: boolean) => void;
+    /** Optional auto-spell preview provided by parent (supports virtual IPA glyphs) */
+    autoSpellPreview?: AutoSpellResultExtended | null;
     /** Request auto-spell handler (parent provides generation) */
     onRequestAutoSpell?: (() => void) | undefined;
+    /** Enable IPA keyboard mode for virtual glyph creation */
+    enableIpaMode?: boolean;
+    /** Initial virtual glyphs from auto-spell (merged with component's internal map) */
+    initialVirtualGlyphs?: Map<number, VirtualGlyph>;
 }
 
 /**
@@ -105,6 +110,8 @@ const GlyphCanvasInput = forwardRef<GlyphCanvasInputRef, GlyphCanvasInputProps>(
             onSelectionChange,
             autoSpellPreview = null,
             onRequestAutoSpell,
+            enableIpaMode = false,
+            initialVirtualGlyphs,
         },
         _
     ) {
@@ -117,6 +124,16 @@ const GlyphCanvasInput = forwardRef<GlyphCanvasInputRef, GlyphCanvasInputProps>(
 
         // State
         const [selectedIds, setSelectedIds] = useState<number[]>(Array.isArray(defaultValue) ? defaultValue : defaultValue ?? []);
+
+        // Virtual glyph map - stores virtual glyphs created from IPA keyboard
+        const [virtualGlyphMap, setVirtualGlyphMap] = useState<Map<number, VirtualGlyph>>(new Map());
+
+        // Refs for stable access in useImperativeHandle and useEffect (prevents infinite loops)
+        const selectedIdsRef = useRef(selectedIds);
+        selectedIdsRef.current = selectedIds;
+
+        const onSelectionChangeRef = useRef(onSelectionChange);
+        onSelectionChangeRef.current = onSelectionChange;
         const [cursor, setCursor] = useState<number | null>(null);
         const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
 
@@ -126,9 +143,48 @@ const GlyphCanvasInput = forwardRef<GlyphCanvasInputRef, GlyphCanvasInputProps>(
         }, [insertionStrategy]);
 
         // Build glyph lookup map - normalizes GraphemeComplete, Glyph, and GlyphWithUsage
-        const glyphMap = useMemo(() => {
+        const baseGlyphMap = useMemo(() => {
             return buildRenderableMap(availableGlyphs as (Glyph | GlyphWithUsage | GraphemeComplete)[]);
         }, [availableGlyphs]);
+
+        // Merged glyph map including virtual glyphs for canvas rendering
+        const glyphMap = useMemo(() => {
+            const merged = new Map(baseGlyphMap);
+
+            // Add initial virtual glyphs from auto-spell (if provided)
+            if (initialVirtualGlyphs) {
+                for (const [id, virtualGlyph] of initialVirtualGlyphs) {
+                    merged.set(id, {
+                        id: virtualGlyph.id,
+                        name: virtualGlyph.name,
+                        svg_data: virtualGlyph.svg_data,
+                        category: virtualGlyph.category,
+                        notes: virtualGlyph.notes,
+                    });
+                }
+            }
+
+            // Add component's internal virtual glyphs (from IPA keyboard)
+            for (const [id, virtualGlyph] of virtualGlyphMap) {
+                merged.set(id, {
+                    id: virtualGlyph.id,
+                    name: virtualGlyph.name,
+                    svg_data: virtualGlyph.svg_data,
+                    category: virtualGlyph.category,
+                    notes: virtualGlyph.notes,
+                });
+            }
+            return merged;
+        }, [baseGlyphMap, virtualGlyphMap, initialVirtualGlyphs]);
+
+        // Check if selection contains virtual glyphs (from either source)
+        const hasVirtualGlyphs = useMemo(() => {
+            return selectedIds.some(id =>
+                isVirtualGlyphId(id) ||
+                virtualGlyphMap.has(id) ||
+                initialVirtualGlyphs?.has(id)
+            );
+        }, [selectedIds, virtualGlyphMap, initialVirtualGlyphs]);
 
         // Convert availableGlyphs to RenderableGlyph[] for keyboard overlay
         const renderableGlyphs = useMemo(() => {
@@ -142,9 +198,10 @@ const GlyphCanvasInput = forwardRef<GlyphCanvasInputRef, GlyphCanvasInputProps>(
         }), [direction, canvasLayout]);
 
         // Expose value via useImperativeHandle
+        // Use ref for value getter to prevent handle recreation when state changes
         useImperativeHandle(registerSmartFieldProps.ref, () => ({
             get value(): number[] {
-                return selectedIds;
+                return selectedIdsRef.current;
             },
             resetCanvasView: () => canvasRef.current?.resetView(),
             fitCanvasToView: () => canvasRef.current?.fitToView(),
@@ -154,6 +211,7 @@ const GlyphCanvasInput = forwardRef<GlyphCanvasInputRef, GlyphCanvasInputProps>(
                 const result = strategy.clear();
                 setSelectedIds(result.selection);
                 setCursor(result.cursor);
+                setVirtualGlyphMap(new Map()); // Also clear virtual glyphs
             },
             // Backwards-compatible setValue pattern
             setValue: (val: number[], options?: any) => {
@@ -164,9 +222,10 @@ const GlyphCanvasInput = forwardRef<GlyphCanvasInputRef, GlyphCanvasInputProps>(
                     fieldStateRef.current.isEmpty.setIsEmpty((val ?? []).length === 0);
                 }
             }
-        }), [selectedIds, strategy]);
+        }), [strategy]);
 
         // Update parent field state when selection changes
+        // Use ref for callback to prevent re-runs when callback reference changes
         useEffect(() => {
             if (isInitialRender.current) {
                 isInitialRender.current = false;
@@ -178,9 +237,11 @@ const GlyphCanvasInput = forwardRef<GlyphCanvasInputRef, GlyphCanvasInputProps>(
             fieldStateRef.current.isEmpty.setIsEmpty(selectedIds.length === 0);
             fieldStateRef.current.isInputValid.setIsInputValid(true);
 
-            // Notify parent via callback (new prop)
+            // Notify parent via callback using ref (prevents infinite loops)
+            // Include hasVirtualGlyphs flag so parent knows if virtual glyphs are present
             try {
-                onSelectionChange?.(selectedIds.slice());
+                const containsVirtual = selectedIds.some(id => isVirtualGlyphId(id));
+                onSelectionChangeRef.current?.(selectedIds.slice(), containsVirtual);
             } catch (e) {
                 // swallow - callback should not break input
                 // eslint-disable-next-line no-console
@@ -192,10 +253,27 @@ const GlyphCanvasInput = forwardRef<GlyphCanvasInputRef, GlyphCanvasInputProps>(
             if (hiddenInput) {
                 hiddenInput.value = JSON.stringify(selectedIds);
             }
-        }, [selectedIds, onSelectionChange, registerSmartFieldProps.name]);
+        }, [selectedIds, registerSmartFieldProps.name]);
 
-        // Handle glyph selection from keyboard
-        const handleSelect = useCallback((glyph: { id: number }) => {
+        // Handle glyph selection from keyboard (both real and virtual glyphs)
+        const handleSelect = useCallback((glyph: { id: number; name?: string; svg_data?: string; category?: string | null; notes?: string | null }) => {
+            // If this is a virtual glyph (negative ID), add it to the virtual glyph map
+            if (isVirtualGlyphId(glyph.id) && glyph.svg_data) {
+                setVirtualGlyphMap(prev => {
+                    const next = new Map(prev);
+                    next.set(glyph.id, {
+                        id: glyph.id,
+                        ipaCharacter: glyph.name ?? '',
+                        name: glyph.name ?? '',
+                        svg_data: glyph.svg_data ?? '',
+                        category: glyph.category ?? 'IPA Fallback',
+                        notes: glyph.notes ?? null,
+                        source: 'virtual-ipa',
+                    });
+                    return next;
+                });
+            }
+
             const result = strategy.insert(selectedIds, glyph.id, cursor);
             setSelectedIds(result.selection);
             setCursor(result.cursor);
@@ -213,7 +291,34 @@ const GlyphCanvasInput = forwardRef<GlyphCanvasInputRef, GlyphCanvasInputProps>(
             const result = strategy.clear();
             setSelectedIds(result.selection);
             setCursor(result.cursor);
+            setVirtualGlyphMap(new Map()); // Also clear virtual glyphs
         }, [strategy]);
+
+        // Handle applying auto-spell results
+        const handleApplyAutoSpell = useCallback(() => {
+            if (!autoSpellPreview?.success || !autoSpellPreview.spelling) return;
+
+            // Extract glyph IDs from the auto-spell result
+            const newIds = autoSpellPreview.spelling.map(s => s.grapheme_id);
+
+            // Add any virtual glyphs to the map
+            if (autoSpellPreview.hasVirtualGlyphs) {
+                setVirtualGlyphMap(prev => {
+                    const next = new Map(prev);
+                    for (const entry of autoSpellPreview.spelling) {
+                        if (entry.isVirtual && entry.ipaCharacter) {
+                            const virtualGlyph = createVirtualGlyph(entry.ipaCharacter);
+                            next.set(entry.grapheme_id, virtualGlyph);
+                        }
+                    }
+                    return next;
+                });
+            }
+
+            // Set the selection
+            setSelectedIds(newIds);
+            setCursor(null);
+        }, [autoSpellPreview]);
 
         // Open keyboard
         const handleOpenKeyboard = useCallback(() => {
@@ -242,6 +347,7 @@ const GlyphCanvasInput = forwardRef<GlyphCanvasInputRef, GlyphCanvasInputProps>(
                     <div className={styles.actions}>
                         <span className={styles.count}>
                             {selectedIds.length} glyph{selectedIds.length !== 1 ? 's' : ''}
+                            {hasVirtualGlyphs && <span className={styles.virtualIndicator}> (includes IPA)</span>}
                         </span>
                         {selectedIds.length > 0 && (
                             <IconButton
@@ -275,16 +381,53 @@ const GlyphCanvasInput = forwardRef<GlyphCanvasInputRef, GlyphCanvasInputProps>(
                     </div>
                 </div>
 
-                {/* Inline auto-spell preview (compact) */}
+                {/* Inline auto-spell preview with Apply button */}
                 {autoSpellPreview && (
                     <div className={styles.autoSpellPreview} role="status" aria-live="polite">
                         {autoSpellPreview.success ? (
                             <div className={styles.previewSuccess}>
-                                Auto-spell: {autoSpellPreview.spelling.map(s => s.grapheme_id).join(', ')}
+                                <span className={styles.previewLabel}>
+                                    Auto-spell ready ({autoSpellPreview.spelling.length} glyphs
+                                    {autoSpellPreview.hasVirtualGlyphs && ', includes IPA fallbacks'}):
+                                </span>
+                                <div className={styles.previewGlyphs}>
+                                    {autoSpellPreview.spelling.map((s, i) => (
+                                        <span
+                                            key={`${s.grapheme_id}-${i}`}
+                                            className={classNames(styles.previewGlyph, {
+                                                [styles.previewVirtual]: s.isVirtual,
+                                            })}
+                                            title={s.isVirtual ? `IPA: ${s.ipaCharacter}` : `Grapheme #${s.grapheme_id}`}
+                                        >
+                                            {s.isVirtual ? s.ipaCharacter : `#${s.grapheme_id}`}
+                                        </span>
+                                    ))}
+                                </div>
+                                <IconButton
+                                    iconName="check"
+                                    onClick={handleApplyAutoSpell}
+                                    aria-label="Apply auto-spell"
+                                    themeType="basic"
+                                    iconSize="1rem"
+                                    iconColor="var(--status-good, green)"
+                                >
+                                    Apply
+                                </IconButton>
                             </div>
                         ) : (
                             <div className={styles.previewError}>{autoSpellPreview.error ?? 'Auto-spell failed'}</div>
                         )}
+                    </div>
+                )}
+
+                {/* Warning when virtual glyphs are present */}
+                {hasVirtualGlyphs && (
+                    <div className={styles.virtualWarning} role="alert">
+                        <i className="bi-exclamation-triangle" aria-hidden="true" />
+                        <span>
+                            IPA fallback glyphs (dashed borders) are temporary placeholders.
+                            Create real graphemes for these characters to save them permanently.
+                        </span>
                     </div>
                 )}
 
@@ -317,6 +460,7 @@ const GlyphCanvasInput = forwardRef<GlyphCanvasInputRef, GlyphCanvasInputProps>(
                     onClose={handleCloseKeyboard}
                     searchable={searchable}
                     height={keyboardHeight}
+                    enableIpaMode={enableIpaMode}
                 />
 
                 {/* Hidden input for form submission */}

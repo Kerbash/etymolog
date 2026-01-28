@@ -454,3 +454,40 @@ export interface LexiconAncestorFormRow {
     ancestryType: AncestryType;
 }
 
+// =============================================================================
+// AUTO-SPELL EXTENDED TYPES (Virtual Glyph Support)
+// =============================================================================
+
+/**
+ * Extended auto-spell result that supports virtual IPA glyph fallbacks.
+ * Used when auto-spell cannot match all pronunciation characters to graphemes.
+ */
+export interface AutoSpellResultExtended {
+    success: boolean;
+    /** Ordered spelling entries (may include virtual glyphs) */
+    spelling: AutoSpellEntry[];
+    /** Phoneme segments matched (for debugging/display) */
+    segments: string[];
+    /** Any unmatched portions (empty when using fallback) */
+    unmatchedParts: string[];
+    /** Error message if not successful */
+    error?: string;
+    /** Whether the result includes virtual IPA fallback glyphs */
+    hasVirtualGlyphs: boolean;
+}
+
+/**
+ * A single entry in the extended auto-spell result.
+ * Can represent either a real grapheme or a virtual IPA fallback.
+ */
+export interface AutoSpellEntry {
+    /** Grapheme ID (positive for real, negative for virtual) */
+    grapheme_id: number;
+    /** Position in the spelling sequence */
+    position: number;
+    /** Whether this is a virtual IPA fallback glyph */
+    isVirtual: boolean;
+    /** The IPA character (only present for virtual glyphs) */
+    ipaCharacter?: string;
+}
+

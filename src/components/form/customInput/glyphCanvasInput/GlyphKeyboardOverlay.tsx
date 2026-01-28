@@ -3,22 +3,25 @@
  *
  * A bottom-pinned overlay that displays available glyphs for selection.
  * Wraps the CustomKeyboard component with glyph-specific rendering.
+ * Supports two modes: Glyphs (database glyphs) and IPA (virtual glyph creation).
  *
  * @module glyphCanvasInput/GlyphKeyboardOverlay
  */
 
 'use client';
 
-import React, {useMemo, useCallback, useEffect, useRef} from 'react';
+import React, {useMemo, useCallback, useEffect, useRef, useState} from 'react';
 import classNames from 'classnames';
 import DOMPurify from 'dompurify';
 
 import CustomKeyboard from 'cyber-components/interactable/customKeyboard/customKeyboard';
 import type {KeyboardCharacter} from 'cyber-components/interactable/customKeyboard/types';
+import {IPA_CHARACTERS} from 'cyber-components/interactable/customKeyboard/ipaCharacters';
 import IconButton from 'cyber-components/interactable/buttons/iconButton/iconButton';
 import HoverToolTip from 'cyber-components/interactable/information/hoverToolTip/hoverToolTip';
 
-import type {GlyphKeyboardOverlayProps, GlyphLike} from './types';
+import type {GlyphKeyboardOverlayProps, GlyphLike, KeyboardMode} from './types';
+import {createVirtualGlyph} from './utils';
 
 import styles from './GlyphKeyboardOverlay.module.scss';
 
@@ -70,10 +73,22 @@ function renderGlyphCharacter(character: KeyboardCharacter): React.ReactNode {
 }
 
 /**
+ * Convert IPA characters to single "IPA" category for keyboard display.
+ * All IPA characters are grouped under one category for simplicity.
+ */
+function wrapIpaAsKeyboardCharacters(): KeyboardCharacter[] {
+    return IPA_CHARACTERS.map(char => ({
+        ...char,
+        category: 'IPA',  // Single category for all IPA characters
+    }));
+}
+
+/**
  * GlyphKeyboardOverlay
  *
  * A bottom-pinned overlay that shows a glyph picker keyboard.
  * Supports search, category grouping, and add/remove/clear actions.
+ * Can toggle between Glyphs mode (database glyphs) and IPA mode (virtual glyph creation).
  *
  * @example
  * ```tsx
@@ -83,6 +98,8 @@ function renderGlyphCharacter(character: KeyboardCharacter): React.ReactNode {
  *   onRemove={() => handleRemoveGlyph()}
  *   isOpen={isKeyboardOpen}
  *   onClose={() => setIsKeyboardOpen(false)}
+ *   enableIpaMode={true}
+ *   onIpaSelect={(char, virtualGlyph) => handleIpaSelect(virtualGlyph)}
  * />
  * ```
  */
@@ -97,14 +114,27 @@ export default function GlyphKeyboardOverlay({
                                                  height = '260px',
                                                  className,
                                                  style,
+                                                 enableIpaMode = false,
+                                                 onIpaSelect,
                                              }: GlyphKeyboardOverlayProps) {
     const overlayRef = useRef<HTMLDivElement>(null);
     const previousFocusRef = useRef<HTMLElement | null>(null);
 
+    // Keyboard mode state (glyphs or IPA)
+    const [mode, setMode] = useState<KeyboardMode>('glyphs');
+
     // Convert glyphs to keyboard characters
-    const characters = useMemo(() => {
+    const glyphCharacters = useMemo(() => {
         return availableGlyphs.map(glyphToKeyboardCharacter);
     }, [availableGlyphs]);
+
+    // IPA characters wrapped for keyboard display
+    const ipaCharacters = useMemo(() => {
+        return wrapIpaAsKeyboardCharacters();
+    }, []);
+
+    // Current characters based on mode
+    const characters = mode === 'glyphs' ? glyphCharacters : ipaCharacters;
 
     // Create a map for quick glyph lookup by ID
     const glyphMap = useMemo(() => {
@@ -115,14 +145,44 @@ export default function GlyphKeyboardOverlay({
         return map;
     }, [availableGlyphs]);
 
-    // Handle character selection
-    const handleSelect = useCallback((character: KeyboardCharacter) => {
+    // Handle character selection (for glyph mode)
+    const handleGlyphSelect = useCallback((character: KeyboardCharacter) => {
         const glyphId = parseInt(character.id, 10);
         const glyph = glyphMap.get(glyphId);
         if (glyph) {
             onSelect(glyph);
         }
     }, [glyphMap, onSelect]);
+
+    // Handle IPA character selection (creates virtual glyph)
+    const handleIpaCharacterSelect = useCallback((character: KeyboardCharacter) => {
+        const ipaChar = character.label;
+        const description = character.metadata?.description as string | undefined;
+        const virtualGlyph = createVirtualGlyph(ipaChar, description);
+
+        // Call onIpaSelect if provided
+        if (onIpaSelect) {
+            onIpaSelect(ipaChar, virtualGlyph);
+        }
+
+        // Also call onSelect with the virtual glyph as a GlyphLike
+        onSelect({
+            id: virtualGlyph.id,
+            name: virtualGlyph.name,
+            svg_data: virtualGlyph.svg_data,
+            category: virtualGlyph.category,
+            notes: virtualGlyph.notes,
+        });
+    }, [onSelect, onIpaSelect]);
+
+    // Unified select handler based on mode
+    const handleSelect = useCallback((character: KeyboardCharacter) => {
+        if (mode === 'glyphs') {
+            handleGlyphSelect(character);
+        } else {
+            handleIpaCharacterSelect(character);
+        }
+    }, [mode, handleGlyphSelect, handleIpaCharacterSelect]);
 
     // Handle keyboard close on Escape
     useEffect(() => {
@@ -183,9 +243,42 @@ export default function GlyphKeyboardOverlay({
             aria-modal="true"
             tabIndex={-1}
         >
-            {/* Header with actions */}
+            {/* Header with mode toggle and actions */}
             <div className={styles.header}>
-                <span className={styles.title}>Select Glyph</span>
+                <div className={styles.headerLeft}>
+                    <span className={styles.title}>
+                        {mode === 'glyphs' ? 'Select Glyph' : 'Select IPA Character'}
+                    </span>
+
+                    {/* Mode toggle buttons */}
+                    {enableIpaMode && (
+                        <div className={styles.modeToggle} role="tablist" aria-label="Keyboard mode">
+                            <button
+                                type="button"
+                                role="tab"
+                                aria-selected={mode === 'glyphs'}
+                                className={classNames(styles.modeButton, {
+                                    [styles.active]: mode === 'glyphs',
+                                })}
+                                onClick={() => setMode('glyphs')}
+                            >
+                                Glyphs
+                            </button>
+                            <button
+                                type="button"
+                                role="tab"
+                                aria-selected={mode === 'ipa'}
+                                className={classNames(styles.modeButton, {
+                                    [styles.active]: mode === 'ipa',
+                                })}
+                                onClick={() => setMode('ipa')}
+                            >
+                                IPA
+                            </button>
+                        </div>
+                    )}
+                </div>
+
                 <div className={styles.actions}>
                     {onRemove && (
                         <HoverToolTip content={"Backspace"} contentPin="top">
@@ -224,9 +317,18 @@ export default function GlyphKeyboardOverlay({
 
             {/* Keyboard content */}
             <div className={styles.content}>
-                {availableGlyphs.length === 0 ? (
+                {mode === 'glyphs' && availableGlyphs.length === 0 ? (
                     <div className={styles.emptyState}>
                         No glyphs available. Create some glyphs first.
+                        {enableIpaMode && (
+                            <button
+                                type="button"
+                                className={styles.switchModeLink}
+                                onClick={() => setMode('ipa')}
+                            >
+                                Switch to IPA keyboard
+                            </button>
+                        )}
                     </div>
                 ) : (
                     <div className={styles.keyboardWrapper}>
@@ -236,8 +338,8 @@ export default function GlyphKeyboardOverlay({
                             searchable={searchable}
                             groupBy="category"
                             height={height}
-                            emptyStateText="No matching glyphs"
-                            renderCharacter={renderGlyphCharacter}
+                            emptyStateText={mode === 'glyphs' ? 'No matching glyphs' : 'No matching IPA characters'}
+                            renderCharacter={mode === 'glyphs' ? renderGlyphCharacter : undefined}
                         />
                         {/* Backspace button - prominent keyboard-style */}
                         {onRemove && (

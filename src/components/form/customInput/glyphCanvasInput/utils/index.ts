@@ -23,3 +23,12 @@ export {
     type RenderableGlyph,
 } from './graphemeUtils';
 
+export {
+    generateVirtualGlyphId,
+    generateIpaSvg,
+    createVirtualGlyph,
+    createVirtualGlyphs,
+    isVirtualGlyphId,
+    isVirtualGlyph,
+} from './virtualGlyphUtils';
+

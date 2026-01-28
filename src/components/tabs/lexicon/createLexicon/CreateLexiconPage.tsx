@@ -8,6 +8,7 @@ import { useState, useCallback, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useEtymolog } from '../../../../db';
 import type { CreateLexiconInput, LexiconAncestorFormRow } from '../../../../db/types';
+import { isVirtualGlyphId } from '../../../form/customInput/glyphCanvasInput';
 import { SmartForm, useSmartForm } from 'smart-form/smartForm';
 import type { useSmartFormRef } from 'smart-form/types';
 import { LexiconFormFields } from '../../../form/lexiconForm';
@@ -42,6 +43,14 @@ export default function CreateLexiconPage() {
             const partOfSpeech = formData.partOfSpeech as string | undefined;
             const notes = formData.notes as string | undefined;
 
+            // Filter out virtual glyph IDs (negative IDs are virtual/temporary IPA placeholders)
+            const realSpellingIds = spellingIds.filter(id => !isVirtualGlyphId(id));
+            const virtualCount = spellingIds.length - realSpellingIds.length;
+
+            if (virtualCount > 0) {
+                console.warn(`Filtered out ${virtualCount} virtual IPA glyph(s) - these need real graphemes to be saved`);
+            }
+
             // Build create input
             const input: CreateLexiconInput = {
                 lemma: lemma.trim(),
@@ -51,7 +60,7 @@ export default function CreateLexiconPage() {
                 meaning: meaning?.trim() || undefined,
                 part_of_speech: partOfSpeech?.trim() || undefined,
                 notes: notes?.trim() || undefined,
-                spelling: spellingIds.map((id, idx) => ({
+                spelling: realSpellingIds.map((id, idx) => ({
                     grapheme_id: id,
                     position: idx,
                 })),

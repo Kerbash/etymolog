@@ -270,6 +270,91 @@ function runMigrations(database: Database): void {
         database.run(`ALTER TABLE graphemes ADD COLUMN category TEXT`);
         console.log('[DB] Migration to v3 complete');
     }
+
+    // Check if lexicon tables exist (added after initial v3 schema)
+    const lexiconTableResult = database.exec(`
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name='lexicon'
+    `);
+
+    if (lexiconTableResult.length === 0 || lexiconTableResult[0].values.length === 0) {
+        console.log('[DB] Creating lexicon tables...');
+
+        // Lexicon table - vocabulary entries
+        database.run(`
+            CREATE TABLE IF NOT EXISTS lexicon (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                lemma TEXT NOT NULL,
+                pronunciation TEXT,
+                is_native INTEGER DEFAULT 1,
+                auto_spell INTEGER DEFAULT 1,
+                meaning TEXT,
+                part_of_speech TEXT,
+                notes TEXT,
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now'))
+            )
+        `);
+
+        // Indexes for lexicon
+        database.run(`
+            CREATE INDEX IF NOT EXISTS idx_lexicon_lemma
+            ON lexicon(lemma)
+        `);
+        database.run(`
+            CREATE INDEX IF NOT EXISTS idx_lexicon_is_native
+            ON lexicon(is_native)
+        `);
+
+        // Junction table: lexicon_spelling (ordered grapheme spelling)
+        database.run(`
+            CREATE TABLE IF NOT EXISTS lexicon_spelling (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                lexicon_id INTEGER NOT NULL,
+                grapheme_id INTEGER NOT NULL,
+                position INTEGER NOT NULL DEFAULT 0,
+                FOREIGN KEY (lexicon_id) REFERENCES lexicon(id) ON DELETE CASCADE,
+                FOREIGN KEY (grapheme_id) REFERENCES graphemes(id) ON DELETE RESTRICT,
+                UNIQUE(lexicon_id, grapheme_id, position)
+            )
+        `);
+
+        // Indexes for lexicon_spelling
+        database.run(`
+            CREATE INDEX IF NOT EXISTS idx_lexicon_spelling_lexicon
+            ON lexicon_spelling(lexicon_id)
+        `);
+        database.run(`
+            CREATE INDEX IF NOT EXISTS idx_lexicon_spelling_position
+            ON lexicon_spelling(lexicon_id, position)
+        `);
+
+        // Junction table: lexicon_ancestry (etymological relationships)
+        database.run(`
+            CREATE TABLE IF NOT EXISTS lexicon_ancestry (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                lexicon_id INTEGER NOT NULL,
+                ancestor_id INTEGER NOT NULL,
+                position INTEGER NOT NULL DEFAULT 0,
+                ancestry_type TEXT DEFAULT 'derived',
+                FOREIGN KEY (lexicon_id) REFERENCES lexicon(id) ON DELETE CASCADE,
+                FOREIGN KEY (ancestor_id) REFERENCES lexicon(id) ON DELETE SET NULL,
+                UNIQUE(lexicon_id, ancestor_id)
+            )
+        `);
+
+        // Indexes for lexicon_ancestry
+        database.run(`
+            CREATE INDEX IF NOT EXISTS idx_lexicon_ancestry_lexicon
+            ON lexicon_ancestry(lexicon_id)
+        `);
+        database.run(`
+            CREATE INDEX IF NOT EXISTS idx_lexicon_ancestry_ancestor
+            ON lexicon_ancestry(ancestor_id)
+        `);
+
+        console.log('[DB] Lexicon tables created successfully');
+    }
 }
 
 /**

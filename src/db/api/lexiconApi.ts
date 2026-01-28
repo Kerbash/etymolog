@@ -41,9 +41,11 @@ import {
 } from '../lexiconService';
 import {
     generateSpellingFromPronunciation,
-    previewAutoSpelling as servicePreviewAutoSpelling,
+    generateSpellingWithFallback,
+    previewAutoSpellingWithFallback,
     type AutoSpellResult,
 } from '../autoSpellService';
+import type { AutoSpellResultExtended } from '../types';
 import { isDatabaseInitialized } from '../database';
 
 // =============================================================================
@@ -479,13 +481,15 @@ function generateAutoSpelling(pronunciation: string): ApiResponse<AutoSpellResul
 
 /**
  * Preview auto-spelling without saving.
+ * Uses fallback mode to create virtual IPA glyphs for any unmatched characters,
+ * ensuring every pronunciation can be spelled.
  */
-function previewAutoSpelling(pronunciation: string): ApiResponse<AutoSpellResult> {
-    const dbError = checkDbInitialized<AutoSpellResult>();
+function previewAutoSpelling(pronunciation: string): ApiResponse<AutoSpellResultExtended> {
+    const dbError = checkDbInitialized<AutoSpellResultExtended>();
     if (dbError) return dbError;
 
     try {
-        const result = servicePreviewAutoSpelling(pronunciation);
+        const result = previewAutoSpellingWithFallback(pronunciation);
         return successResponse(result);
     } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to preview auto-spelling';
@@ -555,7 +559,8 @@ export interface LexiconApi {
     getAllDescendantIds(id: number): ApiResponse<number[]>;
     wouldCreateCycle(lexiconId: number, ancestorId: number): ApiResponse<boolean>;
     generateAutoSpelling(pronunciation: string): ApiResponse<AutoSpellResult>;
-    previewAutoSpelling(pronunciation: string): ApiResponse<AutoSpellResult>;
+    /** Preview auto-spelling with virtual IPA glyph fallback for unmatched characters */
+    previewAutoSpelling(pronunciation: string): ApiResponse<AutoSpellResultExtended>;
     applyAutoSpelling(id: number): ApiResponse<LexiconWithSpelling>;
 }
 

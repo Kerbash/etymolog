@@ -45,10 +45,54 @@
     border-bottom: 1px solid var(--border-primary);
 }
 
+.headerLeft {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
 .title {
     font-weight: 600;
     color: var(--text-primary);
     font-size: 1rem;
+}
+
+/* Mode toggle button group */
+.modeToggle {
+    display: flex;
+    border: 1px solid var(--border-primary);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.modeButton {
+    padding: 0.25rem 0.75rem;
+    border: none;
+    background: var(--surface-base);
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &:not(:last-child) {
+        border-right: 1px solid var(--border-primary);
+    }
+
+    &:hover:not(.active) {
+        background: var(--interactive-hover);
+        color: var(--text-primary);
+    }
+
+    &:focus {
+        outline: 2px solid var(--focus-ring, var(--interactive-base));
+        outline-offset: -2px;
+    }
+
+    &.active {
+        background: var(--interactive-base);
+        color: var(--interactive-text, white);
+    }
 }
 
 .actions {
@@ -65,13 +109,37 @@
 
 .emptyState {
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 0.75rem;
     height: 100%;
     padding: 2rem;
     color: var(--text-secondary);
     font-style: italic;
     text-align: center;
+}
+
+.switchModeLink {
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--border-primary);
+    border-radius: 6px;
+    background: var(--surface-raised);
+    color: var(--interactive-base);
+    font-style: normal;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &:hover {
+        background: var(--interactive-hover);
+        border-color: var(--interactive-base);
+    }
+
+    &:focus {
+        outline: 2px solid var(--focus-ring, var(--interactive-base));
+        outline-offset: 2px;
+    }
 }
 
 /* Custom glyph SVG rendering */

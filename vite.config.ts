@@ -6,7 +6,8 @@ import {VitePWA} from 'vite-plugin-pwa'
 export default defineConfig({
     resolve: {
         alias: {
-            '@src': path.resolve(__dirname, 'src')
+            '@src': path.resolve(__dirname, 'src'),
+            '@styles': path.resolve(__dirname, 'src/styles')
         }
     },
     plugins: [

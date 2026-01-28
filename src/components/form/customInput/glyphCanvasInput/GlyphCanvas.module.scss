@@ -41,11 +41,29 @@
     outline: none;
 }
 
+/* Virtual glyph (IPA fallback) styling */
+.virtualGlyph {
+    opacity: 0.9;
+}
+
 .glyphBackground {
     fill: var(--surface-raised);
     stroke: var(--border-primary);
     stroke-width: 1;
     transition: all 0.15s ease;
+}
+
+/* Virtual glyph background - dashed border, muted background */
+.virtualBackground {
+    fill: var(--surface-base, #f5f5f5);
+    stroke: var(--status-warning, #f59e0b);
+    stroke-width: 1.5;
+    stroke-dasharray: 3, 3;
+}
+
+/* Virtual glyph content styling */
+.virtualContent {
+    color: var(--text-secondary);
 }
 
 .glyphForeignObject {

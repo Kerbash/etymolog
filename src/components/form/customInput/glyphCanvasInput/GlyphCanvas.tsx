@@ -16,7 +16,7 @@ import classNames from 'classnames';
 import DOMPurify from 'dompurify';
 
 import type { GlyphCanvasProps, GlyphCanvasRef, CanvasGlyph } from './types';
-import { calculateGlyphLayout, calculateBounds } from './utils';
+import { calculateGlyphLayout, calculateBounds, isVirtualGlyphId } from './utils';
 
 import styles from './GlyphCanvas.module.scss';
 
@@ -187,9 +187,13 @@ const GlyphCanvas = forwardRef<GlyphCanvasRef, GlyphCanvasProps>(
 
 /**
  * Individual glyph node rendered on the canvas.
+ * Virtual glyphs (negative IDs) are rendered with distinct styling.
  */
 function GlyphNode({ positionedGlyph }: { positionedGlyph: CanvasGlyph }) {
     const { glyph, x, y, width, height } = positionedGlyph;
+
+    // Check if this is a virtual glyph
+    const isVirtual = isVirtualGlyphId(glyph.id);
 
     // Sanitize SVG data
     const sanitizedSvg = useMemo(() => {
@@ -200,12 +204,21 @@ function GlyphNode({ positionedGlyph }: { positionedGlyph: CanvasGlyph }) {
 
     return (
         <g
-            className={styles.glyphNode}
+            className={classNames(styles.glyphNode, {
+                [styles.virtualGlyph]: isVirtual,
+            })}
             transform={`translate(${x}, ${y})`}
         >
-            {/* Background */}
+            {/* Tooltip for virtual glyphs */}
+            {isVirtual && (
+                <title>IPA Fallback: {glyph.name}</title>
+            )}
+
+            {/* Background - different style for virtual glyphs */}
             <rect
-                className={styles.glyphBackground}
+                className={classNames(styles.glyphBackground, {
+                    [styles.virtualBackground]: isVirtual,
+                })}
                 width={width}
                 height={height}
                 rx={4}
@@ -219,7 +232,9 @@ function GlyphNode({ positionedGlyph }: { positionedGlyph: CanvasGlyph }) {
                 className={styles.glyphForeignObject}
             >
                 <div
-                    className={styles.glyphContent}
+                    className={classNames(styles.glyphContent, {
+                        [styles.virtualContent]: isVirtual,
+                    })}
                     dangerouslySetInnerHTML={{ __html: sanitizedSvg }}
                 />
             </foreignObject>
