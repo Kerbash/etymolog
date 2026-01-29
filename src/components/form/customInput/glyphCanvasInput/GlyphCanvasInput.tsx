@@ -62,20 +62,32 @@ import type {
     VirtualGlyph,
 } from './types';
 import type { Glyph, GlyphWithUsage, GraphemeComplete, AutoSpellResultExtended } from '../../../../db/types';
+import {
+    createGraphemeEntry,
+    parseGlyphOrder,
+    serializeGlyphOrder,
+    type SpellingEntry,
+} from '../../../../db/utils/spellingUtils';
 import { defaultInsertionStrategy } from './strategies';
 import { GlyphCanvas } from './GlyphCanvas';
 import { GlyphKeyboardOverlay } from './GlyphKeyboardOverlay';
-import { buildRenderableMap, normalizeToRenderable, isVirtualGlyphId, createVirtualGlyph, type RenderableGlyph } from './utils';
+import { buildRenderableMap, normalizeToRenderable, isVirtualGlyphId, createVirtualGlyph } from './utils';
 
 import styles from './GlyphCanvasInput.module.scss';
 
 // Augment/extend the imported props type to include the optional helpers we need here
 // This keeps backwards compatibility if the upstream types don't include them yet.
-export interface GlyphCanvasInputProps extends _OrigProps {
+// Use Omit to override the restrictive availableGlyphs type from the base interface
+export interface GlyphCanvasInputProps extends Omit<_OrigProps, 'availableGlyphs'> {
     /** Optional explicit available glyphs/graphemes prop (supports Glyph, GlyphWithUsage, or GraphemeComplete) */
     availableGlyphs?: (Glyph | GlyphWithUsage | GraphemeComplete)[];
-    /** Called whenever the selection changes (happy-path hook) */
-    onSelectionChange?: (ids: number[], hasVirtualGlyphs: boolean) => void;
+    /**
+     * Called whenever the selection changes.
+     * @param ids - Array of grapheme IDs (for backward compatibility)
+     * @param hasVirtualGlyphs - Whether selection contains IPA fallbacks
+     * @param glyphOrder - The glyph_order format array (for saving with Two-List Architecture)
+     */
+    onSelectionChange?: (ids: number[], hasVirtualGlyphs: boolean, glyphOrder?: SpellingEntry[]) => void;
     /** Optional auto-spell preview provided by parent (supports virtual IPA glyphs) */
     autoSpellPreview?: AutoSpellResultExtended | null;
     /** Request auto-spell handler (parent provides generation) */
@@ -84,6 +96,12 @@ export interface GlyphCanvasInputProps extends _OrigProps {
     enableIpaMode?: boolean;
     /** Initial virtual glyphs from auto-spell (merged with component's internal map) */
     initialVirtualGlyphs?: Map<number, VirtualGlyph>;
+    /**
+     * Initial glyph_order value (Two-List Architecture format).
+     * If provided, overrides defaultValue.
+     * Format: ["grapheme-123", "ə", "grapheme-456", ...]
+     */
+    initialGlyphOrder?: SpellingEntry[];
 }
 
 /**
@@ -112,6 +130,7 @@ const GlyphCanvasInput = forwardRef<GlyphCanvasInputRef, GlyphCanvasInputProps>(
             onRequestAutoSpell,
             enableIpaMode = false,
             initialVirtualGlyphs,
+            initialGlyphOrder,
         },
         _
     ) {
@@ -122,11 +141,50 @@ const GlyphCanvasInput = forwardRef<GlyphCanvasInputRef, GlyphCanvasInputProps>(
 
         const canvasRef = useRef<GlyphCanvasRef>(null);
 
-        // State
-        const [selectedIds, setSelectedIds] = useState<number[]>(Array.isArray(defaultValue) ? defaultValue : defaultValue ?? []);
+        // Parse initialGlyphOrder if provided to get initial state
+        const { initialIds, initialVirtualsFromGlyphOrder } = useMemo(() => {
+            if (!initialGlyphOrder || initialGlyphOrder.length === 0) {
+                return {
+                    initialIds: Array.isArray(defaultValue) ? defaultValue : defaultValue ?? [],
+                    initialVirtualsFromGlyphOrder: new Map<number, VirtualGlyph>(),
+                };
+            }
 
-        // Virtual glyph map - stores virtual glyphs created from IPA keyboard
-        const [virtualGlyphMap, setVirtualGlyphMap] = useState<Map<number, VirtualGlyph>>(new Map());
+            const ids: number[] = [];
+            const virtuals = new Map<number, VirtualGlyph>();
+
+            for (const entry of parseGlyphOrder(initialGlyphOrder)) {
+                if (entry.type === 'grapheme' && entry.graphemeId) {
+                    ids.push(entry.graphemeId);
+                } else if (entry.type === 'ipa' && entry.ipaCharacter) {
+                    // Create virtual glyph for IPA character
+                    const virtualGlyph = createVirtualGlyph(entry.ipaCharacter);
+                    virtuals.set(virtualGlyph.id, virtualGlyph);
+                    ids.push(virtualGlyph.id);
+                }
+            }
+
+            return { initialIds: ids, initialVirtualsFromGlyphOrder: virtuals };
+        }, [initialGlyphOrder, defaultValue]);
+
+        // State - track selected IDs (both grapheme IDs and virtual glyph IDs)
+        const [selectedIds, setSelectedIds] = useState<number[]>(initialIds);
+
+        // Virtual glyph map - stores virtual glyphs created from IPA keyboard or loaded from glyph_order
+        const [virtualGlyphMap, setVirtualGlyphMap] = useState<Map<number, VirtualGlyph>>(() => {
+            const merged = new Map<number, VirtualGlyph>();
+            // First add from glyph_order parsing
+            for (const [id, vg] of initialVirtualsFromGlyphOrder) {
+                merged.set(id, vg);
+            }
+            // Then add from initialVirtualGlyphs prop (auto-spell)
+            if (initialVirtualGlyphs) {
+                for (const [id, vg] of initialVirtualGlyphs) {
+                    merged.set(id, vg);
+                }
+            }
+            return merged;
+        });
 
         // Refs for stable access in useImperativeHandle and useEffect (prevents infinite loops)
         const selectedIdsRef = useRef(selectedIds);
@@ -197,11 +255,34 @@ const GlyphCanvasInput = forwardRef<GlyphCanvasInputRef, GlyphCanvasInputProps>(
             ...canvasLayout,
         }), [direction, canvasLayout]);
 
+        // Build glyph_order format from selected IDs and virtual glyph map
+        // This is the format used by Two-List Architecture for persistence
+        const buildGlyphOrder = useCallback((): SpellingEntry[] => {
+            return selectedIds.map(id => {
+                // Check if this is a virtual glyph
+                const virtualGlyph = virtualGlyphMap.get(id) || initialVirtualGlyphs?.get(id) || initialVirtualsFromGlyphOrder.get(id);
+                if (virtualGlyph && virtualGlyph.ipaCharacter) {
+                    // Return the IPA character directly
+                    return virtualGlyph.ipaCharacter;
+                }
+                // For real graphemes, return the grapheme reference
+                return createGraphemeEntry(id);
+            });
+        }, [selectedIds, virtualGlyphMap, initialVirtualGlyphs, initialVirtualsFromGlyphOrder]);
+
+        // Ref for buildGlyphOrder to prevent infinite loops
+        const buildGlyphOrderRef = useRef(buildGlyphOrder);
+        buildGlyphOrderRef.current = buildGlyphOrder;
+
         // Expose value via useImperativeHandle
         // Use ref for value getter to prevent handle recreation when state changes
         useImperativeHandle(registerSmartFieldProps.ref, () => ({
             get value(): number[] {
                 return selectedIdsRef.current;
+            },
+            /** Get the glyph_order format for saving (Two-List Architecture) */
+            get glyphOrder(): SpellingEntry[] {
+                return buildGlyphOrderRef.current();
             },
             resetCanvasView: () => canvasRef.current?.resetView(),
             fitCanvasToView: () => canvasRef.current?.fitToView(),
@@ -221,6 +302,30 @@ const GlyphCanvasInput = forwardRef<GlyphCanvasInputRef, GlyphCanvasInputProps>(
                     fieldStateRef.current.isChanged.setIsChanged(true);
                     fieldStateRef.current.isEmpty.setIsEmpty((val ?? []).length === 0);
                 }
+            },
+            /** Set value from glyph_order format (Two-List Architecture) */
+            setGlyphOrder: (glyphOrder: SpellingEntry[]) => {
+                const ids: number[] = [];
+                const virtuals = new Map<number, VirtualGlyph>();
+
+                for (const entry of parseGlyphOrder(glyphOrder)) {
+                    if (entry.type === 'grapheme' && entry.graphemeId) {
+                        ids.push(entry.graphemeId);
+                    } else if (entry.type === 'ipa' && entry.ipaCharacter) {
+                        const virtualGlyph = createVirtualGlyph(entry.ipaCharacter);
+                        virtuals.set(virtualGlyph.id, virtualGlyph);
+                        ids.push(virtualGlyph.id);
+                    }
+                }
+
+                setSelectedIds(ids);
+                setVirtualGlyphMap(prev => {
+                    const merged = new Map(prev);
+                    for (const [id, vg] of virtuals) {
+                        merged.set(id, vg);
+                    }
+                    return merged;
+                });
             }
         }), [strategy]);
 
@@ -237,21 +342,25 @@ const GlyphCanvasInput = forwardRef<GlyphCanvasInputRef, GlyphCanvasInputProps>(
             fieldStateRef.current.isEmpty.setIsEmpty(selectedIds.length === 0);
             fieldStateRef.current.isInputValid.setIsInputValid(true);
 
+            // Build glyph_order for saving
+            const glyphOrder = buildGlyphOrderRef.current();
+
             // Notify parent via callback using ref (prevents infinite loops)
-            // Include hasVirtualGlyphs flag so parent knows if virtual glyphs are present
+            // Include hasVirtualGlyphs flag and glyph_order so parent can save properly
             try {
                 const containsVirtual = selectedIds.some(id => isVirtualGlyphId(id));
-                onSelectionChangeRef.current?.(selectedIds.slice(), containsVirtual);
+                onSelectionChangeRef.current?.(selectedIds.slice(), containsVirtual, glyphOrder);
             } catch (e) {
                 // swallow - callback should not break input
                 // eslint-disable-next-line no-console
                 console.error('onSelectionChange threw', e);
             }
 
-            // Update the hidden input's value so plain HTML form serialization picks it up
+            // Update the hidden input's value with glyph_order format (for form submission)
             const hiddenInput = document.querySelector(`input[name="${registerSmartFieldProps.name}"]`) as HTMLInputElement | null;
             if (hiddenInput) {
-                hiddenInput.value = JSON.stringify(selectedIds);
+                // Save as glyph_order format (JSON string of SpellingEntry[])
+                hiddenInput.value = serializeGlyphOrder(glyphOrder);
             }
         }, [selectedIds, registerSmartFieldProps.name]);
 
@@ -420,13 +529,13 @@ const GlyphCanvasInput = forwardRef<GlyphCanvasInputRef, GlyphCanvasInputProps>(
                     </div>
                 )}
 
-                {/* Warning when virtual glyphs are present */}
+                {/* Info notice when IPA fallback characters are present */}
                 {hasVirtualGlyphs && (
-                    <div className={styles.virtualWarning} role="alert">
-                        <i className="bi-exclamation-triangle" aria-hidden="true" />
+                    <div className={styles.virtualWarning} role="status">
+                        <i className="bi-info-circle" aria-hidden="true" />
                         <span>
-                            IPA fallback glyphs (dashed borders) are temporary placeholders.
-                            Create real graphemes for these characters to save them permanently.
+                            IPA characters (dashed borders) will be saved as part of the spelling.
+                            You can optionally create graphemes for them later.
                         </span>
                     </div>
                 )}

@@ -234,6 +234,10 @@ export interface GlyphReference {
 /**
  * A lexicon entry represents a word or vocabulary item in the conlang.
  * It connects pronunciation, meaning, spelling (via graphemes), and etymology.
+ *
+ * Two-List Architecture:
+ * - glyph_order: JSON array storing the true ordered spelling (source of truth)
+ * - lexicon_spelling: Junction table for relational queries only
  */
 export interface Lexicon {
     id: number;
@@ -251,6 +255,20 @@ export interface Lexicon {
     part_of_speech: string | null;
     /** Additional notes */
     notes: string | null;
+    /**
+     * JSON array storing the true ordered spelling.
+     * Entries can be:
+     * - Grapheme references: "grapheme-{id}" (e.g., "grapheme-123")
+     * - IPA characters: Stored as-is (e.g., "ə", "ʃ")
+     */
+    glyph_order: string;
+    /**
+     * Flag indicating this entry needs manual review.
+     * Set to true when:
+     * - A grapheme used in spelling is deleted (for non-auto_spell entries)
+     * - Auto-respelling fails
+     */
+    needs_attention: boolean;
     created_at: string;
     updated_at: string;
 }
@@ -298,7 +316,17 @@ export interface CreateLexiconInput {
     meaning?: string;
     part_of_speech?: string;
     notes?: string;
-    /** Ordered array of grapheme IDs for spelling */
+    /**
+     * Ordered spelling in glyph_order format.
+     * Array of strings where each entry is either:
+     * - Grapheme reference: "grapheme-{id}"
+     * - IPA character: The character as-is
+     */
+    glyph_order?: string[];
+    /**
+     * @deprecated Use glyph_order instead.
+     * Ordered array of grapheme IDs for spelling (legacy support).
+     */
     spelling?: CreateLexiconSpellingInput[];
     /** Array of ancestor references */
     ancestry?: CreateLexiconAncestryInput[];
@@ -332,6 +360,10 @@ export interface UpdateLexiconInput {
     meaning?: string | null;
     part_of_speech?: string | null;
     notes?: string | null;
+    /** Update glyph_order directly */
+    glyph_order?: string[];
+    /** Mark/unmark entry as needing attention */
+    needs_attention?: boolean;
 }
 
 /**
@@ -381,16 +413,40 @@ export interface LexiconDescendantEntry {
 }
 
 /**
+ * Parsed glyph_order entry for display purposes.
+ */
+export interface SpellingDisplayEntry {
+    /** Type of entry */
+    type: 'grapheme' | 'ipa';
+    /** Position in the spelling */
+    position: number;
+    /** Grapheme data (only for grapheme type) */
+    grapheme?: Grapheme;
+    /** IPA character (only for ipa type) */
+    ipaCharacter?: string;
+}
+
+/**
  * Complete lexicon entry with spelling, ancestors, and descendants.
  * This is the full representation for display purposes.
  */
 export interface LexiconComplete extends Lexicon {
-    /** Graphemes in order (sorted by position) */
+    /**
+     * Parsed spelling entries for display.
+     * Includes both resolved graphemes and IPA fallback characters.
+     */
+    spellingDisplay: SpellingDisplayEntry[];
+    /**
+     * @deprecated Use spellingDisplay for full spelling.
+     * Graphemes only (sorted by position, excludes IPA fallbacks).
+     */
     spelling: Grapheme[];
     /** Direct ancestor words */
     ancestors: LexiconAncestorEntry[];
     /** Words derived from this word */
     descendants: LexiconDescendantEntry[];
+    /** Whether the spelling contains IPA fallback characters */
+    hasIpaFallbacks: boolean;
 }
 
 /**

@@ -1,4 +1,4 @@
-﻿.glyphCanvasInput { display: flex; flex-direction: column; gap: 0.5rem; }
+﻿﻿.glyphCanvasInput { display: flex; flex-direction: column; gap: 0.5rem; }
 .header { display: flex; justify-content: space-between; align-items: center; }
 .label { font-weight: 500; color: var(--text-primary); }
 .actions { display: flex; gap: 0.5rem; align-items: center; }
@@ -62,16 +62,16 @@
     font-size: 0.8125rem;
 }
 
-/* Warning for virtual glyphs */
+/* Info notice for IPA fallback characters */
 .virtualWarning {
     display: flex;
     align-items: flex-start;
     gap: 0.5rem;
     padding: 0.5rem 0.75rem;
     border-radius: 6px;
-    background: var(--status-warning-bg, rgba(245, 158, 11, 0.1));
-    border: 1px solid var(--status-warning, #f59e0b);
-    color: var(--status-warning-text, #92400e);
+    background: var(--status-info-bg, rgba(59, 130, 246, 0.1));
+    border: 1px solid var(--status-info, #3b82f6);
+    color: var(--status-info-text, #1e40af);
     font-size: 0.8125rem;
     line-height: 1.4;
 }
@@ -79,5 +79,5 @@
 .virtualWarning i {
     flex-shrink: 0;
     margin-top: 0.125rem;
-    color: var(--status-warning, #f59e0b);
+    color: var(--status-info, #3b82f6);
 }

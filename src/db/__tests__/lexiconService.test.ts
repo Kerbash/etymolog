@@ -932,8 +932,17 @@ describe('Lexicon Service', () => {
                 ],
             });
 
-            const spelling = getSpellingByLexiconId(word.id);
-            expect(spelling).toHaveLength(3);
+            // Two-List Architecture: lexicon_spelling stores UNIQUE graphemes for relational queries
+            // The full ordered spelling (including duplicates) is in glyph_order
+            const spellingEntries = getSpellingByLexiconId(word.id);
+            expect(spellingEntries).toHaveLength(1); // Unique graphemes only
+
+            // Verify the full spelling via getLexiconComplete
+            const complete = getLexiconComplete(word.id);
+            expect(complete).not.toBeNull();
+            // spellingDisplay should have 3 entries (full ordered spelling)
+            expect(complete!.spellingDisplay).toHaveLength(3);
+            expect(complete!.spellingDisplay.every(e => e.type === 'grapheme' && e.grapheme?.id === grapheme.id)).toBe(true);
         });
 
         it('should handle concurrent ancestry modifications', () => {

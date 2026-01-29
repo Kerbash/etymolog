@@ -20,13 +20,13 @@ export default function DetailedLexiconDisplay({
 }: DetailedLexiconDisplayProps) {
     // Combine all spelling grapheme SVGs (from their glyphs)
     // Use graphemeMap if provided, otherwise try to access glyphs directly (for GraphemeComplete data)
-    const combinedSvg = lexiconData.spelling
-        .flatMap(grapheme => {
-            // Try to get full grapheme data from map
-            const fullGrapheme = graphemeMap?.get(grapheme.id);
-            const glyphs = fullGrapheme?.glyphs ?? (grapheme as GraphemeComplete).glyphs;
-            return glyphs?.map(glyph => glyph.svg_data) ?? [];
-        })
+    const combinedSvg = (lexiconData.spellingDisplay?.filter(e => e.type === 'grapheme').map(e => {
+        const grapheme = e.type === 'grapheme' ? e.grapheme : null;
+        if (!grapheme) return [] as string[];
+        const fullGrapheme = graphemeMap?.get(grapheme.id);
+        const glyphs = fullGrapheme?.glyphs ?? (grapheme as GraphemeComplete).glyphs;
+        return glyphs?.map(glyph => glyph.svg_data) ?? [];
+    }).flat() ?? [])
         .join('');
 
     const sanitizedSvg = combinedSvg ? DOMPurify.sanitize(combinedSvg, {
@@ -80,14 +80,20 @@ export default function DetailedLexiconDisplay({
                     </div>
                 )}
 
-                {lexiconData.spelling.length > 0 && (
+                {(lexiconData.spellingDisplay && lexiconData.spellingDisplay.length > 0) && (
                     <div className="detail-section">
                         <h3 className="section-header">Spelling</h3>
                         <div className="grapheme-list">
-                            {lexiconData.spelling.map((grapheme, index) => (
-                                <span key={`${grapheme.id}-${index}`} className="grapheme-name">
-                                    {grapheme.name}
-                                </span>
+                            {lexiconData.spellingDisplay.map((entry, index) => (
+                                entry.type === 'grapheme' ? (
+                                    <span key={`g-${entry.grapheme?.id}-${index}`} className="grapheme-name">
+                                        {entry.grapheme?.name ?? '�'}
+                                    </span>
+                                ) : (
+                                    <span key={`ipa-${index}`} className="ipa-char" title={`IPA: ${entry.ipaCharacter}`}>
+                                        {entry.ipaCharacter}
+                                    </span>
+                                )
                             ))}
                         </div>
                     </div>

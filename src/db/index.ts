@@ -126,6 +126,7 @@ export type {
     CreateLexiconSpellingInput,
     CreateLexiconAncestryInput,
     AncestryType,
+    SpellingDisplayEntry,
     // Form types
     GlyphFormData,
     GraphemeFormData,
@@ -216,6 +217,9 @@ export {
     addSpellingToLexicon,
     setLexiconSpelling,
     clearLexiconSpelling,
+    syncLexiconSpellingFromGlyphOrder,
+    buildSpellingDisplay,
+    setLexiconGlyphOrder,
     // Ancestry operations
     getAncestorsByLexiconId,
     getDescendantsByLexiconId,
@@ -228,8 +232,38 @@ export {
     getFullAncestryTree,
     getAllAncestorIds,
     getAllDescendantIds,
-    wouldCreateCycle
+    wouldCreateCycle,
+    // Grapheme deletion handling
+    getLexiconEntriesUsingGrapheme,
+    handleGraphemeDeletion,
+    getLexiconEntriesNeedingAttention,
+    clearNeedsAttention
 } from './lexiconService';
+
+// =============================================================================
+// SPELLING UTILITIES
+// =============================================================================
+export {
+    GRAPHEME_PREFIX,
+    isGraphemeEntry,
+    extractGraphemeId,
+    createGraphemeEntry,
+    parseSpellingEntry,
+    parseGlyphOrder,
+    extractGraphemeIds,
+    toGlyphOrder,
+    fromGlyphOrder,
+    legacyToGlyphOrder,
+    validateGlyphOrder,
+    spellingContainsGrapheme,
+    replaceGraphemeWithIpa,
+    removeGraphemeFromSpelling,
+    serializeGlyphOrder,
+    deserializeGlyphOrder,
+    type SpellingEntry,
+    type ParsedSpellingEntry,
+    type ExtractedGraphemeIds
+} from './utils/spellingUtils';
 
 // =============================================================================
 // AUTO-SPELL SERVICE

@@ -778,6 +778,76 @@ glyphCanvasInput/
 
 3. **Future-Proof**: The `transform` field in the junction table allows for future features like glyph rotation, scaling, or positioning within a grapheme.
 
+### Two-List Architecture for Lexicon Spelling
+
+Lexicon entries use a **Two-List Architecture** for storing spelling:
+
+1. **`glyph_order` (JSON column)**: The true ordered spelling, stored as a JSON array
+   - Grapheme references: `"grapheme-{id}"` (e.g., `"grapheme-123"`)
+   - IPA characters: Stored as-is (e.g., `"ə"`, `"ʃ"`)
+   - This is the **source of truth** for spelling order
+
+2. **`lexicon_spelling` (junction table)**: For relational queries only
+   - Stores unique grapheme IDs for queries like "which words use grapheme X?"
+   - Does not preserve duplicate graphemes or IPA fallbacks
+
+```
+glyph_order (example):  ["grapheme-1", "ə", "grapheme-2", "grapheme-1"]
+                         │             │           │            │
+                         ▼             ▼           ▼            ▼
+                     Grapheme 1   IPA char    Grapheme 2   Grapheme 1 (again)
+
+lexicon_spelling:       [1, 2]  ← Unique grapheme IDs only (for relational queries)
+```
+
+#### Why Two Lists?
+
+| Feature | `glyph_order` | `lexicon_spelling` |
+|---------|---------------|-------------------|
+| Preserves order | ✅ Yes | ⚠️ Position field |
+| Handles duplicates | ✅ Yes (same grapheme at multiple positions) | ❌ Unique IDs only |
+| Supports IPA fallback | ✅ Yes (inline IPA characters) | ❌ Grapheme IDs only |
+| Efficient for queries | ❌ Requires JSON parsing | ✅ Direct SQL joins |
+| Use case | Display, rendering | "Which words use grapheme X?" |
+
+#### Grapheme Deletion Behavior
+
+When a grapheme used in lexicon spelling is deleted:
+
+1. **For `auto_spell: true` entries**: Replace the deleted grapheme with IPA fallback character
+2. **For `auto_spell: false` entries**: Mark `needs_attention: true` and replace with IPA fallback
+
+```typescript
+// Example: Deleting grapheme 'A' (pronunciation 'a')
+Before: ["grapheme-1", "grapheme-A", "grapheme-2"]
+After:  ["grapheme-1", "a", "grapheme-2"]  // 'a' is IPA fallback
+```
+
+Entries with `needs_attention: true` are sorted to the top of the lexicon gallery for manual review.
+
+#### Type Extensions
+
+```typescript
+interface Lexicon {
+    // ... existing fields ...
+    glyph_order: string;        // JSON array: '["grapheme-1", "ə", ...]'
+    needs_attention: boolean;   // Manual review required
+}
+
+interface LexiconComplete extends Lexicon {
+    spellingDisplay: SpellingDisplayEntry[];  // Parsed glyph_order for display
+    spelling: Grapheme[];                      // Legacy: graphemes only
+    hasIpaFallbacks: boolean;                  // Whether spelling has IPA chars
+}
+
+interface SpellingDisplayEntry {
+    type: 'grapheme' | 'ipa';
+    position: number;
+    grapheme?: Grapheme;        // For grapheme type
+    ipaCharacter?: string;      // For ipa type
+}
+```
+
 ### Type Definitions
 
 ```typescript
@@ -819,6 +889,8 @@ interface Lexicon {
     meaning: string | null;           // Word definition/gloss
     part_of_speech: string | null;    // Freeform until PoS table exists
     notes: string | null;
+    glyph_order: string;              // JSON array of spelling entries
+    needs_attention: boolean;         // Manual review required (e.g., after grapheme deletion)
     created_at: string;
     updated_at: string;
 }
@@ -836,9 +908,18 @@ interface GlyphWithUsage extends Glyph {
 }
 
 interface LexiconComplete extends Lexicon {
-    spelling: Grapheme[];           // Ordered graphemes for written form
-    ancestors: LexiconAncestorEntry[];   // Direct parent words
-    descendants: LexiconDescendantEntry[]; // Words derived from this
+    spellingDisplay: SpellingDisplayEntry[];  // Full ordered spelling with graphemes & IPA
+    spelling: Grapheme[];                      // Legacy: graphemes only (no IPA fallbacks)
+    hasIpaFallbacks: boolean;                  // Whether spelling contains IPA chars
+    ancestors: LexiconAncestorEntry[];         // Direct parent words
+    descendants: LexiconDescendantEntry[];     // Words derived from this
+}
+
+interface SpellingDisplayEntry {
+    type: 'grapheme' | 'ipa';
+    position: number;
+    grapheme?: Grapheme;        // For grapheme type
+    ipaCharacter?: string;      // For ipa type
 }
 
 interface LexiconAncestorEntry {

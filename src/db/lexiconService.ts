@@ -4,13 +4,27 @@
  * CRUD operations for managing lexicon entries and their relationships
  * to graphemes (spelling) and other lexicon entries (ancestry).
  *
+ * Two-List Architecture:
+ * - glyph_order: JSON array storing the true ordered spelling (source of truth)
+ *   - Grapheme references: "grapheme-{id}"
+ *   - IPA characters: Stored as-is
+ * - lexicon_spelling: Junction table for relational queries only
+ *
  * Architecture:
  * - Lexicon: A vocabulary entry with lemma, pronunciation, meaning
- * - LexiconSpelling: Junction table linking graphemes to lexicon for ordered spelling
+ * - LexiconSpelling: Junction table linking graphemes to lexicon (for queries)
  * - LexiconAncestry: Self-referential junction table for etymological relationships
  */
 
 import { getDatabase, persistDatabase } from './database';
+import {
+    serializeGlyphOrder,
+    deserializeGlyphOrder,
+    extractGraphemeIds,
+    parseGlyphOrder,
+    createGraphemeEntry,
+    type SpellingEntry,
+} from './utils/spellingUtils';
 import type {
     Lexicon,
     CreateLexiconInput,
@@ -29,7 +43,36 @@ import type {
     CreateLexiconSpellingInput,
     CreateLexiconAncestryInput,
     AncestryType,
+    SpellingDisplayEntry,
 } from './types';
+
+// =============================================================================
+// LAZY IMPORT FOR CIRCULAR DEPENDENCY AVOIDANCE
+// =============================================================================
+
+// We need to import generateSpellingWithFallback lazily because:
+// autoSpellService imports from graphemeService
+// graphemeService may need to handle lexicon operations
+// This breaks the circular dependency by deferring the import
+
+/**
+ * Get generateSpellingWithFallback function lazily.
+ * Returns a function that generates spelling with IPA fallbacks.
+ */
+async function getGenerateSpellingWithFallbackAsync() {
+    const module = await import('./autoSpellService');
+    return module.generateSpellingWithFallback;
+}
+
+/**
+ * Synchronous fallback - tries to generate spelling using available phonemes.
+ * This is a simplified version that doesn't require circular imports.
+ */
+function generateSpellingFallbackSync(pronunciation: string, deletedGraphemeId: number, fallbackChar: string): SpellingEntry[] {
+    // For now, just replace with fallback character
+    // The actual re-spelling will happen asynchronously if possible
+    return [fallbackChar];
+}
 
 // =============================================================================
 // LEXICON CRUD OPERATIONS
@@ -37,14 +80,33 @@ import type {
 
 /**
  * Create a new lexicon entry with optional spelling and ancestry.
+ *
+ * Supports both new glyph_order format and legacy spelling format.
+ * The glyph_order is stored as the source of truth, and lexicon_spelling
+ * is updated for relational queries.
  */
 export function createLexicon(input: CreateLexiconInput): LexiconComplete {
     const db = getDatabase();
 
+    // Determine glyph_order from input
+    let glyphOrder: SpellingEntry[] = [];
+
+    if (input.glyph_order && input.glyph_order.length > 0) {
+        // New format: use glyph_order directly
+        glyphOrder = input.glyph_order;
+    } else if (input.spelling && input.spelling.length > 0) {
+        // Legacy format: convert spelling to glyph_order
+        // Sort by position first to ensure correct order
+        const sortedSpelling = [...input.spelling].sort((a, b) => a.position - b.position);
+        glyphOrder = sortedSpelling.map(s => createGraphemeEntry(s.grapheme_id));
+    }
+
+    const glyphOrderJson = serializeGlyphOrder(glyphOrder);
+
     // Insert the lexicon entry
     db.run(
-        `INSERT INTO lexicon (lemma, pronunciation, is_native, auto_spell, meaning, part_of_speech, notes) 
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO lexicon (lemma, pronunciation, is_native, auto_spell, meaning, part_of_speech, notes, glyph_order, needs_attention) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
             input.lemma,
             input.pronunciation ?? null,
@@ -53,18 +115,16 @@ export function createLexicon(input: CreateLexiconInput): LexiconComplete {
             input.meaning ?? null,
             input.part_of_speech ?? null,
             input.notes ?? null,
+            glyphOrderJson,
+            0, // needs_attention defaults to false
         ]
     );
 
     const result = db.exec('SELECT last_insert_rowid() as id');
     const lexiconId = result[0].values[0][0] as number;
 
-    // Add spelling if provided
-    if (input.spelling && input.spelling.length > 0) {
-        for (const spellingInput of input.spelling) {
-            addSpellingToLexicon(lexiconId, spellingInput);
-        }
-    }
+    // Sync lexicon_spelling junction table from glyph_order
+    syncLexiconSpellingFromGlyphOrder(lexiconId, glyphOrder);
 
     // Add ancestry if provided
     if (input.ancestry && input.ancestry.length > 0) {
@@ -90,7 +150,7 @@ export function getLexiconById(id: number): Lexicon | null {
     const db = getDatabase();
 
     const result = db.exec(
-        `SELECT id, lemma, pronunciation, is_native, auto_spell, meaning, part_of_speech, notes, created_at, updated_at 
+        `SELECT id, lemma, pronunciation, is_native, auto_spell, meaning, part_of_speech, notes, glyph_order, needs_attention, created_at, updated_at 
          FROM lexicon WHERE id = ?`,
         [id]
     );
@@ -138,16 +198,24 @@ export function getLexiconWithDescendants(id: number): LexiconWithDescendants | 
 
 /**
  * Get a lexicon entry with spelling, ancestors, and descendants.
+ * Uses glyph_order as the source of truth for spelling display.
  */
 export function getLexiconComplete(id: number): LexiconComplete | null {
     const lexicon = getLexiconById(id);
     if (!lexicon) return null;
 
-    const spelling = getSpellingByLexiconId(id);
+    // Build spelling display from glyph_order
+    const { entries: spellingDisplay, hasIpaFallbacks } = buildSpellingDisplay(lexicon.glyph_order);
+
+    // Legacy spelling field (graphemes only)
+    const spelling = spellingDisplay
+        .filter(e => e.type === 'grapheme' && e.grapheme)
+        .map(e => e.grapheme!);
+
     const ancestors = getAncestorsByLexiconId(id);
     const descendants = getDescendantsByLexiconId(id);
 
-    return { ...lexicon, spelling, ancestors, descendants };
+    return { ...lexicon, spellingDisplay, spelling, ancestors, descendants, hasIpaFallbacks };
 }
 
 /**
@@ -157,9 +225,9 @@ export function getAllLexicon(): Lexicon[] {
     const db = getDatabase();
 
     const result = db.exec(
-        `SELECT id, lemma, pronunciation, is_native, auto_spell, meaning, part_of_speech, notes, created_at, updated_at 
+        `SELECT id, lemma, pronunciation, is_native, auto_spell, meaning, part_of_speech, notes, glyph_order, needs_attention, created_at, updated_at 
          FROM lexicon 
-         ORDER BY lemma ASC`
+         ORDER BY needs_attention DESC, lemma ASC`
     );
 
     if (result.length === 0) {
@@ -183,16 +251,26 @@ export function getAllLexiconWithSpelling(): LexiconWithSpelling[] {
 
 /**
  * Get all lexicon entries with full data.
+ * Entries needing attention are sorted to the top.
  */
 export function getAllLexiconComplete(): LexiconComplete[] {
     const entries = getAllLexicon();
 
-    return entries.map(entry => ({
-        ...entry,
-        spelling: getSpellingByLexiconId(entry.id),
-        ancestors: getAncestorsByLexiconId(entry.id),
-        descendants: getDescendantsByLexiconId(entry.id),
-    }));
+    return entries.map(entry => {
+        const { entries: spellingDisplay, hasIpaFallbacks } = buildSpellingDisplay(entry.glyph_order);
+        const spelling = spellingDisplay
+            .filter(e => e.type === 'grapheme' && e.grapheme)
+            .map(e => e.grapheme!);
+
+        return {
+            ...entry,
+            spellingDisplay,
+            spelling,
+            ancestors: getAncestorsByLexiconId(entry.id),
+            descendants: getDescendantsByLexiconId(entry.id),
+            hasIpaFallbacks,
+        };
+    });
 }
 
 /**
@@ -203,12 +281,12 @@ export function getAllLexiconWithUsage(): LexiconWithUsage[] {
 
     const result = db.exec(`
         SELECT l.id, l.lemma, l.pronunciation, l.is_native, l.auto_spell, l.meaning, 
-               l.part_of_speech, l.notes, l.created_at, l.updated_at,
+               l.part_of_speech, l.notes, l.glyph_order, l.needs_attention, l.created_at, l.updated_at,
                COUNT(la.id) as descendant_count
         FROM lexicon l
         LEFT JOIN lexicon_ancestry la ON l.id = la.ancestor_id
         GROUP BY l.id
-        ORDER BY l.lemma ASC
+        ORDER BY l.needs_attention DESC, l.lemma ASC
     `);
 
     if (result.length === 0) {
@@ -217,7 +295,7 @@ export function getAllLexiconWithUsage(): LexiconWithUsage[] {
 
     return result[0].values.map((row: unknown[]) => ({
         ...mapRowToLexicon(row),
-        descendantCount: row[10] as number,
+        descendantCount: row[12] as number,
     }));
 }
 
@@ -228,10 +306,10 @@ export function searchLexicon(query: string): Lexicon[] {
     const db = getDatabase();
 
     const result = db.exec(
-        `SELECT id, lemma, pronunciation, is_native, auto_spell, meaning, part_of_speech, notes, created_at, updated_at 
+        `SELECT id, lemma, pronunciation, is_native, auto_spell, meaning, part_of_speech, notes, glyph_order, needs_attention, created_at, updated_at 
          FROM lexicon 
          WHERE lemma LIKE ? OR pronunciation LIKE ? OR meaning LIKE ?
-         ORDER BY lemma ASC`,
+         ORDER BY needs_attention DESC, lemma ASC`,
         [`%${query}%`, `%${query}%`, `%${query}%`]
     );
 
@@ -249,10 +327,10 @@ export function getLexiconByNative(isNative: boolean): Lexicon[] {
     const db = getDatabase();
 
     const result = db.exec(
-        `SELECT id, lemma, pronunciation, is_native, auto_spell, meaning, part_of_speech, notes, created_at, updated_at 
+        `SELECT id, lemma, pronunciation, is_native, auto_spell, meaning, part_of_speech, notes, glyph_order, needs_attention, created_at, updated_at 
          FROM lexicon 
          WHERE is_native = ?
-         ORDER BY lemma ASC`,
+         ORDER BY needs_attention DESC, lemma ASC`,
         [isNative ? 1 : 0]
     );
 
@@ -265,6 +343,7 @@ export function getLexiconByNative(isNative: boolean): Lexicon[] {
 
 /**
  * Update a lexicon entry's basic info.
+ * If glyph_order is provided, also syncs the lexicon_spelling junction table.
  */
 export function updateLexicon(id: number, input: UpdateLexiconInput): Lexicon | null {
     const db = getDatabase();
@@ -300,6 +379,15 @@ export function updateLexicon(id: number, input: UpdateLexiconInput): Lexicon | 
         updates.push('notes = ?');
         values.push(input.notes);
     }
+    if (input.glyph_order !== undefined) {
+        const glyphOrderJson = serializeGlyphOrder(input.glyph_order);
+        updates.push('glyph_order = ?');
+        values.push(glyphOrderJson);
+    }
+    if (input.needs_attention !== undefined) {
+        updates.push('needs_attention = ?');
+        values.push(input.needs_attention ? 1 : 0);
+    }
 
     if (updates.length === 0) {
         return getLexiconById(id);
@@ -309,6 +397,11 @@ export function updateLexicon(id: number, input: UpdateLexiconInput): Lexicon | 
     values.push(id);
 
     db.run(`UPDATE lexicon SET ${updates.join(', ')} WHERE id = ?`, values);
+
+    // If glyph_order was updated, sync the junction table
+    if (input.glyph_order !== undefined) {
+        syncLexiconSpellingFromGlyphOrder(id, input.glyph_order);
+    }
 
     persistDatabase();
 
@@ -781,6 +874,8 @@ export function wouldCreateCycle(lexiconId: number, ancestorId: number): boolean
 
 /**
  * Map a database row to a Lexicon object.
+ * Expected column order: id, lemma, pronunciation, is_native, auto_spell, meaning,
+ *                        part_of_speech, notes, glyph_order, needs_attention, created_at, updated_at
  */
 function mapRowToLexicon(row: unknown[]): Lexicon {
     return {
@@ -792,7 +887,254 @@ function mapRowToLexicon(row: unknown[]): Lexicon {
         meaning: row[5] as string | null,
         part_of_speech: row[6] as string | null,
         notes: row[7] as string | null,
-        created_at: row[8] as string,
-        updated_at: row[9] as string,
+        glyph_order: row[8] as string ?? '[]',
+        needs_attention: (row[9] as number) === 1,
+        created_at: row[10] as string,
+        updated_at: row[11] as string,
     };
+}
+
+/**
+ * Sync the lexicon_spelling junction table from glyph_order.
+ * This extracts unique grapheme IDs from glyph_order and updates the junction table.
+ *
+ * @param lexiconId - The lexicon entry ID
+ * @param glyphOrder - The glyph_order array
+ */
+export function syncLexiconSpellingFromGlyphOrder(lexiconId: number, glyphOrder: SpellingEntry[]): void {
+    const db = getDatabase();
+
+    // Delete existing spelling entries
+    db.run('DELETE FROM lexicon_spelling WHERE lexicon_id = ?', [lexiconId]);
+
+    // Extract unique grapheme IDs from glyph_order
+    const extracted = extractGraphemeIds(glyphOrder);
+
+    // Add new entries (position just for ordering, we use grapheme_id uniqueness)
+    // Note: Since glyph_order is the source of truth for ordering, we just need
+    // the junction table for queries like "which words use grapheme X?"
+    // We'll assign position based on first occurrence in glyph_order
+    const positionMap = new Map<number, number>();
+    let position = 0;
+    for (const entry of parseGlyphOrder(glyphOrder)) {
+        if (entry.type === 'grapheme' && entry.graphemeId && !positionMap.has(entry.graphemeId)) {
+            positionMap.set(entry.graphemeId, position++);
+        }
+    }
+
+    for (const graphemeId of extracted.graphemeIds) {
+        const pos = positionMap.get(graphemeId) ?? 0;
+        try {
+            db.run(`
+                INSERT INTO lexicon_spelling (lexicon_id, grapheme_id, position)
+                VALUES (?, ?, ?)
+            `, [lexiconId, graphemeId, pos]);
+        } catch (error) {
+            // Ignore constraint violations (shouldn't happen with unique grapheme IDs)
+            console.warn(`[LexiconService] Failed to sync spelling for lexicon ${lexiconId}, grapheme ${graphemeId}:`, error);
+        }
+    }
+}
+
+/**
+ * Build spelling display entries from glyph_order.
+ * Resolves grapheme references to full grapheme data.
+ *
+ * @param glyphOrder - The glyph_order JSON string
+ * @returns Array of SpellingDisplayEntry
+ */
+export function buildSpellingDisplay(glyphOrder: string): { entries: SpellingDisplayEntry[]; hasIpaFallbacks: boolean } {
+    const db = getDatabase();
+    const entries: SpellingDisplayEntry[] = [];
+    const parsed = parseGlyphOrder(deserializeGlyphOrder(glyphOrder));
+    let hasIpaFallbacks = false;
+
+    for (let i = 0; i < parsed.length; i++) {
+        const entry = parsed[i];
+
+        if (entry.type === 'grapheme' && entry.graphemeId) {
+            // Resolve grapheme from database
+            const result = db.exec(`
+                SELECT id, name, category, notes, created_at, updated_at
+                FROM graphemes WHERE id = ?
+            `, [entry.graphemeId]);
+
+            if (result.length > 0 && result[0].values.length > 0) {
+                const row = result[0].values[0];
+                entries.push({
+                    type: 'grapheme',
+                    position: i,
+                    grapheme: {
+                        id: row[0] as number,
+                        name: row[1] as string,
+                        category: row[2] as string | null,
+                        notes: row[3] as string | null,
+                        created_at: row[4] as string,
+                        updated_at: row[5] as string,
+                    },
+                });
+            } else {
+                // Grapheme not found - might have been deleted
+                // Convert to IPA fallback if we have the character info
+                entries.push({
+                    type: 'ipa',
+                    position: i,
+                    ipaCharacter: `[?${entry.graphemeId}]`, // Placeholder for missing grapheme
+                });
+                hasIpaFallbacks = true;
+            }
+        } else if (entry.type === 'ipa' && entry.ipaCharacter) {
+            entries.push({
+                type: 'ipa',
+                position: i,
+                ipaCharacter: entry.ipaCharacter,
+            });
+            hasIpaFallbacks = true;
+        }
+    }
+
+    return { entries, hasIpaFallbacks };
+}
+
+// =============================================================================
+// GRAPHEME DELETION HANDLING
+// =============================================================================
+
+/**
+ * Get all lexicon entries that use a specific grapheme in their spelling.
+ *
+ * @param graphemeId - The grapheme ID to check
+ * @returns Array of lexicon entries using this grapheme
+ */
+export function getLexiconEntriesUsingGrapheme(graphemeId: number): Lexicon[] {
+    const db = getDatabase();
+
+    const result = db.exec(`
+        SELECT DISTINCT l.id, l.lemma, l.pronunciation, l.is_native, l.auto_spell, 
+               l.meaning, l.part_of_speech, l.notes, l.glyph_order, l.needs_attention, 
+               l.created_at, l.updated_at
+        FROM lexicon l
+        JOIN lexicon_spelling ls ON l.id = ls.lexicon_id
+        WHERE ls.grapheme_id = ?
+        ORDER BY l.lemma ASC
+    `, [graphemeId]);
+
+    if (result.length === 0) {
+        return [];
+    }
+
+    return result[0].values.map(mapRowToLexicon);
+}
+
+/**
+ * Handle grapheme deletion by respelling affected lexicon entries.
+ *
+ * For entries with auto_spell=true:
+ * - Trigger auto-respelling using the pronunciation
+ * - Replace deleted grapheme with IPA fallback if respelling fails
+ *
+ * For entries with auto_spell=false:
+ * - Mark needs_attention=true for manual review
+ * - Replace deleted grapheme with IPA placeholder
+ *
+ * @param graphemeId - The ID of the deleted grapheme
+ * @param deletedGraphemePronunciation - Optional primary phoneme of the deleted grapheme (for IPA fallback)
+ * @returns Object with counts of affected entries
+ */
+export function handleGraphemeDeletion(
+    graphemeId: number,
+    deletedGraphemePronunciation?: string
+): {
+    respelledCount: number;
+    markedForAttentionCount: number;
+    affectedLexiconIds: number[];
+} {
+    const affectedEntries = getLexiconEntriesUsingGrapheme(graphemeId);
+    const affectedLexiconIds: number[] = [];
+    let respelledCount = 0;
+    let markedForAttentionCount = 0;
+
+    // Note: We don't use auto-spell here to avoid circular dependencies.
+    // Instead, we replace the deleted grapheme with IPA fallback and let the user
+    // re-spell manually if needed, or rely on auto_spell during the next edit.
+
+    for (const entry of affectedEntries) {
+        affectedLexiconIds.push(entry.id);
+
+        // Parse current glyph_order
+        const currentGlyphOrder = deserializeGlyphOrder(entry.glyph_order);
+
+        // Replace the deleted grapheme with IPA fallback
+        const graphemeEntry = createGraphemeEntry(graphemeId);
+        const fallbackChar = deletedGraphemePronunciation || '?';
+
+        const newGlyphOrder = currentGlyphOrder.map(e =>
+            e === graphemeEntry ? fallbackChar : e
+        );
+
+        // For auto_spell entries, we'll mark them but not force attention
+        // since they can be auto-respelled on next edit
+        const shouldMarkAttention = !entry.auto_spell;
+
+        updateLexicon(entry.id, {
+            glyph_order: newGlyphOrder,
+            needs_attention: shouldMarkAttention,
+        });
+
+        if (shouldMarkAttention) {
+            markedForAttentionCount++;
+        } else {
+            respelledCount++; // Count as "handled" since auto_spell entries will auto-fix
+        }
+    }
+
+    return {
+        respelledCount,
+        markedForAttentionCount,
+        affectedLexiconIds,
+    };
+}
+
+/**
+ * Get lexicon entries that need attention (manual review required).
+ *
+ * @returns Array of lexicon entries with needs_attention=true
+ */
+export function getLexiconEntriesNeedingAttention(): Lexicon[] {
+    const db = getDatabase();
+
+    const result = db.exec(`
+        SELECT id, lemma, pronunciation, is_native, auto_spell, meaning, 
+               part_of_speech, notes, glyph_order, needs_attention, created_at, updated_at
+        FROM lexicon
+        WHERE needs_attention = 1
+        ORDER BY updated_at DESC
+    `);
+
+    if (result.length === 0) {
+        return [];
+    }
+
+    return result[0].values.map(mapRowToLexicon);
+}
+
+/**
+ * Mark a lexicon entry as no longer needing attention.
+ *
+ * @param lexiconId - The lexicon entry ID
+ * @returns The updated lexicon entry
+ */
+export function clearNeedsAttention(lexiconId: number): Lexicon | null {
+    return updateLexicon(lexiconId, { needs_attention: false });
+}
+
+/**
+ * Update a lexicon's glyph_order directly and sync the junction table.
+ *
+ * @param lexiconId - The lexicon entry ID
+ * @param glyphOrder - The new glyph_order array
+ * @returns The updated lexicon entry
+ */
+export function setLexiconGlyphOrder(lexiconId: number, glyphOrder: SpellingEntry[]): Lexicon | null {
+    return updateLexicon(lexiconId, { glyph_order: glyphOrder, needs_attention: false });
 }

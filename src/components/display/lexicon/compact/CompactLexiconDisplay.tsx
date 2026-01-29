@@ -11,24 +11,29 @@ interface CompactLexiconDisplayProps {
 }
 
 /**
- * Compact display for a lexicon entry - shows lemma, spelling graphemes, pronunciation, and truncated meaning.
+ * Compact display for a lexicon entry - shows lemma, spelling graphemes/IPA, pronunciation, and truncated meaning.
  * Designed for grid layout display.
  */
 export default function CompactLexiconDisplay({ lexiconData, graphemeMap, onClick }: CompactLexiconDisplayProps) {
-    // Combine all spelling grapheme SVGs (from their glyphs)
-    // Use graphemeMap if provided, otherwise try to access glyphs directly (for GraphemeComplete data)
-    const combinedSvg = lexiconData.spelling
-        .flatMap(grapheme => {
-            // Try to get full grapheme data from map
-            const fullGrapheme = graphemeMap?.get(grapheme.id);
-            const glyphs = fullGrapheme?.glyphs ?? (grapheme as GraphemeComplete).glyphs;
-            return glyphs?.map(glyph => glyph.svg_data) ?? [];
-        })
+    // Build combined SVG from grapheme entries only
+    const combinedSvg = (lexiconData.spellingDisplay?.filter(e => e.type === 'grapheme').map(e => {
+        const grapheme = e.type === 'grapheme' ? e.grapheme : null;
+        if (!grapheme) return [] as string[];
+        const fullGrapheme = graphemeMap?.get(grapheme.id);
+        const glyphs = fullGrapheme?.glyphs ?? (grapheme as GraphemeComplete).glyphs;
+        return glyphs?.map(glyph => glyph.svg_data) ?? [];
+    }).flat() ?? [])
         .join('');
 
     const sanitizedSvg = combinedSvg ? DOMPurify.sanitize(combinedSvg, {
         USE_PROFILES: { svg: true, svgFilters: true },
     }) : '';
+
+    // Render a short textual spelling (mixing grapheme names and IPA chars)
+    const textualSpelling = (lexiconData.spellingDisplay ?? lexiconData.spelling.map(g => ({ type: 'grapheme', grapheme: g } as any))).map((entry: any, i: number) => {
+        if (entry.type === 'grapheme') return entry.grapheme?.name ?? '?';
+        return entry.ipaCharacter ?? entry;
+    }).join(' ');
 
     // Truncate meaning for compact display
     const truncatedMeaning = lexiconData.meaning
@@ -52,6 +57,8 @@ export default function CompactLexiconDisplay({ lexiconData, graphemeMap, onClic
             ) : (
                 <div className={styles.noSpelling}>(no spelling)</div>
             )}
+
+            <div className={styles.spellingText} title={textualSpelling}>{textualSpelling}</div>
 
             <span className={styles.pronunciation}>
                 {lexiconData.pronunciation ? `/${lexiconData.pronunciation}/` : '—'}

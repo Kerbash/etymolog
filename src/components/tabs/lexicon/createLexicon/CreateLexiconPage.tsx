@@ -2,13 +2,14 @@
  * CreateLexiconPage
  * ----------------
  * Page for creating a new lexicon entry.
+ * Supports Two-List Architecture for saving IPA fallback characters.
  */
 
 import { useState, useCallback, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useEtymolog } from '../../../../db';
 import type { CreateLexiconInput, LexiconAncestorFormRow } from '../../../../db/types';
-import { isVirtualGlyphId } from '../../../form/customInput/glyphCanvasInput';
+import type { SpellingEntry } from '../../../../db/utils/spellingUtils';
 import { SmartForm, useSmartForm } from 'smart-form/smartForm';
 import type { useSmartFormRef } from 'smart-form/types';
 import { LexiconFormFields } from '../../../form/lexiconForm';
@@ -28,7 +29,8 @@ export default function CreateLexiconPage() {
     const smartFormRef = useRef<useSmartFormRef>(null);
 
     // Track complex field values
-    const [spellingIds, setSpellingIds] = useState<number[]>([]);
+    // glyph_order is the primary format for Two-List Architecture
+    const [glyphOrder, setGlyphOrder] = useState<SpellingEntry[]>([]);
     const [ancestors, setAncestors] = useState<LexiconAncestorFormRow[]>([]);
     const [isNative, setIsNative] = useState(true);
     const [autoSpell, setAutoSpell] = useState(true);
@@ -43,15 +45,8 @@ export default function CreateLexiconPage() {
             const partOfSpeech = formData.partOfSpeech as string | undefined;
             const notes = formData.notes as string | undefined;
 
-            // Filter out virtual glyph IDs (negative IDs are virtual/temporary IPA placeholders)
-            const realSpellingIds = spellingIds.filter(id => !isVirtualGlyphId(id));
-            const virtualCount = spellingIds.length - realSpellingIds.length;
-
-            if (virtualCount > 0) {
-                console.warn(`Filtered out ${virtualCount} virtual IPA glyph(s) - these need real graphemes to be saved`);
-            }
-
-            // Build create input
+            // Build create input using glyph_order format (Two-List Architecture)
+            // This supports both real graphemes AND IPA fallback characters
             const input: CreateLexiconInput = {
                 lemma: lemma.trim(),
                 pronunciation: pronunciation?.trim() || undefined,
@@ -60,10 +55,8 @@ export default function CreateLexiconPage() {
                 meaning: meaning?.trim() || undefined,
                 part_of_speech: partOfSpeech?.trim() || undefined,
                 notes: notes?.trim() || undefined,
-                spelling: realSpellingIds.map((id, idx) => ({
-                    grapheme_id: id,
-                    position: idx,
-                })),
+                // Use glyph_order format - supports IPA fallback characters
+                glyph_order: glyphOrder,
                 ancestry: ancestors.map((a, idx) => ({
                     ancestor_id: a.ancestorId,
                     position: idx,
@@ -90,7 +83,7 @@ export default function CreateLexiconPage() {
                 error: err instanceof Error ? err.message : 'Creation failed',
             };
         }
-    }, [api, refresh, navigate, spellingIds, ancestors, isNative, autoSpell]);
+    }, [api, refresh, navigate, glyphOrder, ancestors, isNative, autoSpell]);
 
     // Register form
     const formProps = registerForm('createLexiconForm', {
@@ -143,7 +136,7 @@ export default function CreateLexiconPage() {
                     <LexiconFormFields
                         registerField={registerField}
                         mode="create"
-                        onSpellingChange={setSpellingIds}
+                        onGlyphOrderChange={setGlyphOrder}
                         onAncestorsChange={setAncestors}
                     />
 

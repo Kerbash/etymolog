@@ -11,8 +11,12 @@
  * - Meaning Input
  * - Part of Speech Input
  * - Notes Input
- * - Spelling Input (grapheme selection)
+ * - Spelling Input (grapheme selection with IPA fallback support)
  * - Ancestry Input (ancestor relationships)
+ *
+ * Two-List Architecture Support:
+ * - Outputs glyph_order format: ["grapheme-123", "ə", "grapheme-456"]
+ * - Supports IPA fallback characters stored inline
  */
 
 import classNames from "classnames";
@@ -21,6 +25,7 @@ import type {LexiconComplete, LexiconAncestorFormRow, AutoSpellResultExtended} f
 import type {registerFieldReturnType} from "smart-form/types";
 import {useEtymolog} from "../../../db";
 import {buildVirtualGlyphMap} from "../../../db/autoSpellService";
+import {deserializeGlyphOrder, type SpellingEntry} from "../../../db/utils/spellingUtils";
 import type {VirtualGlyph} from "../customInput/glyphCanvasInput/types";
 
 import LabelShiftTextInput from "smart-form/input/fancy/redditStyle/labelShiftTextInput/labelShiftTextInput.tsx";
@@ -42,8 +47,17 @@ export interface LexiconFormFieldsProps {
     initialData?: LexiconComplete | null;
     /** Optional class name for the container */
     className?: string;
-    /** Callback when spelling changes (for parent to track) */
+    /**
+     * Callback when spelling changes (for parent to track).
+     * @deprecated Use onGlyphOrderChange for Two-List Architecture support
+     */
     onSpellingChange?: (graphemeIds: number[]) => void;
+    /**
+     * Callback when spelling changes with glyph_order format (Two-List Architecture).
+     * This is the preferred method for getting spelling data.
+     * @param glyphOrder - Array in glyph_order format: ["grapheme-123", "ə", ...]
+     */
+    onGlyphOrderChange?: (glyphOrder: SpellingEntry[]) => void;
     /** Callback when ancestors change (for parent to track) */
     onAncestorsChange?: (ancestors: LexiconAncestorFormRow[]) => void;
 }
@@ -85,6 +99,7 @@ export default function LexiconFormFields({
                                               initialData,
                                               className,
                                               onSpellingChange,
+                                              onGlyphOrderChange,
                                               onAncestorsChange,
                                           }: LexiconFormFieldsProps) {
     const {api, data} = useEtymolog();
@@ -97,9 +112,19 @@ export default function LexiconFormFields({
     const availableLexicon = data.lexiconComplete ?? [];
 
     // Internal state for complex fields
+    // Track both the legacy spellingIds and new glyph_order format
     const [spellingIds, setSpellingIds] = useState<number[]>(() =>
         initialData?.spelling?.map(g => g.id) ?? []
     );
+
+    // glyph_order is the source of truth for Two-List Architecture
+    const [glyphOrder, setGlyphOrder] = useState<SpellingEntry[]>(() => {
+        if (initialData?.glyph_order) {
+            return deserializeGlyphOrder(initialData.glyph_order);
+        }
+        // Fallback to legacy spelling
+        return initialData?.spelling?.map(g => `grapheme-${g.id}`) ?? [];
+    });
 
     const [ancestors, _setAncestors] = useState<LexiconAncestorFormRow[]>(() =>
         initialData?.ancestors?.map(a => ({
@@ -122,14 +147,23 @@ export default function LexiconFormFields({
     const [autoSpellVirtualGlyphs, setAutoSpellVirtualGlyphs] = useState<Map<number, VirtualGlyph>>(new Map());
 
     // Memoized callback for GlyphCanvasInput to prevent infinite loops
-    const handleSpellingChange = useCallback((ids: number[], _hasVirtualGlyphs?: boolean) => {
+    // Now receives glyph_order format as third parameter
+    const handleSpellingChange = useCallback((ids: number[], _hasVirtualGlyphs?: boolean, newGlyphOrder?: SpellingEntry[]) => {
         setSpellingIds(ids);
+        if (newGlyphOrder) {
+            setGlyphOrder(newGlyphOrder);
+        }
     }, []);
 
-    // Notify parent of spelling changes
+    // Notify parent of spelling changes (legacy format)
     useEffect(() => {
         onSpellingChange?.(spellingIds);
     }, [spellingIds, onSpellingChange]);
+
+    // Notify parent of glyph_order changes (Two-List Architecture)
+    useEffect(() => {
+        onGlyphOrderChange?.(glyphOrder);
+    }, [glyphOrder, onGlyphOrderChange]);
 
     // Notify parent of ancestor changes
     useEffect(() => {
@@ -265,6 +299,7 @@ export default function LexiconFormFields({
                         {...spellingField}
                         availableGlyphs={availableGraphemes}
                         defaultValue={spellingIds}
+                        initialGlyphOrder={glyphOrder}
                         onSelectionChange={handleSpellingChange}
                         autoSpellPreview={autoSpellEnabled ? autoSpellPreview : null}
                         onRequestAutoSpell={autoSpellEnabled ? handleRequestAutoSpell : undefined}
@@ -396,6 +431,9 @@ export interface LexiconFormDataOutput {
     notes?: string;
     isNative: boolean;
     autoSpell: boolean;
+    /** @deprecated Use glyphOrder instead */
     spellingGraphemeIds: number[];
+    /** glyph_order format for Two-List Architecture */
+    glyphOrder: SpellingEntry[];
     ancestors: LexiconAncestorFormRow[];
 }

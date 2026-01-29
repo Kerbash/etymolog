@@ -163,6 +163,8 @@ function createTables(database: Database): void {
     // =========================================================================
 
     // Lexicon table - vocabulary entries
+    // glyph_order: JSON array storing the true ordered spelling (grapheme refs + IPA chars)
+    // needs_attention: Flag for entries that need manual review (e.g., after grapheme deletion)
     database.run(`
         CREATE TABLE IF NOT EXISTS lexicon (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -173,6 +175,8 @@ function createTables(database: Database): void {
             meaning TEXT,
             part_of_speech TEXT,
             notes TEXT,
+            glyph_order TEXT DEFAULT '[]',
+            needs_attention INTEGER DEFAULT 0,
             created_at TEXT DEFAULT (datetime('now')),
             updated_at TEXT DEFAULT (datetime('now'))
         )
@@ -355,6 +359,52 @@ function runMigrations(database: Database): void {
 
         console.log('[DB] Lexicon tables created successfully');
     }
+
+    // Check if glyph_order column exists in lexicon table (v4 schema)
+    const lexiconColumns = database.exec(`PRAGMA table_info(lexicon)`);
+    const hasGlyphOrder = lexiconColumns.length > 0 &&
+        lexiconColumns[0].values.some((row: unknown[]) => row[1] === 'glyph_order');
+
+    if (!hasGlyphOrder) {
+        console.log('[DB] Migrating lexicon to v4 schema (adding glyph_order and needs_attention)...');
+
+        // Add glyph_order column
+        database.run(`ALTER TABLE lexicon ADD COLUMN glyph_order TEXT DEFAULT '[]'`);
+        // Add needs_attention column
+        database.run(`ALTER TABLE lexicon ADD COLUMN needs_attention INTEGER DEFAULT 0`);
+
+        // Migrate existing lexicon_spelling data to glyph_order
+        // For each lexicon entry, read its spelling and convert to glyph_order format
+        const lexiconEntries = database.exec(`SELECT id FROM lexicon`);
+        if (lexiconEntries.length > 0 && lexiconEntries[0].values.length > 0) {
+            for (const row of lexiconEntries[0].values) {
+                const lexiconId = row[0] as number;
+                // Get ordered grapheme IDs for this lexicon
+                const spellingResult = database.exec(`
+                    SELECT grapheme_id FROM lexicon_spelling
+                    WHERE lexicon_id = ?
+                    ORDER BY position ASC
+                `, [lexiconId]);
+
+                if (spellingResult.length > 0 && spellingResult[0].values.length > 0) {
+                    const graphemeIds = spellingResult[0].values.map(r => r[0] as number);
+                    // Convert to glyph_order format: ["grapheme-1", "grapheme-2", ...]
+                    const glyphOrder = graphemeIds.map(id => `grapheme-${id}`);
+                    const glyphOrderJson = JSON.stringify(glyphOrder);
+                    database.run(`UPDATE lexicon SET glyph_order = ? WHERE id = ?`, [glyphOrderJson, lexiconId]);
+                }
+            }
+            console.log('[DB] Migrated existing lexicon spelling to glyph_order format');
+        }
+
+        console.log('[DB] Migration to v4 complete');
+    }
+
+    // Add index for needs_attention if it doesn't exist
+    database.run(`
+        CREATE INDEX IF NOT EXISTS idx_lexicon_needs_attention
+        ON lexicon(needs_attention)
+    `);
 }
 
 /**

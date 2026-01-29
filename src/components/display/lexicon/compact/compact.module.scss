@@ -103,3 +103,20 @@
     color: var(--text-secondary);
     border-radius: 8px;
 }
+
+.spellingText {
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    margin: 0.25rem 0;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+.ipaChar {
+    color: var(--status-info);
+    border-bottom: 1px dashed var(--status-info);
+    padding-bottom: 1px;
+}

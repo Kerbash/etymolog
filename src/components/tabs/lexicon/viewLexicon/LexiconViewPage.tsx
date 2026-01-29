@@ -3,13 +3,14 @@
  * ----------------
  * Page for viewing and editing a lexicon entry.
  * Includes etymology tree display.
+ * Supports Two-List Architecture for IPA fallback characters.
  */
 
 import { useState, useCallback, useRef, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useEtymolog } from '../../../../db';
 import type { UpdateLexiconInput, LexiconAncestorFormRow, LexiconComplete } from '../../../../db/types';
-import { isVirtualGlyphId } from '../../../form/customInput/glyphCanvasInput';
+import type { SpellingEntry } from '../../../../db/utils/spellingUtils';
 import { SmartForm, useSmartForm } from 'smart-form/smartForm';
 import type { useSmartFormRef } from 'smart-form/types';
 import { LexiconFormFields } from '../../../form/lexiconForm';
@@ -37,8 +38,8 @@ export default function LexiconViewPage() {
     const { registerField, registerForm, isFormValid } = useSmartForm({ mode: 'onChange' });
     const smartFormRef = useRef<useSmartFormRef>(null);
 
-    // Track complex field values for edit mode
-    const [spellingIds, setSpellingIds] = useState<number[]>([]);
+    // Track complex field values for edit mode - using glyph_order format
+    const [glyphOrder, setGlyphOrder] = useState<SpellingEntry[]>([]);
     const [ancestors, setAncestors] = useState<LexiconAncestorFormRow[]>([]);
 
     // Parse ID
@@ -46,8 +47,8 @@ export default function LexiconViewPage() {
 
     // Build grapheme map for display
     const graphemeMap = useMemo(() => {
-        return new Map((data.graphemeComplete ?? []).map(g => [g.id, g]));
-    }, [data.graphemeComplete]);
+        return new Map((data.graphemesComplete ?? []).map(g => [g.id, g]));
+    }, [data.graphemesComplete]);
 
     // Get lexicon data
     const lexiconResult = lexiconId && !isNaN(lexiconId)
@@ -66,7 +67,7 @@ export default function LexiconViewPage() {
     // Initialize edit state when entering edit mode
     const handleStartEdit = useCallback(() => {
         if (lexicon) {
-            setSpellingIds(lexicon.spelling.map(g => g.id));
+            // Let LexiconFormFields handle glyph_order initialization from initialData
             setAncestors(lexicon.ancestors.map(a => ({
                 ancestorId: a.ancestor.id,
                 ancestryType: a.ancestry_type,
@@ -90,37 +91,20 @@ export default function LexiconViewPage() {
             const partOfSpeech = formData.partOfSpeech as string | undefined;
             const notes = formData.notes as string | undefined;
 
-            // Update basic fields
+            // Update basic fields AND glyph_order together (Two-List Architecture)
             const updateInput: UpdateLexiconInput = {
                 lemma: lemma.trim(),
                 pronunciation: pronunciation?.trim() || null,
                 meaning: meaning?.trim() || null,
                 part_of_speech: partOfSpeech?.trim() || null,
                 notes: notes?.trim() || null,
+                // Include glyph_order directly - supports IPA fallback characters
+                glyph_order: glyphOrder,
             };
 
             const updateResult = api.lexicon.update(lexiconId, updateInput);
             if (!updateResult.success) {
                 throw new Error(updateResult.error?.message || 'Failed to update');
-            }
-
-            // Filter out virtual glyph IDs (negative IDs are virtual/temporary)
-            const realSpellingIds = spellingIds.filter(id => !isVirtualGlyphId(id));
-            const virtualCount = spellingIds.length - realSpellingIds.length;
-
-            if (virtualCount > 0) {
-                console.warn(`Filtered out ${virtualCount} virtual IPA glyph(s) - these need real graphemes to be saved`);
-            }
-
-            // Update spelling (only real grapheme IDs)
-            const spellingResult = api.lexicon.updateSpelling(lexiconId, {
-                spelling: realSpellingIds.map((gid, idx) => ({
-                    grapheme_id: gid,
-                    position: idx,
-                })),
-            });
-            if (!spellingResult.success) {
-                console.warn('Failed to update spelling:', spellingResult.error?.message);
             }
 
             // Update ancestry
@@ -146,7 +130,7 @@ export default function LexiconViewPage() {
                 error: err instanceof Error ? err.message : 'Update failed',
             };
         }
-    }, [api, lexiconId, spellingIds, ancestors, refresh]);
+    }, [api, lexiconId, glyphOrder, ancestors, refresh]);
 
     const formProps = registerForm('editLexiconForm', {
         submitFunc: handleSubmit,
@@ -272,7 +256,7 @@ export default function LexiconViewPage() {
                                 registerField={registerField}
                                 mode="edit"
                                 initialData={lexicon}
-                                onSpellingChange={setSpellingIds}
+                                onGlyphOrderChange={setGlyphOrder}
                                 onAncestorsChange={setAncestors}
                             />
 
