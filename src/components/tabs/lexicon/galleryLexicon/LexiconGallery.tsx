@@ -386,6 +386,11 @@ export default function LexiconGallery({
                     autoEnableThreshold: 100,
                     estimatedItemHeight: viewMode === 'detailed' ? 180 : 200,
                 }}
+                styling={{
+                    content: {
+                        style: {padding: '1rem'},
+                    }
+                }}
 
                 // Accessibility
                 ariaLabel="Lexicon gallery"

@@ -16,6 +16,8 @@ export interface GlyphSpellingCoreProps {
     className?: string;
     backgroundColor?: string;
     showPaperEffect?: boolean;
+    /** Viewport zoom level (1 = 100%, 2 = 200%, etc.) */
+    zoom?: number;
 }
 const GlyphItem = memo(function GlyphItem({
     positioned,
@@ -67,6 +69,7 @@ export const GlyphSpellingCore = memo(function GlyphSpellingCore({
     className,
     backgroundColor,
     showPaperEffect = false,
+    zoom = 1,
 }: GlyphSpellingCoreProps) {
     const viewBox = boundsToViewBox(bounds);
     return (
@@ -78,7 +81,11 @@ export const GlyphSpellingCore = memo(function GlyphSpellingCore({
             preserveAspectRatio="xMidYMid meet"
             width={bounds.width}
             height={bounds.height}
-            style={{ backgroundColor }}
+            style={{
+                backgroundColor,
+                transform: zoom !== 1 ? `scale(${zoom})` : undefined,
+                transformOrigin: 'top left',
+            }}
         >
             {showPaperEffect && (
                 <rect

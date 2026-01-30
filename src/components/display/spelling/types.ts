@@ -284,6 +284,13 @@ export interface GlyphSpellingDisplayProps {
      * so any em-based content aligns with the expected size.
      */
     glyphEmPx?: number;
+
+    /**
+     * Viewport zoom level for static mode.
+     * 1 = 100% (default), 2 = 200%, 0.5 = 50%, etc.
+     * Canvas coordinates remain fixed; this only affects display scale.
+     */
+    zoom?: number;
 }
 
 // =============================================================================

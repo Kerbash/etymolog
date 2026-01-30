@@ -84,6 +84,7 @@ const GlyphSpellingDisplay = forwardRef<GlyphSpellingDisplayRef, GlyphSpellingDi
             className,
             style,
             glyphEmPx,
+            zoom = 1,
         },
         ref
     ) {
@@ -180,8 +181,9 @@ const GlyphSpellingDisplay = forwardRef<GlyphSpellingDisplayRef, GlyphSpellingDi
         const containerStyle = useMemo<React.CSSProperties>(
             () => ({
                 ...style,
-                width: width ?? bounds.width,
-                height: height ?? bounds.height,
+                // Scale container dimensions by zoom factor
+                width: (width ?? bounds.width) * zoom,
+                height: (height ?? bounds.height) * zoom,
                 overflow: overflowMap[overflow],
                 display: 'flex',
                 alignItems: 'center',
@@ -189,7 +191,7 @@ const GlyphSpellingDisplay = forwardRef<GlyphSpellingDisplayRef, GlyphSpellingDi
                 // If glyphEmPx was provided, set font-size on the container so 1em==glyphEmPx
                 fontSize: glyphEmPx ? `${glyphEmPx}px` : undefined,
             }),
-            [style, width, height, bounds.width, bounds.height, overflow, glyphEmPx]
+            [style, width, height, bounds.width, bounds.height, overflow, glyphEmPx, zoom]
         );
 
         return (
@@ -201,6 +203,7 @@ const GlyphSpellingDisplay = forwardRef<GlyphSpellingDisplayRef, GlyphSpellingDi
                     positions={positions}
                     bounds={bounds}
                     showVirtualGlyphStyling={showVirtualGlyphStyling}
+                    zoom={zoom}
                 />
             </div>
         );

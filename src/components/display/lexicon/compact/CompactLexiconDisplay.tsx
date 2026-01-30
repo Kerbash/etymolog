@@ -38,15 +38,14 @@ export default function CompactLexiconDisplay({ lexiconData, graphemeMap, onClic
             <h3 className={styles.lemma}>{lexiconData.lemma}</h3>
 
             {hasSpelling ? (
-                <div className={styles.svgContainer}>
                     <GlyphSpellingDisplay
                         glyphs={lexiconData.spellingDisplay}
                         graphemeMap={graphemeMap}
                         strategy="ltr"
                         config="compact"
+                        zoom={2}
                         emptyContent={<span className={styles.noSpelling}>(no spelling)</span>}
                     />
-                </div>
             ) : (
                 <div className={styles.noSpelling}>(no spelling)</div>
             )}
