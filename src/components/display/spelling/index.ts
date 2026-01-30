@@ -9,6 +9,10 @@
 // Main component
 export { default as GlyphSpellingDisplay } from './GlyphSpellingDisplay';
 
+// Sub-components (for advanced usage)
+export { GlyphSpellingCore } from './GlyphSpellingCore';
+export { InteractiveGlyphDisplay } from './InteractiveGlyphDisplay';
+
 // Types
 export type {
     // Strategy types
@@ -27,6 +31,12 @@ export type {
     // Normalization
     NormalizationContext,
     InputType,
+    // Simulated paper types
+    DisplayMode,
+    ViewportConfig,
+    CanvasConfig,
+    ViewportTransform,
+    GlyphSpellingDisplayRef,
 } from './types';
 
 // Constants

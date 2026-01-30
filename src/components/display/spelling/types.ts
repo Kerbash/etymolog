@@ -175,10 +175,11 @@ export interface GlyphSpellingDisplayProps {
      * Glyphs to display. Accepts multiple formats:
      * - SpellingDisplayEntry[]: Full spelling with grapheme/IPA entries
      * - Glyph[]: Array of glyph objects
+     * - RenderableGlyph[]: Pre-normalized glyph data
      * - GraphemeComplete[]: Array of graphemes (extracts glyphs)
      * - number[]: Array of glyph IDs (requires glyphMap)
      */
-    glyphs: SpellingDisplayEntry[] | Glyph[] | GraphemeComplete[] | number[];
+    glyphs: SpellingDisplayEntry[] | Glyph[] | RenderableGlyph[] | GraphemeComplete[] | number[];
 
     // --- Layout ---
 
@@ -188,16 +189,64 @@ export interface GlyphSpellingDisplayProps {
     /** Layout configuration or preset name */
     config?: Partial<LayoutStrategyConfig> | LayoutPreset;
 
-    // --- Display ---
+    // --- Display (Legacy mode - deprecated, use viewport/canvas instead) ---
 
-    /** Width of the container (CSS value) */
+    /**
+     * Width of the container (CSS value).
+     * @deprecated Use viewport.width for interactive mode
+     */
     width?: number | string;
 
-    /** Height of the container (CSS value) */
+    /**
+     * Height of the container (CSS value).
+     * @deprecated Use viewport.height for interactive mode
+     */
     height?: number | string;
 
     /** Overflow behavior (default: 'clip') */
     overflow?: OverflowBehavior;
+
+    // --- Simulated Paper Mode ---
+
+    /**
+     * Display mode: 'static' (default) or 'interactive'.
+     * - static: Simple SVG display without pan/zoom
+     * - interactive: Full simulated paper with pan/zoom/viewport control
+     */
+    mode?: DisplayMode;
+
+    /**
+     * Canvas configuration (the internal paper surface).
+     * Only used when mode='interactive'.
+     * If canvas.width is set, text will wrap at that width using block strategy.
+     */
+    canvas?: CanvasConfig;
+
+    /**
+     * Viewport configuration (the visible window).
+     * Only used when mode='interactive'.
+     */
+    viewport?: ViewportConfig;
+
+    /**
+     * Whether to disable all interactions (pan/zoom/drag).
+     * Only applies when mode='interactive'.
+     * Useful for creating a read-only interactive display.
+     */
+    disableInteraction?: boolean;
+
+    /**
+     * Show zoom/pan controls.
+     * Only applies when mode='interactive'.
+     * @default true
+     */
+    showControls?: boolean;
+
+    /**
+     * Callback when viewport transform changes.
+     * Only applies when mode='interactive'.
+     */
+    onTransformChange?: (transform: ViewportTransform) => void;
 
     // --- Data Dependencies ---
 
@@ -226,6 +275,15 @@ export interface GlyphSpellingDisplayProps {
 
     /** Additional styles */
     style?: CSSProperties;
+
+    /**
+     * If set, treats each glyph box as this many pixels (equivalent to 1em).
+     * Use this to make glyphs appear as "1em" (e.g. set to 16 to make 1em=16px).
+     * When provided, the internal layout's glyphWidth and glyphHeight will be
+     * overridden with this value. The container's font-size is set to this value
+     * so any em-based content aligns with the expected size.
+     */
+    glyphEmPx?: number;
 }
 
 // =============================================================================
@@ -246,3 +304,76 @@ export interface NormalizationContext {
  * Type guard result for input type detection.
  */
 export type InputType = 'spelling-display' | 'glyphs' | 'graphemes' | 'ids';
+
+// =============================================================================
+// VIEWPORT AND CANVAS TYPES (Simulated Paper)
+// =============================================================================
+
+/**
+ * Viewport transform state for pan/zoom interactions.
+ */
+export interface ViewportTransform {
+    /** Current scale/zoom level (1 = 100%) */
+    scale: number;
+    /** X offset (pan position) */
+    positionX: number;
+    /** Y offset (pan position) */
+    positionY: number;
+}
+
+/**
+ * Configuration for the viewport (the visible window into the canvas).
+ */
+export interface ViewportConfig {
+    /** Viewport width in pixels. If not set, uses container width */
+    width?: number | string;
+    /** Viewport height in pixels. If not set, uses container height */
+    height?: number | string;
+    /** Initial zoom level (default: 1) */
+    initialZoom?: number;
+    /** Minimum zoom level (default: 0.1) */
+    minZoom?: number;
+    /** Maximum zoom level (default: 5) */
+    maxZoom?: number;
+    /** Initial X position (default: 0) */
+    initialX?: number;
+    /** Initial Y position (default: 0) */
+    initialY?: number;
+}
+
+/**
+ * Configuration for the internal canvas (the paper surface).
+ */
+export interface CanvasConfig {
+    /** Canvas width in pixels. If set, enables text wrapping at this width */
+    width?: number;
+    /** Canvas height in pixels. If set, limits vertical space */
+    height?: number;
+    /** Background color of the canvas (default: transparent) */
+    backgroundColor?: string;
+    /** Whether to show a paper border/shadow (default: false) */
+    showPaperEffect?: boolean;
+}
+
+/**
+ * Display mode for the component.
+ */
+export type DisplayMode = 'static' | 'interactive';
+
+/**
+ * Ref methods exposed by GlyphSpellingDisplay for programmatic control.
+ */
+export interface GlyphSpellingDisplayRef {
+    /** Reset the viewport to initial state (zoom and position) */
+    resetView: () => void;
+    /** Fit all content in the viewport (may zoom out/in to fit) */
+    fitToView: () => void;
+    /** Set zoom level programmatically */
+    setZoom: (scale: number) => void;
+    /** Pan to specific coordinates */
+    panTo: (x: number, y: number) => void;
+    /** Get current viewport transform state */
+    getTransform: () => ViewportTransform;
+    /** Get the content bounds (the actual size of rendered glyphs) */
+    getContentBounds: () => LayoutBounds;
+}

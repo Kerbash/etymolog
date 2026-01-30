@@ -2,30 +2,33 @@
  * GlyphSpellingDisplay Component
  *
  * Unified component for rendering glyph sequences with flexible layout strategies.
- * Replaces fragmented SVG concatenation across display components.
+ * Supports both static display and interactive "simulated paper" mode with
+ * pan/zoom/viewport control.
  *
  * @module display/spelling/GlyphSpellingDisplay
  */
 
-import { useMemo } from 'react';
-import DOMPurify from 'dompurify';
+import { useMemo, forwardRef, useImperativeHandle, useRef } from 'react';
 import classNames from 'classnames';
 
-import type { GlyphSpellingDisplayProps } from './types';
+import type { GlyphSpellingDisplayProps, GlyphSpellingDisplayRef } from './types';
 import { useNormalizedGlyphs } from './hooks/useNormalizedGlyphs';
 import { useGlyphPositions } from './hooks/useGlyphPositions';
-import { boundsToViewBox } from './utils/bounds';
+import { GlyphSpellingCore } from './GlyphSpellingCore';
+import { InteractiveGlyphDisplay } from './InteractiveGlyphDisplay';
 import styles from './GlyphSpellingDisplay.module.scss';
 
 /**
  * GlyphSpellingDisplay - Unified glyph sequence renderer.
  *
  * Renders glyph sequences using SVG with absolute positioning and pluggable
- * layout strategies. Accepts multiple input formats and handles virtual IPA
- * glyph rendering.
+ * layout strategies. Supports two modes:
+ *
+ * - **Static mode** (default): Simple SVG display without interactivity
+ * - **Interactive mode**: Full "simulated paper" with pan/zoom/viewport control
  *
  * @example
- * // Basic usage with SpellingDisplayEntry[]
+ * // Basic static usage
  * <GlyphSpellingDisplay
  *   glyphs={lexiconData.spellingDisplay}
  *   graphemeMap={graphemeMap}
@@ -34,130 +37,174 @@ import styles from './GlyphSpellingDisplay.module.scss';
  * />
  *
  * @example
- * // With custom config
+ * // Interactive mode with viewport control
+ * const ref = useRef<GlyphSpellingDisplayRef>(null);
+ *
  * <GlyphSpellingDisplay
- *   glyphs={graphemeData.glyphs}
- *   config={{ glyphWidth: 30, glyphHeight: 30, spacing: 4 }}
- *   emptyContent={<span>No glyphs</span>}
+ *   ref={ref}
+ *   glyphs={longText}
+ *   mode="interactive"
+ *   canvas={{ width: 800, showPaperEffect: true }}
+ *   viewport={{ initialZoom: 1, minZoom: 0.5, maxZoom: 3 }}
+ *   onTransformChange={(t) => console.log('Zoom:', t.scale)}
+ * />
+ *
+ * // Programmatic control
+ * ref.current?.fitToView();
+ * ref.current?.setZoom(2);
+ *
+ * @example
+ * // Static interactive (no drag/zoom)
+ * <GlyphSpellingDisplay
+ *   glyphs={data}
+ *   mode="interactive"
+ *   disableInteraction
+ *   showControls={false}
  * />
  */
-export default function GlyphSpellingDisplay({
-    glyphs,
-    strategy = 'ltr',
-    config,
-    width,
-    height,
-    overflow = 'clip',
-    glyphMap,
-    graphemeMap,
-    emptyContent,
-    showVirtualGlyphStyling = true,
-    className,
-    style,
-}: GlyphSpellingDisplayProps) {
-    // Memoize normalization context to prevent unnecessary re-renders
-    const normalizationContext = useMemo(
-        () => ({ glyphMap, graphemeMap }),
-        [glyphMap, graphemeMap]
-    );
+const GlyphSpellingDisplay = forwardRef<GlyphSpellingDisplayRef, GlyphSpellingDisplayProps>(
+    function GlyphSpellingDisplay(
+        {
+            glyphs,
+            strategy = 'ltr',
+            config,
+            width,
+            height,
+            overflow = 'clip',
+            mode = 'static',
+            canvas,
+            viewport,
+            disableInteraction = false,
+            showControls = true,
+            onTransformChange,
+            glyphMap,
+            graphemeMap,
+            emptyContent,
+            showVirtualGlyphStyling = true,
+            className,
+            style,
+            glyphEmPx,
+        },
+        ref
+    ) {
+        // Internal ref for interactive mode
+        const internalRef = useRef<GlyphSpellingDisplayRef>(null);
 
-    // Normalize input data to RenderableGlyph[]
-    const normalizedGlyphs = useNormalizedGlyphs(glyphs, normalizationContext);
+        // Memoize normalization context to prevent unnecessary re-renders
+        const normalizationContext = useMemo(
+            () => ({ glyphMap, graphemeMap }),
+            [glyphMap, graphemeMap]
+        );
 
-    // Calculate positions using the selected strategy (config is already memoized in the hook)
-    const { positions, bounds } = useGlyphPositions(normalizedGlyphs, strategy, config);
+        // Normalize input data to RenderableGlyph[]
+        const normalizedGlyphs = useNormalizedGlyphs(glyphs, normalizationContext);
 
-    // Handle empty state
-    if (normalizedGlyphs.length === 0) {
-        if (emptyContent) {
+        // If canvas.width is set and using block strategy, use it for wrapping
+        const effectiveConfig = useMemo(() => {
+            const base = (typeof config === 'string') ? {} : (config ?? {});
+            const merged = { ...base } as Partial<typeof base & import('./types').LayoutStrategyConfig>;
+
+            if (canvas?.width && (strategy === 'block' || !strategy)) {
+                (merged as any).maxWidth = canvas.width;
+            }
+
+            // If glyphEmPx is provided, override glyph sizes
+            if (typeof glyphEmPx === 'number' && glyphEmPx > 0) {
+                (merged as any).glyphWidth = glyphEmPx;
+                (merged as any).glyphHeight = glyphEmPx;
+            }
+
+            return merged as Partial<import('./types').LayoutStrategyConfig> | import('./types').LayoutPreset;
+        }, [config, canvas?.width, strategy, glyphEmPx]);
+
+        // Use block strategy by default if canvas width is set for wrapping
+        const effectiveStrategy = useMemo(() => {
+            if (canvas?.width && strategy === 'ltr') {
+                return 'block';
+            }
+            return strategy;
+        }, [strategy, canvas?.width]);
+
+        // Calculate positions using the selected strategy
+        const { positions, bounds } = useGlyphPositions(normalizedGlyphs, effectiveStrategy, effectiveConfig);
+
+        // Forward ref methods
+        useImperativeHandle(ref, () => ({
+            resetView: () => internalRef.current?.resetView(),
+            fitToView: () => internalRef.current?.fitToView(),
+            setZoom: (scale: number) => internalRef.current?.setZoom(scale),
+            panTo: (x: number, y: number) => internalRef.current?.panTo(x, y),
+            getTransform: () => internalRef.current?.getTransform() ?? { scale: 1, positionX: 0, positionY: 0 },
+            getContentBounds: () => internalRef.current?.getContentBounds() ?? bounds,
+        }), [bounds]);
+
+        // Handle empty state
+        if (normalizedGlyphs.length === 0) {
+            if (emptyContent) {
+                return (
+                    <div
+                        className={classNames(styles.container, styles.empty, className)}
+                        style={style}
+                    >
+                        {emptyContent}
+                    </div>
+                );
+            }
+            return null;
+        }
+
+        // Interactive mode
+        if (mode === 'interactive') {
             return (
                 <div
-                    className={classNames(styles.container, styles.empty, className)}
+                    className={classNames(styles.container, styles.interactive, className)}
                     style={style}
                 >
-                    {emptyContent}
+                    <InteractiveGlyphDisplay
+                        ref={internalRef}
+                        positions={positions}
+                        bounds={bounds}
+                        showVirtualGlyphStyling={showVirtualGlyphStyling}
+                        viewport={viewport}
+                        canvas={canvas}
+                        disableInteraction={disableInteraction}
+                        showControls={showControls}
+                        onTransformChange={onTransformChange}
+                    />
                 </div>
             );
         }
-        return null;
-    }
 
-    // Calculate viewBox from bounds
-    const viewBox = boundsToViewBox(bounds);
+        // Static mode (default) - preserve backward compatibility
+        const overflowMap = { clip: 'hidden', scroll: 'auto', visible: 'visible' } as const;
+        const containerStyle = useMemo<React.CSSProperties>(
+            () => ({
+                ...style,
+                width: width ?? bounds.width,
+                height: height ?? bounds.height,
+                overflow: overflowMap[overflow],
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                // If glyphEmPx was provided, set font-size on the container so 1em==glyphEmPx
+                fontSize: glyphEmPx ? `${glyphEmPx}px` : undefined,
+            }),
+            [style, width, height, bounds.width, bounds.height, overflow, glyphEmPx]
+        );
 
-    // Map overflow behavior to CSS values
-    const overflowMap = { clip: 'hidden', scroll: 'auto', visible: 'visible' } as const;
-
-    // Container styles (memoized)
-    const containerStyle = useMemo<React.CSSProperties>(
-        () => ({
-            ...style,
-            width: width ?? bounds.width,
-            height: height ?? bounds.height,
-            overflow: overflowMap[overflow],
-        }),
-        [style, width, height, bounds.width, bounds.height, overflow]
-    );
-
-    return (
-        <div
-            className={classNames(styles.container, className)}
-            style={containerStyle}
-        >
-            <svg
-                className={styles.svg}
-                viewBox={viewBox}
-                preserveAspectRatio="xMidYMid meet"
-                width="100%"
-                height="100%"
+        return (
+            <div
+                className={classNames(styles.container, styles.centered, className)}
+                style={containerStyle}
             >
-                {positions.map((positioned) => {
-                    const { glyph, x, y, width: w, height: h, index, rotation } = positioned;
+                <GlyphSpellingCore
+                    positions={positions}
+                    bounds={bounds}
+                    showVirtualGlyphStyling={showVirtualGlyphStyling}
+                />
+            </div>
+        );
+    }
+);
 
-                    // Sanitize SVG data
-                    const sanitizedSvg = DOMPurify.sanitize(glyph.svg_data, {
-                        USE_PROFILES: { svg: true, svgFilters: true },
-                    });
-
-                    // Create transform for rotation if needed
-                    const transform = rotation
-                        ? `rotate(${rotation} ${x + w / 2} ${y + h / 2})`
-                        : undefined;
-
-                    return (
-                        <g
-                            key={`glyph-${glyph.id}-${index}`}
-                            transform={transform}
-                            className={classNames({
-                                [styles.virtualGlyph]: glyph.isVirtual && showVirtualGlyphStyling,
-                            })}
-                        >
-                            {/* Glyph container with positioning */}
-                            <foreignObject x={x} y={y} width={w} height={h}>
-                                <div
-                                    // @ts-expect-error - xmlns is valid for foreignObject content
-                                    xmlns="http://www.w3.org/1999/xhtml"
-                                    className={styles.glyphWrapper}
-                                    dangerouslySetInnerHTML={{ __html: sanitizedSvg }}
-                                />
-                            </foreignObject>
-
-                            {/* Virtual glyph indicator border */}
-                            {glyph.isVirtual && showVirtualGlyphStyling && (
-                                <rect
-                                    x={x}
-                                    y={y}
-                                    width={w}
-                                    height={h}
-                                    className={styles.virtualBorder}
-                                    fill="none"
-                                    strokeDasharray="2,2"
-                                />
-                            )}
-                        </g>
-                    );
-                })}
-            </svg>
-        </div>
-    );
-}
+export default GlyphSpellingDisplay;

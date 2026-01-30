@@ -32,6 +32,11 @@ export default function DetailedLexiconDisplay({
                             glyphs={lexiconData.spellingDisplay}
                             graphemeMap={graphemeMap}
                             strategy="ltr"
+                            glyphEmPx={16}
+                            disableInteraction={true}
+                            showControls={false}
+                            viewport={{ initialZoom: 1 }}
+
                             emptyContent={<span>No spelling</span>}
                         />
                     </div>

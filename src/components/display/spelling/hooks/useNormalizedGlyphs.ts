@@ -21,7 +21,7 @@ import { normalizeGlyphInput } from '../utils/normalization';
  * @returns Array of normalized glyphs ready for rendering
  */
 export function useNormalizedGlyphs(
-    input: SpellingDisplayEntry[] | Glyph[] | GraphemeComplete[] | number[],
+    input: SpellingDisplayEntry[] | Glyph[] | RenderableGlyph[] | GraphemeComplete[] | number[],
     context: NormalizationContext = {}
 ): RenderableGlyph[] {
     return useMemo(

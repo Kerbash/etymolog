@@ -72,7 +72,7 @@ function glyphToRenderable(glyph: Glyph, sourceIndex: number): RenderableGlyph {
 /**
  * Detect the input type from the array.
  */
-export function detectInputType(input: unknown[]): InputType | null {
+export function detectInputType(input: unknown[]): InputType | 'renderable' | null {
     if (input.length === 0) {
         return null;
     }
@@ -90,6 +90,11 @@ export function detectInputType(input: unknown[]): InputType | null {
     // Check for GraphemeComplete (has 'glyphs' array property)
     if (typeof first === 'object' && first !== null && 'glyphs' in first && Array.isArray((first as GraphemeComplete).glyphs)) {
         return 'graphemes';
+    }
+
+    // Check for RenderableGlyph (has 'isVirtual' and 'sourceIndex' properties)
+    if (typeof first === 'object' && first !== null && 'isVirtual' in first && 'sourceIndex' in first) {
+        return 'renderable';
     }
 
     // Check for Glyph (has 'svg_data' property)
@@ -198,7 +203,7 @@ function normalizeIds(
  * @returns Array of normalized glyphs ready for rendering
  */
 export function normalizeGlyphInput(
-    input: SpellingDisplayEntry[] | Glyph[] | GraphemeComplete[] | number[],
+    input: SpellingDisplayEntry[] | Glyph[] | RenderableGlyph[] | GraphemeComplete[] | number[],
     context: NormalizationContext = {}
 ): RenderableGlyph[] {
     if (!input || input.length === 0) {
@@ -210,6 +215,9 @@ export function normalizeGlyphInput(
     switch (inputType) {
         case 'spelling-display':
             return normalizeSpellingDisplay(input as SpellingDisplayEntry[], context);
+        case 'renderable':
+            // Already in the right format, just return as-is
+            return input as RenderableGlyph[];
         case 'glyphs':
             return normalizeGlyphs(input as Glyph[]);
         case 'graphemes':
