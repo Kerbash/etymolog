@@ -1,4 +1,4 @@
-.detailed-lexicon-display {
+.detailedLexiconDisplay {
     display: flex;
     gap: 1.5rem;
     padding: 1rem;
@@ -9,7 +9,7 @@
 }
 
 /* Left section - SVG and Lemma */
-.detailed-lexicon-left {
+.detailedLexiconLeft {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
@@ -18,9 +18,7 @@
     min-width: 140px;
 }
 
-.detailed-lexicon-svg {
-    width: 120px;
-    height: 80px;
+.detailedLexiconSvg {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -30,14 +28,7 @@
     gap: 4px;
 }
 
-.detailed-lexicon-svg svg {
-    height: 100%;
-    width: auto;
-    max-width: 50px;
-    object-fit: contain;
-}
-
-.detailed-lexicon-no-spelling {
+.detailedLexiconNoSpelling {
     width: 120px;
     height: 80px;
     display: flex;
@@ -50,26 +41,26 @@
     font-size: 0.875rem;
 }
 
-.detailed-lexicon-lemma {
+.detailedLexiconLemma {
     font-size: 1.25rem;
     font-weight: 600;
     color: var(--text-primary);
     margin: 0;
 }
 
-.detailed-lexicon-pronunciation {
+.detailedLexiconPronunciation {
     font-size: 1rem;
     color: var(--text-secondary);
     font-family: var(--font-mono, monospace);
 }
 
-.detailed-lexicon-badges {
+.detailedLexiconBadges {
     display: flex;
     gap: 0.375rem;
     flex-wrap: wrap;
 }
 
-.external-badge {
+.externalBadge {
     font-size: 0.75rem;
     padding: 0.125rem 0.5rem;
     background-color: var(--status-warning);
@@ -78,7 +69,7 @@
     font-weight: 600;
 }
 
-.auto-spell-badge {
+.autoSpellBadge {
     font-size: 0.75rem;
     padding: 0.125rem 0.5rem;
     background-color: var(--status-info);
@@ -87,7 +78,7 @@
 }
 
 /* Right section - Details */
-.detailed-lexicon-right {
+.detailedLexiconRight {
     flex: 1;
     display: flex;
     flex-direction: column;
@@ -96,27 +87,27 @@
     overflow: hidden;
 }
 
-.detail-section {
+.detailSection {
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
 }
 
-.section-header {
+.sectionHeader {
     font-size: 0.875rem;
     font-weight: 500;
     color: var(--text-secondary);
     margin: 0;
 }
 
-.meaning-text {
+.meaningText {
     font-size: 0.9375rem;
     color: var(--text-primary);
     margin: 0;
     line-height: 1.4;
 }
 
-.pos-value {
+.posValue {
     font-size: 0.875rem;
     color: var(--text-primary);
     padding: 0.125rem 0.5rem;
@@ -126,13 +117,13 @@
     width: fit-content;
 }
 
-.grapheme-list {
+.graphemeList {
     display: flex;
     flex-wrap: wrap;
     gap: 0.375rem;
 }
 
-.grapheme-name {
+.graphemeName {
     font-size: 0.8125rem;
     padding: 0.125rem 0.5rem;
     background-color: var(--bg-tertiary);
@@ -141,48 +132,48 @@
     border: 1px solid var(--border-secondary);
 }
 
-.etymology-section {
+.etymologySection {
     background-color: var(--bg-tertiary);
     border-radius: 6px;
     padding: 0.5rem;
 }
 
-.etymology-stats {
+.etymologyStats {
     display: flex;
     gap: 1rem;
     margin-bottom: 0.5rem;
 }
 
-.etymology-stat {
+.etymologyStat {
     font-size: 0.8125rem;
     color: var(--text-primary);
 }
 
-.ancestor-list {
+.ancestorList {
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
 }
 
-.ancestor-item {
+.ancestorItem {
     display: flex;
     align-items: center;
     gap: 0.5rem;
     font-size: 0.8125rem;
 }
 
-.ancestor-type {
+.ancestorType {
     color: var(--text-secondary);
     font-style: italic;
     min-width: 70px;
 }
 
-.ancestor-lemma {
+.ancestorLemma {
     color: var(--text-primary);
     font-weight: 500;
 }
 
-.notes-text {
+.notesText {
     font-size: 0.875rem;
     color: var(--text-secondary);
     margin: 0;
@@ -190,7 +181,7 @@
     line-height: 1.4;
 }
 
-.ipa-char {
+.ipaChar {
     font-size: 0.8125rem;
     padding: 0.125rem 0.5rem;
     background-color: transparent;

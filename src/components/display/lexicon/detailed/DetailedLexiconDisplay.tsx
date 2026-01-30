@@ -1,6 +1,6 @@
 import type { LexiconComplete, GraphemeComplete } from '../../../../db/types';
 import { GlyphSpellingDisplay } from '../../spelling';
-import './detailed.css';
+import styles from './detailed.module.scss';
 
 interface DetailedLexiconDisplayProps {
     lexiconData: LexiconComplete;
@@ -24,69 +24,67 @@ export default function DetailedLexiconDisplay({
 
     console.log("graphemeMap:", graphemeMap, " SpellingDisplay:", lexiconData.spellingDisplay);
     return (
-        <div className="detailed-lexicon-display">
-            <div className="detailed-lexicon-left">
+        <div className={styles.detailedLexiconDisplay}>
+            <div className={styles.detailedLexiconLeft}>
                 {hasSpelling ? (
-                    <div className="detailed-lexicon-svg">
+                    <div className={styles.detailedLexiconSvg}>
                         <GlyphSpellingDisplay
                             glyphs={lexiconData.spellingDisplay}
                             graphemeMap={graphemeMap}
                             strategy="ltr"
-                            glyphEmPx={16}
-                            disableInteraction={true}
-                            showControls={false}
-                            viewport={{ initialZoom: 1 }}
-
+                            config="compact"
+                            glyphEmPx={64}
+                            zoom={1}
                             emptyContent={<span>No spelling</span>}
                         />
                     </div>
                 ) : (
-                    <div className="detailed-lexicon-no-spelling">
+                    <div className={styles.detailedLexiconNoSpelling}>
                         No spelling
                     </div>
                 )}
-                <h2 className="detailed-lexicon-lemma">{lexiconData.lemma}</h2>
+                <h2 className={styles.detailedLexiconLemma}>{lexiconData.lemma}</h2>
                 {lexiconData.pronunciation && (
-                    <span className="detailed-lexicon-pronunciation">
+                    <span className={styles.detailedLexiconPronunciation}>
                         /{lexiconData.pronunciation}/
                     </span>
                 )}
-                <div className="detailed-lexicon-badges">
+                <div className={styles.detailedLexiconBadges}>
                     {!lexiconData.is_native && (
-                        <span className="external-badge">External</span>
+                        <span className={styles.externalBadge}>External</span>
                     )}
                     {lexiconData.auto_spell && (
-                        <span className="auto-spell-badge">Auto-spell</span>
+                        <span className={styles.autoSpellBadge}>Auto-spell</span>
                     )}
                 </div>
             </div>
 
-            <div className="detailed-lexicon-right">
+            <div className={styles.detailedLexiconRight}>
                 {lexiconData.meaning && (
-                    <div className="detail-section">
-                        <h3 className="section-header">Meaning</h3>
-                        <p className="meaning-text">{lexiconData.meaning}</p>
+                    <div className={styles.detailSection}>
+                        <h3 className={styles.sectionHeader}>Meaning</h3>
+                        <p className={styles.meaningText}>{lexiconData.meaning}</p>
                     </div>
                 )}
 
                 {lexiconData.part_of_speech && (
-                    <div className="detail-section">
-                        <h3 className="section-header">Part of Speech</h3>
-                        <span className="pos-value">{lexiconData.part_of_speech}</span>
+                    <div className={styles.detailSection}>
+                        <h3 className={styles.sectionHeader}>Part of Speech</h3>
+                        <span className={styles.posValue}>{lexiconData.part_of_speech}</span>
                     </div>
                 )}
 
                 {(lexiconData.spellingDisplay && lexiconData.spellingDisplay.length > 0) && (
-                    <div className="detail-section">
-                        <h3 className="section-header">Spelling</h3>
-                        <div className="grapheme-list">
+                    <div className={styles.detailSection}>
+                        <h3 className={styles.sectionHeader}>Spelling</h3>
+                        <div className={styles.graphemeList}>
                             {lexiconData.spellingDisplay.map((entry, index) => (
                                 entry.type === 'grapheme' ? (
-                                    <span key={`g-${entry.grapheme?.id}-${index}`} className="grapheme-name">
+                                    <span key={`g-${entry.grapheme?.id}-${index}`} className={styles.graphemeName}>
                                         {entry.grapheme?.name ?? '�'}
                                     </span>
                                 ) : (
-                                    <span key={`ipa-${index}`} className="ipa-char" title={`IPA: ${entry.ipaCharacter}`}>
+                                    <span key={`ipa-${index}`} className={styles.ipaChar} title={`IPA: ${entry.ipaCharacter}`}>
                                         {entry.ipaCharacter}
                                     </span>
                                 )
@@ -96,26 +94,26 @@ export default function DetailedLexiconDisplay({
                 )}
 
                 {showAncestry && (ancestorCount > 0 || descendantCount > 0) && (
-                    <div className="detail-section etymology-section">
-                        <h3 className="section-header">Etymology</h3>
-                        <div className="etymology-stats">
+                    <div className={`${styles.detailSection} ${styles.etymologySection}`}>
+                        <h3 className={styles.sectionHeader}>Etymology</h3>
+                        <div className={styles.etymologyStats}>
                             {ancestorCount > 0 && (
-                                <span className="etymology-stat">
+                                <span className={styles.etymologyStat}>
                                     {ancestorCount} ancestor{ancestorCount !== 1 ? 's' : ''}
                                 </span>
                             )}
                             {descendantCount > 0 && (
-                                <span className="etymology-stat">
+                                <span className={styles.etymologyStat}>
                                     {descendantCount} descendant{descendantCount !== 1 ? 's' : ''}
                                 </span>
                             )}
                         </div>
                         {lexiconData.ancestors?.length > 0 && (
-                            <div className="ancestor-list">
+                            <div className={styles.ancestorList}>
                                 {lexiconData.ancestors.map((entry, index) => (
-                                    <span key={`${entry.ancestor.id}-${index}`} className="ancestor-item">
-                                        <span className="ancestor-type">{entry.ancestry_type}</span>
-                                        <span className="ancestor-lemma">{entry.ancestor.lemma}</span>
+                                    <span key={`${entry.ancestor.id}-${index}`} className={styles.ancestorItem}>
+                                        <span className={styles.ancestorType}>{entry.ancestry_type}</span>
+                                        <span className={styles.ancestorLemma}>{entry.ancestor.lemma}</span>
                                     </span>
                                 ))}
                             </div>
@@ -124,9 +122,9 @@ export default function DetailedLexiconDisplay({
                 )}
 
                 {lexiconData.notes && (
-                    <div className="detail-section">
-                        <h3 className="section-header">Notes</h3>
-                        <p className="notes-text">{lexiconData.notes}</p>
+                    <div className={styles.detailSection}>
+                        <h3 className={styles.sectionHeader}>Notes</h3>
+                        <p className={styles.notesText}>{lexiconData.notes}</p>
                     </div>
                 )}
             </div>
