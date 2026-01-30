@@ -12,8 +12,19 @@
     border-radius: 8px;
     overflow: hidden;
 
+    /* Prevent container from expanding with content - critical for infinite canvas */
+    min-width: 0;
+    max-width: 100%;
+
     /* Allow touch scrolling */
     touch-action: pan-x pan-y pinch-zoom;
+}
+
+/* Wrapper to contain the infinite canvas content */
+.canvasWrapper {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
 }
 
 .canvasContainer.empty {

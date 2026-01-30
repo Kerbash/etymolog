@@ -1,5 +1,5 @@
-import DOMPurify from 'dompurify';
 import type { GraphemeComplete } from '../../../../db/types.ts';
+import { GlyphSpellingDisplay } from '../../spelling';
 import './detailed.css';
 
 interface DetailedGraphemeDisplayProps {
@@ -7,24 +7,17 @@ interface DetailedGraphemeDisplayProps {
 }
 
 export default function DetailedGraphemeDisplay({ graphemeData }: DetailedGraphemeDisplayProps) {
-    // Combine all glyph SVGs into one display
-    // For now, just show the first glyph if there's only one
-    // In the future, this could render multiple glyphs side by side
-    const combinedSvg = graphemeData.glyphs
-        .map(glyph => glyph.svg_data)
-        .join('');
-
-    const sanitizedSvg = DOMPurify.sanitize(combinedSvg, {
-        USE_PROFILES: { svg: true, svgFilters: true },
-    });
-
     return (
         <div className="detailed-grapheme-display">
             <div className="detailed-grapheme-left">
-                <div
-                    className="detailed-grapheme-svg"
-                    dangerouslySetInnerHTML={{ __html: sanitizedSvg }}
-                />
+                <div className="detailed-grapheme-svg">
+                    <GlyphSpellingDisplay
+                        glyphs={graphemeData.glyphs}
+                        strategy="ltr"
+                        config="detailed"
+                        emptyContent={<span>No glyphs</span>}
+                    />
+                </div>
                 <h2 className="detailed-grapheme-name">{graphemeData.name}</h2>
                 {graphemeData.glyphs.length > 1 && (
                     <span className="glyph-count">{graphemeData.glyphs.length} glyphs</span>

@@ -1,5 +1,5 @@
-import DOMPurify from 'dompurify';
 import type { LexiconComplete, GraphemeComplete } from '../../../../db/types';
+import { GlyphSpellingDisplay } from '../../spelling';
 import styles from './compact.module.scss';
 import classNames from 'classnames';
 
@@ -15,22 +15,8 @@ interface CompactLexiconDisplayProps {
  * Designed for grid layout display.
  */
 export default function CompactLexiconDisplay({ lexiconData, graphemeMap, onClick }: CompactLexiconDisplayProps) {
-    // Build combined SVG from grapheme entries only
-    const combinedSvg = (lexiconData.spellingDisplay?.filter(e => e.type === 'grapheme').map(e => {
-        const grapheme = e.type === 'grapheme' ? e.grapheme : null;
-        if (!grapheme) return [] as string[];
-        const fullGrapheme = graphemeMap?.get(grapheme.id);
-        const glyphs = fullGrapheme?.glyphs ?? (grapheme as GraphemeComplete).glyphs;
-        return glyphs?.map(glyph => glyph.svg_data) ?? [];
-    }).flat() ?? [])
-        .join('');
-
-    const sanitizedSvg = combinedSvg ? DOMPurify.sanitize(combinedSvg, {
-        USE_PROFILES: { svg: true, svgFilters: true },
-    }) : '';
-
     // Render a short textual spelling (mixing grapheme names and IPA chars)
-    const textualSpelling = (lexiconData.spellingDisplay ?? lexiconData.spelling.map(g => ({ type: 'grapheme', grapheme: g } as any))).map((entry: any, i: number) => {
+    const textualSpelling = (lexiconData.spellingDisplay ?? lexiconData.spelling.map(g => ({ type: 'grapheme', grapheme: g } as any))).map((entry: any) => {
         if (entry.type === 'grapheme') return entry.grapheme?.name ?? '?';
         return entry.ipaCharacter ?? entry;
     }).join(' ');
@@ -42,6 +28,8 @@ export default function CompactLexiconDisplay({ lexiconData, graphemeMap, onClic
             : lexiconData.meaning
         : null;
 
+    const hasSpelling = lexiconData.spellingDisplay && lexiconData.spellingDisplay.length > 0;
+
     return (
         <div
             className={classNames(styles.compactCard, { [styles.clickable]: !!onClick })}
@@ -49,11 +37,16 @@ export default function CompactLexiconDisplay({ lexiconData, graphemeMap, onClic
         >
             <h3 className={styles.lemma}>{lexiconData.lemma}</h3>
 
-            {sanitizedSvg ? (
-                <div
-                    className={styles.svgContainer}
-                    dangerouslySetInnerHTML={{ __html: sanitizedSvg }}
-                />
+            {hasSpelling ? (
+                <div className={styles.svgContainer}>
+                    <GlyphSpellingDisplay
+                        glyphs={lexiconData.spellingDisplay}
+                        graphemeMap={graphemeMap}
+                        strategy="ltr"
+                        config="compact"
+                        emptyContent={<span className={styles.noSpelling}>(no spelling)</span>}
+                    />
+                </div>
             ) : (
                 <div className={styles.noSpelling}>(no spelling)</div>
             )}

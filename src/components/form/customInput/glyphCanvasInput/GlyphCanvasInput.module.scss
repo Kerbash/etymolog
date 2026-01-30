@@ -1,4 +1,12 @@
-﻿﻿.glyphCanvasInput { display: flex; flex-direction: column; gap: 0.5rem; }
+﻿﻿.glyphCanvasInput {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    /* Prevent expansion from canvas content */
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+}
 .header { display: flex; justify-content: space-between; align-items: center; }
 .label { font-weight: 500; color: var(--text-primary); }
 .actions { display: flex; gap: 0.5rem; align-items: center; }

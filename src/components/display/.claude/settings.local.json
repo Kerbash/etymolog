@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tree:*)",
+      "Bash(ls -la \"D:\\\\Coding\\\\Javascript\\\\greatest-Monorepo\\\\apps\\\\etymolog\\\\src\\\\db\"\" | grep -E \".ts)",
+      "Bash(.tsx \")",
+      "Bash(pnpm:*)",
+      "Bash(npx tsc:*)"
+    ]
+  }
+}

@@ -7,8 +7,8 @@
 import { useNavigate, Link } from 'react-router-dom';
 import { useCallback, useMemo } from 'react';
 import { useEtymolog } from '../../../db';
-import { LexiconGallery } from './galleryLexicon';
-import type { LexiconComplete } from '../../../db/types';
+import LexiconGallery from './galleryLexicon/LexiconGallery';
+import type { LexiconComplete, GraphemeComplete } from '../../../db/types';
 import IconButton from 'cyber-components/interactable/buttons/iconButton/iconButton.tsx';
 import { buttonStyles } from 'cyber-components/interactable/buttons/button/button.tsx';
 import classNames from 'classnames';
@@ -22,13 +22,9 @@ export default function LexiconHome() {
     const lexicons = data.lexiconComplete ?? [];
 
     // Build a map of grapheme ID to GraphemeComplete for SVG lookup
-    const graphemeMap = useMemo(() => {
-        const map = new Map();
-        for (const grapheme of data.graphemeComplete ?? []) {
-            map.set(grapheme.id, grapheme);
-        }
-        return map;
-    }, [data.graphemeComplete]);
+    const graphemeMap = useMemo((): Map<number, GraphemeComplete> => {
+        return new Map((data.graphemesComplete ?? []).map((g: GraphemeComplete) => [g.id, g] as const));
+    }, [data.graphemesComplete]);
 
     // Handle lexicon click - navigate to view page
     const handleLexiconClick = useCallback((lexicon: LexiconComplete) => {

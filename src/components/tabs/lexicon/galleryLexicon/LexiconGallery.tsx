@@ -245,7 +245,10 @@ export default function LexiconGallery({
                 />
             </div>
 
-            <DetailedLexiconDisplay lexiconData={lexicon} graphemeMap={graphemeMap} />
+            <DetailedLexiconDisplay
+                lexiconData={lexicon}
+                graphemeMap={graphemeMap}
+            />
         </div>
     ), [onLexiconClick, handleDelete, graphemeMap]);
 

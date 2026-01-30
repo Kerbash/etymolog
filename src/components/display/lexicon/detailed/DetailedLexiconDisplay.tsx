@@ -1,5 +1,5 @@
-import DOMPurify from 'dompurify';
 import type { LexiconComplete, GraphemeComplete } from '../../../../db/types';
+import { GlyphSpellingDisplay } from '../../spelling';
 import './detailed.css';
 
 interface DetailedLexiconDisplayProps {
@@ -18,32 +18,23 @@ export default function DetailedLexiconDisplay({
     graphemeMap,
     showAncestry = true
 }: DetailedLexiconDisplayProps) {
-    // Combine all spelling grapheme SVGs (from their glyphs)
-    // Use graphemeMap if provided, otherwise try to access glyphs directly (for GraphemeComplete data)
-    const combinedSvg = (lexiconData.spellingDisplay?.filter(e => e.type === 'grapheme').map(e => {
-        const grapheme = e.type === 'grapheme' ? e.grapheme : null;
-        if (!grapheme) return [] as string[];
-        const fullGrapheme = graphemeMap?.get(grapheme.id);
-        const glyphs = fullGrapheme?.glyphs ?? (grapheme as GraphemeComplete).glyphs;
-        return glyphs?.map(glyph => glyph.svg_data) ?? [];
-    }).flat() ?? [])
-        .join('');
-
-    const sanitizedSvg = combinedSvg ? DOMPurify.sanitize(combinedSvg, {
-        USE_PROFILES: { svg: true, svgFilters: true },
-    }) : '';
-
     const ancestorCount = lexiconData.ancestors?.length ?? 0;
     const descendantCount = lexiconData.descendants?.length ?? 0;
+    const hasSpelling = lexiconData.spellingDisplay && lexiconData.spellingDisplay.length > 0;
 
+    console.log("graphemeMap:", graphemeMap, " SpellingDisplay:", lexiconData.spellingDisplay);
     return (
         <div className="detailed-lexicon-display">
             <div className="detailed-lexicon-left">
-                {sanitizedSvg ? (
-                    <div
-                        className="detailed-lexicon-svg"
-                        dangerouslySetInnerHTML={{ __html: sanitizedSvg }}
-                    />
+                {hasSpelling ? (
+                    <div className="detailed-lexicon-svg">
+                        <GlyphSpellingDisplay
+                            glyphs={lexiconData.spellingDisplay}
+                            graphemeMap={graphemeMap}
+                            strategy="ltr"
+                            emptyContent={<span>No spelling</span>}
+                        />
+                    </div>
                 ) : (
                     <div className="detailed-lexicon-no-spelling">
                         No spelling
