@@ -1,0 +1,66 @@
+.nodeDisplay {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.375rem 0.5rem;
+    background: var(--surface-raised);
+    border-radius: 4px;
+    font-size: 0.8125rem;
+    white-space: nowrap;
+    min-width: max-content;
+    transition: all 0.15s ease;
+}
+
+.nodeDisplay.currentWord {
+    background: var(--color-primary-bg, rgba(59, 130, 246, 0.15));
+    border: 1px solid var(--color-primary, #3b82f6);
+}
+
+.nodeDisplay.external {
+    background: var(--surface-raised);
+    border: 1px dashed var(--border-secondary, #888);
+}
+
+.nodeDisplay.clickable {
+    cursor: pointer;
+}
+
+.nodeDisplay.clickable:hover {
+    background: var(--surface-raised-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.ancestryBadge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1rem;
+    height: 1rem;
+    border-radius: 50%;
+    font-size: 0.5625rem;
+    font-weight: 700;
+    color: white;
+}
+
+.externalBadge {
+    font-size: 0.625rem;
+    color: var(--text-tertiary);
+}
+
+.lemma {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.pronunciation {
+    font-family: var(--font-mono, monospace);
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.currentIndicator {
+    font-size: 0.5rem;
+    color: var(--color-primary, #3b82f6);
+    margin-left: 0.125rem;
+}

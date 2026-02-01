@@ -708,6 +708,147 @@ glyphCanvasInput/
     └── graphemeUtils.ts          # GraphemeComplete → RenderableGlyph conversion
 ```
 
+### AncestryInput Component
+
+A form input for selecting ancestor words with etymology relationship types. Features a visual flowchart preview showing the complete ancestry tree.
+
+#### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           AncestryInput                                     │
+│  (Main Form Component - SmartForm Integration)                              │
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │ Header: "Etymology / Ancestors"              [+ Add Ancestor]        │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │ Ancestor Row 1                                                       │   │
+│  │  [1.] [🔍 Search/Selected Word ▼]  [Type: derived ▼]  [🗑️]         │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │ Ancestor Row 2                                                       │   │
+│  │  [2.] [Selected: proto-word /pri/]  [Type: borrowed ▼] [🗑️]        │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │ AncestryPreviewTree (CanvasFlowChart)                               │   │
+│  │ ← Root ancestors | Current word →                                   │   │
+│  │                                                                      │   │
+│  │   [proto-1] ──derived── [proto-2] ──borrowed── [current]            │   │
+│  │                            │                                         │   │
+│  │                         [ext-ref] ──calque──────────┘                │   │
+│  │                                                                      │   │
+│  │ Legend: [●derived] [●borrowed] [●compound] [●blend]                 │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Features
+
+- **Searchable Ancestor Selection**: Search lexicon entries by lemma, pronunciation, or meaning
+- **Relationship Type Selector**: Choose from derived, borrowed, compound, blend, calque, other
+- **Cycle Detection**: Prevents circular ancestry (A → B → C → A)
+- **Visual Tree Preview**: Interactive flowchart using `CanvasFlowChart` from cyber-components
+  - Horizontal layout: Root ancestors on left, current word on right
+  - Relationship type labels on connector lines
+  - Color-coded ancestry types
+  - Pan/zoom/collapse support
+- **Multiple Ancestors**: Support for compound words with multiple roots
+- **External Word Handling**: Visual indicator for non-native/borrowed words
+
+#### Props
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `currentLexiconId` | `number?` | ID of the word being edited (for cycle detection) |
+| `currentLemma` | `string` | Lemma to display in the tree preview |
+| `availableLexicon` | `Lexicon[]` | Available words to select as ancestors |
+| `excludeIds` | `number[]` | IDs to exclude from selection |
+| `checkCycle` | `(lexiconId, ancestorId) => boolean` | Cycle detection function |
+| `ancestryTree` | `LexiconAncestryNode?` | Full ancestry tree for preview |
+| `showPreview` | `boolean` | Whether to show the flowchart (default: true) |
+| `onTreeNodeClick` | `(lexiconId) => void` | Callback for clicking a tree node |
+| `defaultValue` | `LexiconAncestorFormRow[]` | Initial ancestors |
+| `maxRows` | `number?` | Maximum number of ancestors |
+
+#### Usage
+
+```tsx
+import { AncestryInput } from '@/components/form/customInput/ancestryInput';
+
+function LexiconForm({ registerField, lexiconId }) {
+  const ancestryField = registerField('ancestors', {});
+  const { api, data } = useEtymolog();
+  
+  // Get ancestry tree for preview
+  const ancestryTree = lexiconId 
+    ? api.lexicon.getAncestryTree(lexiconId).data 
+    : null;
+
+  return (
+    <AncestryInput
+      {...ancestryField}
+      currentLexiconId={lexiconId}
+      currentLemma="new-word"
+      availableLexicon={data.lexiconComplete}
+      ancestryTree={ancestryTree}
+      checkCycle={(lexId, ancestorId) => 
+        api.lexicon.wouldCreateCycle(lexId, ancestorId).data ?? false
+      }
+    />
+  );
+}
+```
+
+#### Ancestry Types
+
+| Type | Description | Visual Color |
+|------|-------------|--------------|
+| `derived` | Direct linguistic descent | Blue (--status-info) |
+| `borrowed` | Loanword from another language | Yellow (--status-warning) |
+| `compound` | Formed from multiple roots | Green (--status-good) |
+| `blend` | Portmanteau/blend of words | Purple (--color-primary) |
+| `calque` | Loan translation | Gray (--status-neutral) |
+| `other` | Other relationship | Dark gray (--text-secondary) |
+
+#### Module Structure
+
+```
+ancestryInput/
+├── index.ts                      # Barrel exports
+├── AncestryInput.tsx             # Main form component
+├── AncestryInput.module.scss     # Main styles
+├── AncestryPreviewTree.tsx       # Flowchart wrapper component
+├── AncestryPreviewTree.module.scss
+├── AncestryNodeDisplay.tsx       # Individual node renderer
+├── AncestryNodeDisplay.module.scss
+└── ancestryTreeTransformer.ts    # LexiconAncestryNode → FlowChartNode conversion
+```
+
+#### Tree Transformation
+
+The `ancestryTreeTransformer.ts` converts `LexiconAncestryNode` (where current word is root, ancestors are children) to `FlowChartNode` format (where ancestors are parents on the left).
+
+```typescript
+import { ancestryToFlowChart, selectedAncestorsToFlowChart } from './ancestryTreeTransformer';
+
+// Full ancestry tree
+const flowChartData = ancestryToFlowChart(ancestryNode, {
+  renderNode: (entry, isCurrentWord, ancestryType) => <AncestryNodeDisplay {...} />,
+  currentWordId: 123,
+  maxDepth: 10,
+});
+
+// Simple preview from form state
+const previewData = selectedAncestorsToFlowChart(
+  selectedAncestors,
+  { lemma: 'current', id: 123 },
+  renderNode
+);
+```
+
 ---
 
 ## Data Architecture

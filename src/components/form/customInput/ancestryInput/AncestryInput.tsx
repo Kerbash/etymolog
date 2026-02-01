@@ -2,23 +2,34 @@
 
 import styles from "./AncestryInput.module.scss";
 import classNames from "classnames";
-import { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useMemo, useRef, useState } from "react";
 import type { registerFieldReturnType } from "smart-form/types";
-import type { Lexicon, AncestryType, LexiconAncestorFormRow } from "../../../../db/types";
+import type { Lexicon, AncestryType, LexiconAncestorFormRow, LexiconAncestryNode } from "../../../../db/types";
 import IconButton from "cyber-components/interactable/buttons/iconButton/iconButton.tsx";
 import HoverToolTip from "cyber-components/interactable/information/hoverToolTip/hoverToolTip.tsx";
+import AncestryPreviewTree from "./AncestryPreviewTree";
 
 /** Types -------------------------------------- */
 
 export interface AncestryInputProps extends registerFieldReturnType {
     /** Current lexicon ID for cycle detection (in edit mode) */
     currentLexiconId?: number;
+    /** Current word lemma (for tree display) */
+    currentLemma?: string;
     /** Available lexicon entries to choose from */
     availableLexicon: Lexicon[];
     /** IDs to exclude from selection (e.g., self + current ancestors) */
     excludeIds?: number[];
     /** Function to check if adding ancestor would create cycle */
     checkCycle?: (lexiconId: number, ancestorId: number) => boolean;
+    /** Full ancestry tree for preview (fetched externally) */
+    ancestryTree?: LexiconAncestryNode | null;
+    /** Whether to show the tree preview (default: true) */
+    showPreview?: boolean;
+    /** Callback when a tree node is clicked */
+    onTreeNodeClick?: (lexiconId: number) => void;
+    /** Callback when ancestors change */
+    onChange?: (ancestors: LexiconAncestorFormRow[]) => void;
     defaultValue?: LexiconAncestorFormRow[];
     maxRows?: number;
     className?: string;
@@ -48,9 +59,14 @@ export const AncestryInput = forwardRef((
         registerSmartFieldProps,
         fieldState,
         currentLexiconId,
+        currentLemma = 'Current Word',
         availableLexicon,
         excludeIds = [],
         checkCycle,
+        ancestryTree,
+        showPreview = true,
+        onTreeNodeClick,
+        onChange,
         defaultValue = [],
         maxRows,
         className,
@@ -62,9 +78,13 @@ export const AncestryInput = forwardRef((
     const fieldStateRef = useRef(fieldState);
     fieldStateRef.current = fieldState;
 
+    // Track if we've synced from defaultValue to avoid overwriting user changes
+    const hasInitializedFromDefault = useRef(false);
+
     // Row state management
     const [rows, setRows] = useState<RowState[]>(() => {
         if (defaultValue.length > 0) {
+            hasInitializedFromDefault.current = true;
             return defaultValue.map((row, index) => ({
                 id: `${idPrefix}-row-${index}`,
                 ancestorId: row.ancestorId,
@@ -73,6 +93,19 @@ export const AncestryInput = forwardRef((
         }
         return [];
     });
+
+    // Sync rows with defaultValue when it changes (for edit mode initialization)
+    useEffect(() => {
+        // Only sync if we haven't initialized yet and defaultValue has data
+        if (!hasInitializedFromDefault.current && defaultValue.length > 0) {
+            hasInitializedFromDefault.current = true;
+            setRows(defaultValue.map((row, index) => ({
+                id: `${idPrefix}-row-${index}`,
+                ancestorId: row.ancestorId,
+                ancestryType: row.ancestryType,
+            })));
+        }
+    }, [defaultValue, idPrefix]);
 
     // Search state for each row
     const [searchQueries, setSearchQueries] = useState<Record<string, string>>({});
@@ -111,7 +144,13 @@ export const AncestryInput = forwardRef((
 
         const hasErrors = rows.some(r => r.error);
         fieldStateRef.current.isInputValid.setIsInputValid(!hasErrors);
-    }, [rows]);
+
+        // Notify parent of changes
+        onChange?.(validRows.map(row => ({
+            ancestorId: row.ancestorId!,
+            ancestryType: row.ancestryType,
+        })));
+    }, [rows, onChange]);
 
     // Add row
     const handleAddRow = useCallback(() => {
@@ -197,6 +236,21 @@ export const AncestryInput = forwardRef((
             return true;
         });
     };
+
+    // Build selected ancestors for preview tree
+    const selectedAncestors = useMemo(() => {
+        return rows
+            .filter(row => row.ancestorId !== null && !row.error)
+            .map(row => {
+                const ancestor = availableLexicon.find(l => l.id === row.ancestorId);
+                if (!ancestor) return null;
+                return {
+                    ancestor,
+                    ancestryType: row.ancestryType,
+                };
+            })
+            .filter((a): a is NonNullable<typeof a> => a !== null);
+    }, [rows, availableLexicon]);
 
     return (
         <div className={classNames(styles.ancestryInput, className)}>
@@ -320,6 +374,22 @@ export const AncestryInput = forwardRef((
                             </div>
                         );
                     })}
+                </div>
+            )}
+
+            {/* Ancestry Tree Preview - Always show when enabled */}
+            {showPreview && (
+                <div className={styles.previewSection}>
+                    <AncestryPreviewTree
+                        ancestryTree={ancestryTree}
+                        selectedAncestors={selectedAncestors}
+                        currentWord={{
+                            id: currentLexiconId,
+                            lemma: currentLemma,
+                        }}
+                        maxHeight={300}
+                        onNodeClick={onTreeNodeClick}
+                    />
                 </div>
             )}
         </div>

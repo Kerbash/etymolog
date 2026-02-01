@@ -126,7 +126,7 @@ export default function LexiconFormFields({
         return initialData?.spelling?.map(g => `grapheme-${g.id}`) ?? [];
     });
 
-    const [ancestors, _setAncestors] = useState<LexiconAncestorFormRow[]>(() =>
+    const [ancestors, setAncestors] = useState<LexiconAncestorFormRow[]>(() =>
         initialData?.ancestors?.map(a => ({
             ancestorId: a.ancestor.id,
             ancestryType: a.ancestry_type,
@@ -410,10 +410,12 @@ export default function LexiconFormFields({
                 <AncestryInput
                     {...ancestryField}
                     currentLexiconId={initialData?.id}
+                    currentLemma={initialData?.lemma ?? 'New Word'}
                     availableLexicon={availableLexicon}
                     excludeIds={excludeAncestorIds}
                     checkCycle={initialData?.id ? checkCycle : undefined}
                     defaultValue={ancestors}
+                    onChange={setAncestors}
                 />
             </div>
         </div>
