@@ -14,7 +14,7 @@ export default function DetailedGraphemeDisplay({ graphemeData }: DetailedGraphe
                     <GlyphSpellingDisplay
                         glyphs={graphemeData.glyphs}
                         strategy="ltr"
-                        config="detailed"
+                        config={{ glyphWidth: 96, glyphHeight: 96, spacing: 4, padding: 8 }}
                         emptyContent={<span>No glyphs</span>}
                     />
                 </div>

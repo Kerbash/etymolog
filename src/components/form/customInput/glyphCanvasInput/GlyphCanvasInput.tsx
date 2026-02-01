@@ -500,17 +500,28 @@ const GlyphCanvasInput = forwardRef<GlyphCanvasInputRef, GlyphCanvasInputProps>(
                                     {autoSpellPreview.hasVirtualGlyphs && ', includes IPA fallbacks'}):
                                 </span>
                                 <div className={styles.previewGlyphs}>
-                                    {autoSpellPreview.spelling.map((s, i) => (
-                                        <span
-                                            key={`${s.grapheme_id}-${i}`}
-                                            className={classNames(styles.previewGlyph, {
-                                                [styles.previewVirtual]: s.isVirtual,
-                                            })}
-                                            title={s.isVirtual ? `IPA: ${s.ipaCharacter}` : `Grapheme #${s.grapheme_id}`}
-                                        >
-                                            {s.isVirtual ? s.ipaCharacter : `#${s.grapheme_id}`}
-                                        </span>
-                                    ))}
+                                    {autoSpellPreview.spelling.map((s, i) => {
+                                        // Look up the grapheme name from the glyph map
+                                        const grapheme = baseGlyphMap.get(s.grapheme_id);
+                                        const displayName = s.isVirtual
+                                            ? s.ipaCharacter
+                                            : grapheme?.name ?? `#${s.grapheme_id}`;
+                                        const titleText = s.isVirtual
+                                            ? `IPA: ${s.ipaCharacter}`
+                                            : grapheme?.name ?? `Grapheme #${s.grapheme_id}`;
+
+                                        return (
+                                            <span
+                                                key={`${s.grapheme_id}-${i}`}
+                                                className={classNames(styles.previewGlyph, {
+                                                    [styles.previewVirtual]: s.isVirtual,
+                                                })}
+                                                title={titleText}
+                                            >
+                                                {displayName}
+                                            </span>
+                                        );
+                                    })}
                                 </div>
                                 <IconButton
                                     iconName="check"

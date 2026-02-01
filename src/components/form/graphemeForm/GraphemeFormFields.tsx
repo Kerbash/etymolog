@@ -156,7 +156,7 @@ export default function GraphemeFormFields({
                 useInAutoSpelling: p.use_in_auto_spelling,
             }));
         }
-        return [{ pronunciation: '', useInAutoSpelling: false }];
+        return [{ pronunciation: '', useInAutoSpelling: true }];
     }, [mode, initialData?.phonemes]);
 
     // Memoize validation config to prevent unnecessary re-registration

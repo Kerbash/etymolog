@@ -143,7 +143,7 @@ Even though this is a PWA running entirely client-side, we maintain clean separa
 | **FR12** | Lexicon entries store lemma, pronunciation, meaning | `lexicon` table with lemma, pronunciation, meaning columns | ✅ Implemented |
 | **FR13** | Lexicon entries can have ordered grapheme spelling | Junction table `lexicon_spelling` with `position` field | ✅ Implemented |
 | **FR14** | Lexicon entries track etymological ancestry | Self-referential junction table `lexicon_ancestry` | ✅ Implemented |
-| **FR15** | Auto-spelling generates graphemes from pronunciation | `autoSpellService` with greedy longest-match algorithm | ✅ Implemented |
+| **FR15** | Auto-spelling generates graphemes from pronunciation | `autoSpellService` with DP optimal-match algorithm | ✅ Implemented |
 | **FR16** | External/borrowed words marked with is_native flag | `is_native` boolean field in `lexicon` table | ✅ Implemented |
 | **FR17** | Recursive ancestry queries (full etymology tree) | Recursive CTE queries in `lexiconService` | ✅ Implemented |
 | **FR18** | Cycle detection prevents circular ancestry | `wouldCreateCycle()` validation before ancestry updates | ✅ Implemented |
@@ -1159,21 +1159,66 @@ type ApiErrorCode =
 
 #### Auto-Spelling Algorithm
 
-The auto-spelling feature converts IPA pronunciation to grapheme sequences:
+The auto-spelling feature converts IPA pronunciation to grapheme sequences using a **dynamic programming algorithm** with two-tier optimization:
 
-1. Get all phonemes marked with `use_in_auto_spelling = true`
-2. Build a phoneme → grapheme_id mapping
-3. Sort mappings by phoneme length (descending) for greedy longest-match
-4. Parse pronunciation string, matching longest phoneme at each position
-5. Return ordered grapheme IDs with match info
+##### Optimization Hierarchy
+
+1. **Rule 1 (Primary)**: **Maximize IPA coverage** - match as many pronunciation characters with real graphemes as possible
+2. **Rule 2 (Secondary)**: **Minimize grapheme count** - when coverage is equal, prefer fewer graphemes
+
+##### Why DP Over Greedy?
+
+The previous greedy longest-match algorithm could produce suboptimal results:
+
+**Example:**
+- Phonemes: `"ABC"→g1`, `"AB"→g2`, `"CD"→g3`
+- Input: `"ABCD"`
+- **Greedy result**: Picks `"ABC"` first (longest match), leaving `"D"` unmatched → 3 chars covered, 1 grapheme
+- **Optimal result**: Picks `"AB"+"CD"` → 4 chars covered (full coverage), 2 graphemes
+
+Rule 1 dictates the optimal solution because 4 coverage > 3 coverage.
+
+##### Algorithm Overview
+
+```
+dp[i] = best solution for processing characters 0..i-1
+
+Base: dp[0] = { coverage: 0, graphemeCount: 0 }
+
+For each position i from 1 to n:
+    1. Try SKIP (fallback mode only): create virtual glyph for char at i-1
+       newState = { coverage: dp[i-1].coverage, graphemeCount: dp[i-1].graphemeCount + 1 }
+
+    2. Try each phoneme match ending at i:
+       For each j where phoneme matches pronunciation[j..i]:
+           newState = { coverage: dp[j].coverage + (i-j), graphemeCount: dp[j].graphemeCount + 1 }
+           If isBetter(newState, dp[i]): dp[i] = newState
+
+Final: Reconstruct path from dp[n] back to dp[0]
+```
+
+##### Complexity
+
+- **Time**: O(n × m) where n = pronunciation length, m = phoneme count
+- **Space**: O(n) for DP table
+
+##### Two Modes
+
+1. **Strict mode** (`generateSpellingFromPronunciation`): Fails if any character cannot be matched to a real grapheme
+2. **Fallback mode** (`generateSpellingWithFallback`): Creates virtual IPA glyphs for unmatched characters
 
 ```typescript
 interface AutoSpellResult {
     success: boolean;
     spelling: { grapheme_id: number; position: number }[];
     segments: string[];        // Matched phoneme segments
-    unmatchedParts: string[];  // Any unmatched characters
+    unmatchedParts: string[];  // Any unmatched characters (strict mode only)
     error?: string;
+}
+
+interface AutoSpellResultExtended extends AutoSpellResult {
+    hasVirtualGlyphs: boolean;  // Whether fallback glyphs were used
+    spelling: AutoSpellEntry[]; // Extended with isVirtual and ipaCharacter
 }
 
 ---
@@ -1475,8 +1520,9 @@ src/
 | `graphemeService.test.ts` | ~60 | Grapheme & phoneme operations |
 | `edgeCases.test.ts` | ~30 | Integration & boundary cases |
 | `glyphCanvasInput.test.ts` | 20 | GlyphCanvasInput strategies & layout utils |
+| `autoSpellService.test.ts` | ~35 | Auto-spelling DP algorithm |
 
-**Total: 161 tests**
+**Total: ~195 tests**
 
 ### Key Test Scenarios
 

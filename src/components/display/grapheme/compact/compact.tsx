@@ -27,7 +27,7 @@ export default function CompactGraphemeDisplay({ graphemeData, onClick }: Compac
                 <GlyphSpellingDisplay
                     glyphs={graphemeData.glyphs}
                     strategy="ltr"
-                    config={{ glyphWidth: 28, glyphHeight: 28, spacing: 2, padding: 2 }}
+                    config={{ glyphWidth: 56, glyphHeight: 56, spacing: 2, padding: 4 }}
                     emptyContent={<span>—</span>}
                 />
             </div>

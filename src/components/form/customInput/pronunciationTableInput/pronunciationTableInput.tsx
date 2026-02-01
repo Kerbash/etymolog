@@ -77,7 +77,7 @@ export const PronunciationTableInput = forwardRef((
     const [rows, setRows] = useState<RowState[]>(() => {
         const initialRows = defaultValue?.length > 0
             ? defaultValue
-            : [{ pronunciation: "", useInAutoSpelling: false }];
+            : [{ pronunciation: "", useInAutoSpelling: true }];
 
         return initialRows.map((row, index) => ({
             id: `${idPrefix}-row-${index}`,
@@ -193,7 +193,7 @@ const PronunciationTableInputInner = ({
         const newRow: RowState = {
             id: `${idPrefix}-row-${Date.now()}`,
             pronunciation: "",
-            useInAutoSpelling: false
+            useInAutoSpelling: true
         };
 
         setRows(prev => [...prev, newRow]);

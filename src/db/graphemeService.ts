@@ -614,7 +614,7 @@ export function getAutoSpellingPhonemes(): Phoneme[] {
     const db = getDatabase();
 
     const result = db.exec(`
-        SELECT id, grapheme_id, phoneme, use_in_auto_spelling, context 
+        SELECT id, grapheme_id, phoneme, use_in_auto_spelling, context
         FROM phonemes
         WHERE use_in_auto_spelling = 1
         ORDER BY grapheme_id, id
