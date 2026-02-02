@@ -4,7 +4,9 @@
  */
 
 .tooltipWrapper {
-    display: inline-block;
+    display: inline-flex;
+    width: 100%;
+    height: 100%;
 }
 
 .cell {
@@ -17,28 +19,28 @@
     position: relative;
 
     &.small {
-        width: 32px;
-        height: 32px;
-        font-size: 14px;
+        width: 48px;
+        height: 48px;
+        font-size: 28px;
     }
 
     &.medium {
-        width: 40px;
-        height: 40px;
-        font-size: 18px;
+        width: 56px;
+        height: 56px;
+        font-size: 36px;
     }
 
     &.large {
-        width: 48px;
-        height: 48px;
-        font-size: 22px;
+        width: 64px;
+        height: 64px;
+        font-size: 44px;
     }
 
     // Special size for vowel chart - uses 100% to fill foreignObject
     &.vowel {
         width: 100%;
         height: 100%;
-        font-size: 12px;
+        font-size: 24px;
         border-radius: 2px;
 
         .glyphDisplay {
@@ -81,7 +83,7 @@
 
     &.unassigned {
         background: transparent;
-        border: 1px dashed var(--border-secondary);
+        border: 1px solid var(--border-secondary);
         opacity: 0.6;
 
         &:hover {
@@ -112,12 +114,25 @@
     justify-content: center;
     width: 100%;
     height: 100%;
-    padding: 2px;
 }
 
 .glyphDisplay {
-    max-width: 100%;
-    max-height: 100%;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    // Ensure SVG fills container
+    > div {
+        width: 100% !important;
+        height: 100% !important;
+    }
+
+    svg {
+        width: 100% !important;
+        height: 100% !important;
+    }
 }
 
 .loadingIndicator {

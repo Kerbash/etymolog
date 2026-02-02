@@ -24,11 +24,10 @@
 .table {
     border-collapse: collapse;
     font-size: 0.875rem;
-    min-width: 100%;
 
     th, td {
         border: 1px solid var(--border-primary);
-        padding: 0.25rem;
+        padding: 2px;
         text-align: center;
         vertical-align: middle;
     }
@@ -36,8 +35,8 @@
 
 .cornerCell {
     background: var(--surface-raised);
-    width: 120px;
-    min-width: 100px;
+    width: 90px;
+    min-width: 80px;
 }
 
 .columnHeader {
@@ -45,17 +44,15 @@
     color: var(--text-primary);
     font-weight: 500;
     font-size: 0.75rem;
-    padding: 0.5rem 0.25rem;
+    padding: 0.25rem 0.125rem;
     white-space: nowrap;
     writing-mode: horizontal-tb;
-    min-width: 70px;
 
     @media (max-width: 1200px) {
         writing-mode: vertical-rl;
         text-orientation: mixed;
         transform: rotate(180deg);
-        padding: 0.25rem 0.5rem;
-        min-width: auto;
+        padding: 0.125rem 0.25rem;
     }
 }
 
@@ -65,39 +62,38 @@
     font-weight: 500;
     font-size: 0.75rem;
     text-align: left;
-    padding: 0.5rem;
+    padding: 0.25rem 0.5rem;
     white-space: nowrap;
 }
 
 .consonantCell {
     background: var(--bg-tertiary);
-    padding: 0.125rem;
+    padding: 1px;
 }
 
 .cellPair {
     display: flex;
     flex-direction: row;
-    gap: 2px;
+    gap: 1px;
     justify-content: center;
     align-items: center;
 }
 
 .cellHalf {
-    flex: 1;
+    flex: 0 0 auto;
     display: flex;
     justify-content: center;
     align-items: center;
-    min-width: 32px;
 }
 
 .emptyHalf {
-    width: 32px;
-    height: 32px;
+    width: 48px;
+    height: 48px;
 }
 
 .emptySound {
-    width: 32px;
-    height: 32px;
+    width: 48px;
+    height: 48px;
     display: block;
 }
 
@@ -111,7 +107,7 @@
 
 .shadedArea {
     width: 100%;
-    height: 32px;
+    height: 48px;
     background: repeating-linear-gradient(
         45deg,
         transparent,

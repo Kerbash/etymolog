@@ -102,7 +102,7 @@ export default function IPAChartCell({
                     <GlyphSpellingDisplay
                         glyphs={grapheme!.glyphs}
                         strategy="ltr"
-                        config="compact"
+                        config={{ glyphWidth: 40, glyphHeight: 40, spacing: 0, padding: 0 }}
                         showVirtualGlyphStyling={false}
                         className={styles.glyphDisplay}
                     />

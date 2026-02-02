@@ -70,8 +70,8 @@ export default function IPAVowelChart({
     // Render vowel cells positioned on the chart
     const vowelCells = useMemo(() => {
         const cells: JSX.Element[] = [];
-        // Scale factor: viewBox is 600 units, cells are ~32px, we want them to fit nicely
-        const cellSize = 28; // Size in viewBox units
+        // Scale factor: viewBox is 600 units, cells sized to fit glyphs properly
+        const cellSize = 48; // Size in viewBox units - matches consonant cell size
 
         for (const [positionKey, vowels] of vowelsByPosition) {
             // Get coordinates from first vowel (they share position)
@@ -82,9 +82,9 @@ export default function IPAVowelChart({
                 y: baseCoords.y * 6,
             };
 
-            // Calculate pair offset
+            // Calculate pair offset - tighter spacing
             const hasPair = vowels.length === 2;
-            const pairOffset = hasPair ? 24 : 0;
+            const pairOffset = hasPair ? 26 : 0;
 
             vowels.forEach((vowel, idx) => {
                 const xOffset = hasPair ? (idx === 0 ? -pairOffset : pairOffset) : 0;
