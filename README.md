@@ -112,6 +112,9 @@ Even though this is a PWA running entirely client-side, we maintain clean separa
 | **UC16: View Etymology Tree** | Display recursive ancestry from any word to its roots | `/lexicon/view/:id` | ✅ Complete |
 | **UC17: Auto-Spell Word** | Generate spelling from pronunciation using grapheme phonemes | Within lexicon forms | ✅ Complete |
 | **UC18: External References** | Mark words as non-native for borrowed/ancestor words | Within lexicon forms | ✅ Complete |
+| **UC26: View IPA Chart** | Display interactive IPA consonant and vowel charts | `/script-maker/chart` | ✅ Complete |
+| **UC27: Create Grapheme from IPA** | Click unassigned IPA to create grapheme with pre-filled phoneme | IPA Chart → Create page | ✅ Complete |
+| **UC28: Edit Grapheme from IPA Chart** | Click assigned IPA cell to navigate to grapheme edit page | IPA Chart → Edit page | ✅ Complete |
 
 ### Secondary Use Cases
 
@@ -148,6 +151,11 @@ Even though this is a PWA running entirely client-side, we maintain clean separa
 | **FR17** | Recursive ancestry queries (full etymology tree) | Recursive CTE queries in `lexiconService` | ✅ Implemented |
 | **FR18** | Cycle detection prevents circular ancestry | `wouldCreateCycle()` validation before ancestry updates | ✅ Implemented |
 | **FR19** | Deleting ancestor removes relationship, not descendant | `ON DELETE SET NULL` on `ancestor_id` foreign key | ✅ Implemented |
+| **FR20** | IPA Consonant Chart displays place × manner grid | `IPAConsonantChart` with voiceless/voiced pairs | ✅ Implemented |
+| **FR21** | IPA Vowel Chart displays height × backness trapezoid | `IPAVowelChart` with SVG positioning | ✅ Implemented |
+| **FR22** | Phoneme-to-grapheme lookup for IPA chart | `getPhonemeMap()` API method for bulk lookup | ✅ Implemented |
+| **FR23** | Grapheme glyphs display in IPA chart cells | Reuses `GlyphSpellingDisplay` component | ✅ Implemented |
+| **FR24** | Pre-fill phoneme when creating from IPA chart | URL param `?phoneme=X` read by create form | ✅ Implemented |
 
 ### Non-Functional Requirements
 
@@ -215,6 +223,7 @@ Even though this is a PWA running entirely client-side, we maintain clean separa
 │   ├── (index: Graphemes Tab)      
 │   │   ├── (index)                 → GraphemeHome (gallery + nav)
 │   │   ├── /create                 → CreateGraphemePage
+│   │   ├── /chart                  → IPAChartPage (IPA chart viewer)
 │   │   └── /grapheme/db/:id        → GraphemeEditPage
 │   │
 │   └── /glyphs (Glyphs Tab)
@@ -234,6 +243,7 @@ Even though this is a PWA running entirely client-side, we maintain clean separa
 | `/lexicon/db/:id` | `LexiconViewPage` | View/edit word + etymology tree |
 | `/script-maker` | `GraphemeHome` | Grapheme gallery with search/sort/pagination |
 | `/script-maker/create` | `CreateGraphemePage` | Create new grapheme with glyph selection |
+| `/script-maker/chart` | `IPAChartPage` | Interactive IPA consonant & vowel charts |
 | `/script-maker/grapheme/db/:id` | `GraphemeEditPage` | Edit existing grapheme |
 | `/script-maker/glyphs` | `GlyphsTab` | Glyph gallery with search/sort/pagination |
 | `/script-maker/glyphs/create` | `NewGlyphPage` | Create new glyph (standalone page) |
@@ -274,6 +284,8 @@ App.tsx
                 ├── GraphemesTab
                 │   ├── GraphemeHome
                 │   │   ├── GraphemeNav
+                │   │   │   ├── IconButton → /script-maker/create
+                │   │   │   └── IconButton → /script-maker/chart
                 │   │   └── GraphemeView
                 │   │       └── DataGallery (cyber-components)
                 │   │           └── CompactGraphemeDisplay
@@ -290,6 +302,13 @@ App.tsx
                 │   │               └── EditGlyphModal
                 │   │                   └── GlyphForm
                 │   │                       └── GlyphFormFields
+                │   ├── IPAChartPage
+                │   │   ├── IPAConsonantChart
+                │   │   │   └── IPAChartCell (×N)
+                │   │   │       └── GlyphSpellingDisplay (if assigned)
+                │   │   └── IPAVowelChart
+                │   │       └── IPAChartCell (×N)
+                │   │           └── GlyphSpellingDisplay (if assigned)
                 │   └── GraphemeEditPage
                 │       └── SmartForm
                 │           └── GraphemeFormFields (mode="edit")
@@ -315,8 +334,9 @@ App.tsx
 | **Galleries** | `GraphemeView`, `GlyphGallery`, `LexiconGallery` | `src/components/tabs/*/gallery*/` |
 | **Create Pages** | `CreateGraphemePage`, `NewGlyphPage`, `CreateLexiconPage` | `src/components/tabs/*/create*/` or `new*/` |
 | **Edit/View Pages** | `GraphemeEditPage`, `GlyphEditPage`, `LexiconViewPage` | `src/components/tabs/*/edit*/` or `view*/` |
+| **IPA Chart** | `IPAChartPage`, `IPAConsonantChart`, `IPAVowelChart`, `IPAChartCell` | `src/components/tabs/grapheme/ipaChart/`, `src/components/display/ipaChart/` |
 | **Form Components** | `GlyphFormFields`, `GraphemeFormFields`, `LexiconFormFields` | `src/components/form/*/` |
-| **Display Components** | `GlyphCard`, `CompactGraphemeDisplay`, `DetailedGraphemeDisplay`, `CompactLexiconDisplay`, `DetailedLexiconDisplay`, `EtymologyTree` | `src/components/display/*/` |
+| **Display Components** | `GlyphCard`, `CompactGraphemeDisplay`, `DetailedGraphemeDisplay`, `CompactLexiconDisplay`, `DetailedLexiconDisplay`, `EtymologyTree`, `GlyphSpellingDisplay` | `src/components/display/*/` |
 | **Custom Inputs** | `PronunciationTableInput`, `SpellingInput`, `AncestryInput` | `src/components/form/customInput/*/` |
 | **Modal Components** | `NewGlyphModal`, `EditGlyphModal` | Various locations |
 

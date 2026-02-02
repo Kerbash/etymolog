@@ -1,0 +1,132 @@
+/**
+ * IPAChartCell Component Styles
+ * Uses theme variables from index.css
+ */
+
+.tooltipWrapper {
+    display: inline-block;
+}
+
+.cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.15s ease;
+    user-select: none;
+    position: relative;
+
+    &.small {
+        width: 32px;
+        height: 32px;
+        font-size: 14px;
+    }
+
+    &.medium {
+        width: 40px;
+        height: 40px;
+        font-size: 18px;
+    }
+
+    &.large {
+        width: 48px;
+        height: 48px;
+        font-size: 22px;
+    }
+
+    // Special size for vowel chart - uses 100% to fill foreignObject
+    &.vowel {
+        width: 100%;
+        height: 100%;
+        font-size: 12px;
+        border-radius: 2px;
+
+        .glyphDisplay {
+            max-width: 100%;
+            max-height: 100%;
+
+            svg {
+                width: 100% !important;
+                height: 100% !important;
+            }
+        }
+    }
+
+    &.clickable {
+        cursor: pointer;
+
+        &:hover {
+            transform: scale(1.05);
+        }
+
+        &:active {
+            transform: scale(0.98);
+        }
+
+        &:focus {
+            outline: 2px solid var(--interactive-hover);
+            outline-offset: 2px;
+        }
+    }
+
+    &.assigned {
+        background: var(--surface-raised);
+        border: 1px solid var(--border-primary);
+
+        &:hover {
+            background: var(--interactive-hover);
+            border-color: var(--interactive-active);
+        }
+    }
+
+    &.unassigned {
+        background: transparent;
+        border: 1px dashed var(--border-secondary);
+        opacity: 0.6;
+
+        &:hover {
+            opacity: 1;
+            border-color: var(--interactive-hover);
+            background: rgba(var(--interactive-base), 0.1);
+        }
+
+        .ipaText {
+            color: var(--text-primary-muted);
+        }
+    }
+
+    &.loading {
+        opacity: 0.5;
+        pointer-events: none;
+    }
+}
+
+.ipaText {
+    font-family: 'Charis SIL', 'Doulos SIL', 'Gentium Plus', 'Noto Sans', serif;
+    color: var(--text-primary);
+}
+
+.glyphContainer {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    padding: 2px;
+}
+
+.glyphDisplay {
+    max-width: 100%;
+    max-height: 100%;
+}
+
+.loadingIndicator {
+    font-size: 12px;
+    color: var(--text-primary-muted);
+    animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}

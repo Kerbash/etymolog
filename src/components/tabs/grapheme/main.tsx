@@ -22,6 +22,7 @@ import NewGraphemeForm from "./newGrapheme/newGrapheme.tsx";
 import GraphemeGallery from "./galleryGrapheme/graphemeGallery.tsx";
 import GlyphGallery from "./galleryGlyphs/galleryGlyphs.tsx";
 import { GlyphEditPage } from "./editGlyph";
+import IPAChartPage from "./ipaChart/IPAChartPage.tsx";
 
 import { flex, sizing } from "utils-styles";
 import GraphemeEditPage from "./editGrapheme/GraphemeEditPage.tsx";
@@ -41,6 +42,13 @@ function GraphemeNav() {
                 className={buttonStyles.primary}
             >
                 New Grapheme
+            </IconButton>
+            <IconButton
+                as={Link}
+                to="/script-maker/chart"
+                iconName="grid-3x3"
+            >
+                View IPA Chart
             </IconButton>
         </nav>
     );
@@ -97,6 +105,7 @@ function CreateGlyphPage() {
  * - /script-maker/ -> GraphemeHome (gallery view)
  * - /script-maker/create -> CreateGraphemePage (create form)
  * - /script-maker/grapheme/db/:id -> GraphemeEditPage (edit form)
+ * - /script-maker/chart -> IPAChartPage (IPA chart viewer)
  */
 function GraphemesTab() {
     return (
@@ -105,6 +114,7 @@ function GraphemesTab() {
                 <Route index element={<GraphemeHome />} />
                 <Route path="create" element={<CreateGraphemePage />} />
                 <Route path="grapheme/db/:id" element={<GraphemeEditPage />} />
+                <Route path="chart" element={<IPAChartPage />} />
             </Routes>
         </div>
     );

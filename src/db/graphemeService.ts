@@ -640,3 +640,87 @@ export function getAutoSpellingPhonemes(): Phoneme[] {
         context: row[4] as string | null
     }));
 }
+
+// =============================================================================
+// PHONEME LOOKUP OPERATIONS (for IPA Chart)
+// =============================================================================
+
+/**
+ * Find a grapheme by its associated phoneme.
+ * Returns the first grapheme that has a phoneme matching the given IPA character.
+ *
+ * @param phoneme - The IPA character to search for
+ * @returns The complete grapheme with glyphs and phonemes, or null if not found
+ */
+export function getGraphemeByPhoneme(phoneme: string): GraphemeComplete | null {
+    const db = getDatabase();
+
+    // Find the first phoneme entry matching the given phoneme
+    const result = db.exec(`
+        SELECT grapheme_id FROM phonemes WHERE phoneme = ? LIMIT 1
+    `, [phoneme]);
+
+    if (result.length === 0 || result[0].values.length === 0) {
+        return null;
+    }
+
+    const graphemeId = result[0].values[0][0] as number;
+    return getGraphemeComplete(graphemeId);
+}
+
+/**
+ * Get a mapping of all phonemes to their associated graphemes.
+ * Returns a Map where keys are phoneme strings and values are GraphemeComplete objects.
+ *
+ * This is useful for bulk lookups when rendering the IPA chart.
+ *
+ * @returns Map from phoneme string to GraphemeComplete
+ */
+export function getAllPhonemeGraphemeMappings(): Map<string, GraphemeComplete> {
+    const db = getDatabase();
+    const mappings = new Map<string, GraphemeComplete>();
+
+    // Get all phonemes with their grapheme IDs
+    const phonemeResult = db.exec(`
+        SELECT DISTINCT phoneme, grapheme_id FROM phonemes ORDER BY grapheme_id, id
+    `);
+
+    if (phonemeResult.length === 0) {
+        return mappings;
+    }
+
+    // Build a map of grapheme_id -> phonemes to batch load graphemes
+    const graphemeIds = new Set<number>();
+    const phonemeToGraphemeId = new Map<string, number>();
+
+    for (const row of phonemeResult[0].values) {
+        const phoneme = row[0] as string;
+        const graphemeId = row[1] as number;
+
+        // Only store the first grapheme for each phoneme
+        if (!phonemeToGraphemeId.has(phoneme)) {
+            phonemeToGraphemeId.set(phoneme, graphemeId);
+            graphemeIds.add(graphemeId);
+        }
+    }
+
+    // Batch load all needed graphemes
+    const graphemeCache = new Map<number, GraphemeComplete>();
+    for (const graphemeId of graphemeIds) {
+        const grapheme = getGraphemeComplete(graphemeId);
+        if (grapheme) {
+            graphemeCache.set(graphemeId, grapheme);
+        }
+    }
+
+    // Build the final mapping
+    for (const [phoneme, graphemeId] of phonemeToGraphemeId) {
+        const grapheme = graphemeCache.get(graphemeId);
+        if (grapheme) {
+            mappings.set(phoneme, grapheme);
+        }
+    }
+
+    return mappings;
+}
+

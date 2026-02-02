@@ -48,6 +48,8 @@ export interface GraphemeFormFieldsProps {
     onSelectedGlyphsChange?: (glyphs: Glyph[]) => void;
     /** Initial selected glyphs (for controlled behavior) */
     selectedGlyphs?: Glyph[];
+    /** Default pronunciations (e.g., pre-filled from IPA chart) */
+    defaultPronunciations?: PronunciationRowValue[];
 }
 
 /**
@@ -106,6 +108,7 @@ export default function GraphemeFormFields({
     className,
     onSelectedGlyphsChange,
     selectedGlyphs: controlledSelectedGlyphs,
+    defaultPronunciations: propDefaultPronunciations,
 }: GraphemeFormFieldsProps) {
     // Track if we've initialized the form with initial data
     const initializedRef = useRef(false);
@@ -148,16 +151,22 @@ export default function GraphemeFormFields({
     const [editingGlyph, setEditingGlyph] = useState<Glyph | null>(null);
     const [isEditGlyphModalOpen, setIsEditGlyphModalOpen] = useState(false);
 
-    // Prepare default pronunciations for edit mode
+    // Prepare default pronunciations for edit mode or from prop
     const defaultPronunciations: PronunciationRowValue[] = useMemo(() => {
+        // If prop is provided (e.g., from IPA chart pre-fill), use it
+        if (propDefaultPronunciations && propDefaultPronunciations.length > 0) {
+            return propDefaultPronunciations;
+        }
+        // Edit mode: use existing phonemes from initial data
         if (mode === 'edit' && initialData?.phonemes && initialData.phonemes.length > 0) {
             return initialData.phonemes.map(p => ({
                 pronunciation: p.phoneme,
                 useInAutoSpelling: p.use_in_auto_spelling,
             }));
         }
+        // Default: empty row
         return [{ pronunciation: '', useInAutoSpelling: true }];
-    }, [mode, initialData?.phonemes]);
+    }, [mode, initialData?.phonemes, propDefaultPronunciations]);
 
     // Memoize validation config to prevent unnecessary re-registration
     const graphemeNameValidation = useMemo(() => TextInputValidatorFactory({

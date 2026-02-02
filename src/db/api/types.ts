@@ -269,6 +269,10 @@ export interface GraphemeApi {
     update(id: number, request: UpdateGraphemeRequest): ApiResponse<import('../types').Grapheme>;
     updateGlyphs(id: number, request: UpdateGraphemeGlyphsRequest): ApiResponse<void>;
     delete(id: number): ApiResponse<void>;
+    /** Get a grapheme by its associated phoneme (IPA character) */
+    getByPhoneme(phoneme: string): ApiResponse<import('../types').GraphemeComplete | null>;
+    /** Get a mapping of all phonemes to their associated graphemes */
+    getPhonemeMap(): ApiResponse<Map<string, import('../types').GraphemeComplete>>;
 }
 
 /**

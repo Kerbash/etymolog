@@ -36,6 +36,8 @@ import {
     deletePhoneme as serviceDeletePhoneme,
     deleteAllPhonemesForGrapheme as serviceDeleteAllPhonemesForGrapheme,
     getAutoSpellingPhonemes as serviceGetAutoSpellingPhonemes,
+    getGraphemeByPhoneme as serviceGetGraphemeByPhoneme,
+    getAllPhonemeGraphemeMappings as serviceGetAllPhonemeGraphemeMappings,
 } from '../graphemeService';
 import { cleanupOrphanedGlyphs } from '../glyphService';
 import { isDatabaseInitialized } from '../database';
@@ -325,6 +327,42 @@ function deleteGrapheme(id: number): ApiResponse<void> {
 }
 
 /**
+ * Get a grapheme by its associated phoneme (IPA character).
+ */
+function getGraphemeByPhoneme(phoneme: string): ApiResponse<GraphemeComplete | null> {
+    const dbError = checkDbInitialized<GraphemeComplete | null>();
+    if (dbError) return dbError;
+
+    try {
+        const grapheme = serviceGetGraphemeByPhoneme(phoneme);
+        return successResponse(grapheme);
+    } catch (error) {
+        return errorResponse(
+            'OPERATION_FAILED',
+            error instanceof Error ? error.message : 'Failed to get grapheme by phoneme'
+        );
+    }
+}
+
+/**
+ * Get a mapping of all phonemes to their graphemes.
+ */
+function getPhonemeGraphemeMap(): ApiResponse<Map<string, GraphemeComplete>> {
+    const dbError = checkDbInitialized<Map<string, GraphemeComplete>>();
+    if (dbError) return dbError;
+
+    try {
+        const mappings = serviceGetAllPhonemeGraphemeMappings();
+        return successResponse(mappings);
+    } catch (error) {
+        return errorResponse(
+            'OPERATION_FAILED',
+            error instanceof Error ? error.message : 'Failed to get phoneme-grapheme mappings'
+        );
+    }
+}
+
+/**
  * Grapheme API implementation.
  */
 export const graphemeApi: GraphemeApi = {
@@ -337,6 +375,8 @@ export const graphemeApi: GraphemeApi = {
     update: updateGrapheme,
     updateGlyphs: updateGraphemeGlyphs,
     delete: deleteGrapheme,
+    getByPhoneme: getGraphemeByPhoneme,
+    getPhonemeMap: getPhonemeGraphemeMap,
 };
 
 // =============================================================================

@@ -2,8 +2,8 @@ import styles from "./newGrapheme.module.scss";
 import {graphic} from "utils-styles";
 
 import classNames from "classnames";
-import { useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useCallback, useMemo } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import {SmartForm, useSmartForm} from "smart-form/smartForm";
 import IconButton from "cyber-components/interactable/buttons/iconButton/iconButton.tsx";
@@ -14,6 +14,10 @@ import { GraphemeFormFields, type GraphemeFormData } from "../../../form/graphem
 export default function NewGraphemeForm() {
     const {registerField, unregisterField, registerForm, isFormValid} = useSmartForm({mode: "onChange"});
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+
+    // Get pre-filled phoneme from URL params (used when coming from IPA chart)
+    const prefilledPhoneme = searchParams.get('phoneme') || undefined;
 
     // Use the unified context
     const { api, isLoading, error } = useEtymolog();
@@ -25,6 +29,14 @@ export default function NewGraphemeForm() {
     const handleSelectedGlyphsChange = useCallback((glyphs: Glyph[]) => {
         setSelectedGlyphs(glyphs);
     }, []);
+
+    // Default pronunciations - pre-filled if phoneme param is present
+    const defaultPronunciations = useMemo(() => {
+        if (prefilledPhoneme) {
+            return [{ pronunciation: prefilledPhoneme, useInAutoSpelling: true }];
+        }
+        return undefined;
+    }, [prefilledPhoneme]);
 
     // Register form with submission handler
     const formProps = registerForm("graphemeForm", {
@@ -108,7 +120,7 @@ export default function NewGraphemeForm() {
             className={classNames(styles.formContainer)}
         >
             <h2 className={graphic.underlineHighlightColorPrimary}>
-                New Grapheme
+                {prefilledPhoneme ? `New Grapheme for "${prefilledPhoneme}"` : 'New Grapheme'}
             </h2>
 
             <GraphemeFormFields
@@ -116,6 +128,7 @@ export default function NewGraphemeForm() {
                 mode="create"
                 selectedGlyphs={selectedGlyphs}
                 onSelectedGlyphsChange={handleSelectedGlyphsChange}
+                defaultPronunciations={defaultPronunciations}
             />
 
             <IconButton
