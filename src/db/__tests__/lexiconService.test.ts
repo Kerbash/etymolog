@@ -26,20 +26,15 @@ import {
     clearDatabase,
     // Glyph operations
     createGlyph,
-    deleteGlyph,
     // Grapheme operations
     createGrapheme,
-    deleteGrapheme,
     getGraphemeComplete,
     // Lexicon operations
     createLexicon,
     getLexiconById,
-    getLexiconWithSpelling,
     getLexiconWithAncestry,
-    getLexiconWithDescendants,
     getLexiconComplete,
     getAllLexicon,
-    getAllLexiconComplete,
     getAllLexiconWithUsage,
     searchLexicon,
     getLexiconByNative,
@@ -48,7 +43,6 @@ import {
     getLexiconCount,
     // Spelling operations
     getSpellingByLexiconId,
-    getLexiconSpellingEntries,
     addSpellingToLexicon,
     setLexiconSpelling,
     clearLexiconSpelling,
@@ -58,7 +52,6 @@ import {
     addAncestorToLexicon,
     setLexiconAncestry,
     removeAncestorFromLexicon,
-    clearLexiconAncestry,
     // Recursive ancestry
     getFullAncestryTree,
     getAllAncestorIds,
@@ -274,7 +267,7 @@ describe('Lexicon Service', () => {
 
         it('should update updated_at timestamp', () => {
             const created = createTestLexicon('test', 'test');
-            const originalUpdatedAt = created.updated_at;
+            void created.updated_at;
 
             // Wait a tiny bit to ensure timestamp differs
             const updated = updateLexicon(created.id, { lemma: 'modified' });
@@ -534,11 +527,11 @@ describe('Lexicon Service', () => {
 
         it('should get descendants of a word', () => {
             const proto = createTestLexicon('proto', 'pro');
-            const child1 = createLexicon({
+            void createLexicon({
                 lemma: 'child1',
                 ancestry: [{ ancestor_id: proto.id, position: 0 }],
             });
-            const child2 = createLexicon({
+            void createLexicon({
                 lemma: 'child2',
                 ancestry: [{ ancestor_id: proto.id, position: 0 }],
             });
@@ -964,7 +957,7 @@ describe('Lexicon Service', () => {
                 lemma: 'parent',
                 ancestry: [{ ancestor_id: grandparent.id, position: 0 }],
             });
-            const child = createLexicon({
+            void createLexicon({
                 lemma: 'child',
                 ancestry: [{ ancestor_id: parent.id, position: 0 }],
             });

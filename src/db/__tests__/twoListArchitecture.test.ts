@@ -24,8 +24,6 @@ import {
     createGlyph,
     // Grapheme operations
     createGrapheme,
-    deleteGrapheme,
-    getGraphemeComplete,
     // Lexicon operations
     createLexicon,
     getLexiconById,

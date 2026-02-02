@@ -41,7 +41,6 @@ import {
 } from '../lexiconService';
 import {
     generateSpellingFromPronunciation,
-    generateSpellingWithFallback,
     previewAutoSpellingWithFallback,
     type AutoSpellResult,
 } from '../autoSpellService';

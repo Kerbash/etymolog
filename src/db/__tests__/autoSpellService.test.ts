@@ -17,7 +17,6 @@ import {
     clearDatabase,
     createGlyph,
     createGrapheme,
-    addPhoneme,
 } from '../index';
 import {
     generateSpellingFromPronunciation,
@@ -116,9 +115,9 @@ describe('Auto-Spell Service', () => {
         });
 
         it('should handle multi-character phonemes (digraphs)', () => {
-            const gSh = createGraphemeWithPhoneme('SH', 'ʃ');
-            const gA = createGraphemeWithPhoneme('A', 'æ');
-            const gP = createGraphemeWithPhoneme('P', 'p');
+            void createGraphemeWithPhoneme('SH', 'ʃ');
+            void createGraphemeWithPhoneme('A', 'æ');
+            void createGraphemeWithPhoneme('P', 'p');
 
             const result = generateSpellingFromPronunciation('ʃæp');
 
@@ -138,7 +137,7 @@ describe('Auto-Spell Service', () => {
             // Input: "ABCD"
             // Greedy: ABC + (unmatched D) = 3 chars covered
             // Optimal: AB + CD = 4 chars covered (better!)
-            const gABC = createGraphemeWithPhoneme('ABC', 'ABC');
+            void createGraphemeWithPhoneme('ABC', 'ABC');
             const gAB = createGraphemeWithPhoneme('AB', 'AB');
             const gCD = createGraphemeWithPhoneme('CD', 'CD');
 
@@ -157,8 +156,8 @@ describe('Auto-Spell Service', () => {
             // Input: "XYZ"
             // Both paths cover all 3 chars, but XYZ is 1 grapheme vs X+YZ (2 graphemes)
             const gXYZ = createGraphemeWithPhoneme('XYZ', 'XYZ');
-            const gX = createGraphemeWithPhoneme('X', 'X');
-            const gYZ = createGraphemeWithPhoneme('YZ', 'YZ');
+            void createGraphemeWithPhoneme('X', 'X');
+            void createGraphemeWithPhoneme('YZ', 'YZ');
 
             const result = generateSpellingFromPronunciation('XYZ');
 
@@ -174,10 +173,10 @@ describe('Auto-Spell Service', () => {
             // Coverage is same for both "LONG" and "L+O+N+G" when X is unmatched
             // But since X cannot be matched anyway, we want max coverage before X
             const gLONG = createGraphemeWithPhoneme('LONG', 'LONG');
-            const gL = createGraphemeWithPhoneme('L', 'L');
-            const gO = createGraphemeWithPhoneme('O', 'O');
-            const gN = createGraphemeWithPhoneme('N', 'N');
-            const gG = createGraphemeWithPhoneme('G', 'G');
+            void createGraphemeWithPhoneme('L', 'L');
+            void createGraphemeWithPhoneme('O', 'O');
+            void createGraphemeWithPhoneme('N', 'N');
+            void createGraphemeWithPhoneme('G', 'G');
 
             const result = generateSpellingFromPronunciation('LONG');
 
@@ -221,9 +220,9 @@ describe('Auto-Spell Service', () => {
             // All cover 3 chars
             // Expected: g1 (1 grapheme) over g2+g3+g4 (3 graphemes)
             const gCAT = createGraphemeWithPhoneme('CAT', 'CAT');
-            const gC = createGraphemeWithPhoneme('C', 'C');
-            const gA = createGraphemeWithPhoneme('A', 'A');
-            const gT = createGraphemeWithPhoneme('T', 'T');
+            void createGraphemeWithPhoneme('C', 'C');
+            void createGraphemeWithPhoneme('A', 'A');
+            void createGraphemeWithPhoneme('T', 'T');
 
             const result = generateSpellingFromPronunciation('CAT');
 
@@ -239,10 +238,10 @@ describe('Auto-Spell Service', () => {
             // Expected: AB+CD (2 graphemes)
             const gAB = createGraphemeWithPhoneme('AB', 'AB');
             const gCD = createGraphemeWithPhoneme('CD', 'CD');
-            const gA = createGraphemeWithPhoneme('A', 'A');
-            const gB = createGraphemeWithPhoneme('B', 'B');
-            const gC = createGraphemeWithPhoneme('C', 'C');
-            const gD = createGraphemeWithPhoneme('D', 'D');
+            void createGraphemeWithPhoneme('A', 'A');
+            void createGraphemeWithPhoneme('B', 'B');
+            void createGraphemeWithPhoneme('C', 'C');
+            void createGraphemeWithPhoneme('D', 'D');
 
             const result = generateSpellingFromPronunciation('ABCD');
 
@@ -258,10 +257,10 @@ describe('Auto-Spell Service', () => {
             // Path 1: XY + Z = 3 coverage, 2 graphemes
             // Path 2: X + YZ = 3 coverage, 2 graphemes
             // Both are equally good, algorithm should pick one deterministically
-            const gXY = createGraphemeWithPhoneme('XY', 'XY');
-            const gYZ = createGraphemeWithPhoneme('YZ', 'YZ');
-            const gX = createGraphemeWithPhoneme('X', 'X');
-            const gZ = createGraphemeWithPhoneme('Z', 'Z');
+            void createGraphemeWithPhoneme('XY', 'XY');
+            void createGraphemeWithPhoneme('YZ', 'YZ');
+            void createGraphemeWithPhoneme('X', 'X');
+            void createGraphemeWithPhoneme('Z', 'Z');
 
             const result1 = generateSpellingFromPronunciation('XYZ');
             const result2 = generateSpellingFromPronunciation('XYZ');
@@ -305,9 +304,9 @@ describe('Auto-Spell Service', () => {
         });
 
         it('should handle unicode IPA characters', () => {
-            const gSh = createGraphemeWithPhoneme('SH', 'ʃ');
-            const gSchwa = createGraphemeWithPhoneme('SCHWA', 'ə');
-            const gTh = createGraphemeWithPhoneme('TH', 'θ');
+            void createGraphemeWithPhoneme('SH', 'ʃ');
+            void createGraphemeWithPhoneme('SCHWA', 'ə');
+            void createGraphemeWithPhoneme('TH', 'θ');
 
             const result = generateSpellingFromPronunciation('ʃəθ');
 
@@ -336,9 +335,9 @@ describe('Auto-Spell Service', () => {
         });
 
         it('should handle single character phonemes only', () => {
-            const gA = createGraphemeWithPhoneme('A', 'a');
-            const gB = createGraphemeWithPhoneme('B', 'b');
-            const gC = createGraphemeWithPhoneme('C', 'c');
+            void createGraphemeWithPhoneme('A', 'a');
+            void createGraphemeWithPhoneme('B', 'b');
+            void createGraphemeWithPhoneme('C', 'c');
 
             const result = generateSpellingFromPronunciation('abc');
 
@@ -363,8 +362,8 @@ describe('Auto-Spell Service', () => {
 
         it('should handle phonemes that are substrings of others', () => {
             // "a" is a substring of "aa"
-            const gA = createGraphemeWithPhoneme('A', 'a');
-            const gAA = createGraphemeWithPhoneme('AA', 'aa');
+            void createGraphemeWithPhoneme('A', 'a');
+            void createGraphemeWithPhoneme('AA', 'aa');
 
             const result = generateSpellingFromPronunciation('aaa');
 
@@ -455,7 +454,7 @@ describe('Auto-Spell Service', () => {
             // Setup: "ABC"->g1, "AB"->g2, "CD"->g3
             // Input: "ABCD"
             // Should find AB+CD (full coverage) not ABC+virtual-D
-            const gABC = createGraphemeWithPhoneme('ABC', 'ABC');
+            void createGraphemeWithPhoneme('ABC', 'ABC');
             const gAB = createGraphemeWithPhoneme('AB', 'AB');
             const gCD = createGraphemeWithPhoneme('CD', 'CD');
 
@@ -599,7 +598,7 @@ describe('Auto-Spell Service', () => {
         it('should use first grapheme when multiple have same phoneme', () => {
             // Create two graphemes with the same phoneme
             const g1 = createGraphemeWithPhoneme('First', 'x');
-            const g2 = createGraphemeWithPhoneme('Second', 'x');
+            void createGraphemeWithPhoneme('Second', 'x');
 
             const result = generateSpellingFromPronunciation('x');
 

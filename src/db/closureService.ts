@@ -85,8 +85,6 @@ export function addClosurePaths(childId: number, parentId: number): void {
  * @param parentId The ID of the ancestor entry being removed
  */
 export function removeClosurePaths(_childId: number, _parentId: number): void {
-    const _db = getDatabase();
-
     // We only remove paths that strictly rely on the edge Parent->Child.
     // However, in a DAG, there might be alternate paths from A to D not involving P->C.
     // Closure table maintenance normally deletes ALL paths involving the edge,
