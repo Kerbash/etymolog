@@ -145,8 +145,8 @@ const GlyphSpellingDisplay = forwardRef<GlyphSpellingDisplayRef, GlyphSpellingDi
             () => ({
                 ...style,
                 // Scale container dimensions by zoom factor
-                width: (width ?? bounds.width) * zoom,
-                height: (height ?? bounds.height) * zoom,
+                width: typeof width === 'number' ? width * zoom : (width ?? bounds.width * zoom),
+                height: typeof height === 'number' ? height * zoom : (height ?? bounds.height * zoom),
                 overflow: overflowMap[overflow],
                 display: 'flex',
                 alignItems: 'center',

@@ -21,7 +21,7 @@
 
 import classNames from "classnames";
 import {useState, useMemo, useEffect, useRef, useCallback} from "react";
-import type {LexiconComplete, LexiconAncestorFormRow, AutoSpellResultExtended, LexiconAncestryNode} from "../../../db/types";
+import type {Lexicon, LexiconComplete, LexiconAncestorFormRow, AutoSpellResultExtended, LexiconAncestryNode} from "../../../db/types";
 import type {registerFieldReturnType} from "smart-form/types";
 import {useEtymolog} from "../../../db";
 import {buildVirtualGlyphMap} from "../../../db/autoSpellService";
@@ -31,7 +31,6 @@ import type {VirtualGlyph} from "../customInput/glyphCanvasInput/types";
 import LabelShiftTextInput from "smart-form/input/fancy/redditStyle/labelShiftTextInput/labelShiftTextInput.tsx";
 import LabelShiftTextCustomKeyboardInput from "smart-form/input/fancy/redditStyle/labelShiftTextCustomKeyboardInput";
 import HoverToolTip from "cyber-components/interactable/information/hoverToolTip/hoverToolTip.tsx";
-import TextInputValidatorFactory from "smart-form/commonValidatorFactory/textValidatorFactory/textValidatorFactory.ts";
 import {IPA_CHARACTERS} from "cyber-components/interactable/customKeyboard/ipaCharacters";
 import {AncestryInput} from "../customInput/ancestryInput";
 import {flex} from "utils-styles";

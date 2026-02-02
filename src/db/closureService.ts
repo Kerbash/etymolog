@@ -84,8 +84,8 @@ export function addClosurePaths(childId: number, parentId: number): void {
  * @param childId The ID of the lexicon entry
  * @param parentId The ID of the ancestor entry being removed
  */
-export function removeClosurePaths(childId: number, parentId: number): void {
-    const db = getDatabase();
+export function removeClosurePaths(_childId: number, _parentId: number): void {
+    const _db = getDatabase();
 
     // We only remove paths that strictly rely on the edge Parent->Child.
     // However, in a DAG, there might be alternate paths from A to D not involving P->C.

@@ -77,8 +77,8 @@ import styles from './GlyphCanvasInput.module.scss';
 
 // Augment/extend the imported props type to include the optional helpers we need here
 // This keeps backwards compatibility if the upstream types don't include them yet.
-// Use Omit to override the restrictive availableGlyphs type from the base interface
-export interface GlyphCanvasInputProps extends Omit<_OrigProps, 'availableGlyphs'> {
+// Use Omit to override the restrictive availableGlyphs type and onSelectionChange signature from the base interface
+export interface GlyphCanvasInputProps extends Omit<_OrigProps, 'availableGlyphs' | 'onSelectionChange'> {
     /** Optional explicit available glyphs/graphemes prop (supports Glyph, GlyphWithUsage, or GraphemeComplete) */
     availableGlyphs?: (Glyph | GlyphWithUsage | GraphemeComplete)[];
     /**

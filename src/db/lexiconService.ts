@@ -87,13 +87,13 @@ export function createLexicon(input: CreateLexiconInput): LexiconComplete {
         `INSERT INTO lexicon (lemma, pronunciation, is_native, auto_spell, meaning, part_of_speech, notes, glyph_order, needs_attention) 
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-            input.lemma,
-            input.pronunciation ?? null,
+            input.lemma !== undefined ? input.lemma : null,
+            input.pronunciation !== undefined ? input.pronunciation : null,
             input.is_native !== false ? 1 : 0,
             input.auto_spell !== false ? 1 : 0,
-            input.meaning ?? null,
-            input.part_of_speech ?? null,
-            input.notes ?? null,
+            input.meaning !== undefined ? input.meaning : null,
+            input.part_of_speech !== undefined ? input.part_of_speech : null,
+            input.notes !== undefined ? input.notes : null,
             glyphOrderJson,
             0, // needs_attention defaults to false
         ]

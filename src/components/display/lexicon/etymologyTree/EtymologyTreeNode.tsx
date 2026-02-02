@@ -70,7 +70,7 @@ export default function EtymologyTreeNode({
             {/* Ancestors branch (displayed above/before the node) */}
             {canExpand && isExpanded && (
                 <div className={styles.ancestorsBranch}>
-                    {node.ancestors.map((ancestor, index) => (
+                    {node.ancestors.map((ancestor) => (
                         <div key={ancestor.entry.id} className={styles.ancestorWrapper}>
                             <EtymologyTreeNode
                                 node={ancestor}

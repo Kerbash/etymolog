@@ -61,8 +61,6 @@ export const boustrophedonStrategy: LayoutStrategy = {
             if (isRtlRow) {
                 // RTL row: start from the right
                 // For incomplete rows, align to the right edge
-                const glyphsInThisRow = Math.min(glyphsPerRow, glyphs.length - row * glyphsPerRow);
-                const thisRowWidth = glyphsInThisRow * glyphWidth + (glyphsInThisRow - 1) * spacing;
                 const rightEdge = padding + rowWidth - glyphWidth;
                 x = rightEdge - colInRow * (glyphWidth + spacing);
             } else {

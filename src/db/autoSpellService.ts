@@ -121,7 +121,7 @@ function buildPositionMatches(
 function reconstructPath(
     dp: DPState[],
     n: number,
-    pronunciation: string
+    _pronunciation: string
 ): { spelling: AutoSpellEntry[]; segments: string[]; hasVirtualGlyphs: boolean } {
     const path: Array<{ match: PhonemeMapping | null; isSkip: boolean; skippedChar?: string }> = [];
     let idx = n;
@@ -345,8 +345,9 @@ function optimalMatch(pronunciation: string, mappings: PhonemeMapping[]): AutoSp
     const path: PhonemeMapping[] = [];
     let idx = n;
     while (idx > 0 && dp[idx]) {
-        if (dp[idx].lastMatch) {
-            path.push(dp[idx].lastMatch);
+        const lastMatch = dp[idx].lastMatch;
+        if (lastMatch) {
+            path.push(lastMatch);
         }
         idx = dp[idx].prevIndex;
     }
