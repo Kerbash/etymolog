@@ -276,6 +276,14 @@ export function updateGrapheme(id: number, input: UpdateGraphemeInput): Grapheme
 export function deleteGrapheme(id: number): boolean {
     const db = getDatabase();
 
+    // Check if used in lexicon
+    const lexiconUsage = db.exec('SELECT COUNT(*) FROM lexicon_spelling WHERE grapheme_id = ?', [id]);
+    const count = lexiconUsage[0]?.values[0]?.[0] as number ?? 0;
+
+    if (count > 0) {
+        throw new Error(`Cannot delete grapheme: it is used in ${count} lexicon entries. Constraint failed.`);
+    }
+
     // Phonemes and grapheme_glyphs will cascade delete
     db.run('DELETE FROM phonemes WHERE grapheme_id = ?', [id]);
     db.run('DELETE FROM grapheme_glyphs WHERE grapheme_id = ?', [id]);

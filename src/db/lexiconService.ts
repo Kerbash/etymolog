@@ -47,34 +47,6 @@ import type {
 } from './types';
 
 // =============================================================================
-// LAZY IMPORT FOR CIRCULAR DEPENDENCY AVOIDANCE
-// =============================================================================
-
-// We need to import generateSpellingWithFallback lazily because:
-// autoSpellService imports from graphemeService
-// graphemeService may need to handle lexicon operations
-// This breaks the circular dependency by deferring the import
-
-/**
- * Get generateSpellingWithFallback function lazily.
- * Returns a function that generates spelling with IPA fallbacks.
- */
-async function getGenerateSpellingWithFallbackAsync() {
-    const module = await import('./autoSpellService');
-    return module.generateSpellingWithFallback;
-}
-
-/**
- * Synchronous fallback - tries to generate spelling using available phonemes.
- * This is a simplified version that doesn't require circular imports.
- */
-function generateSpellingFallbackSync(pronunciation: string, deletedGraphemeId: number, fallbackChar: string): SpellingEntry[] {
-    // For now, just replace with fallback character
-    // The actual re-spelling will happen asynchronously if possible
-    return [fallbackChar];
-}
-
-// =============================================================================
 // LEXICON CRUD OPERATIONS
 // =============================================================================
 
@@ -94,6 +66,7 @@ export function createLexicon(input: CreateLexiconInput): LexiconComplete {
     if (input.glyph_order && input.glyph_order.length > 0) {
         // New format: use glyph_order directly
         glyphOrder = input.glyph_order;
+        // console.log('DEBUG: glyphOrder from input:', glyphOrder);
     } else if (input.spelling && input.spelling.length > 0) {
         // Legacy format: convert spelling to glyph_order
         // Sort by position first to ensure correct order
@@ -410,8 +383,8 @@ export function updateLexicon(id: number, input: UpdateLexiconInput): Lexicon | 
 
 /**
  * Delete a lexicon entry.
- * Cascades to spelling and ancestry (as child).
- * Ancestry where this is ancestor will be set to null (relationship removed).
+ * Cascades to spelling and ancestry.
+ * Safely removes relationships where this lexicon is an ancestor.
  */
 export function deleteLexicon(id: number): boolean {
     const db = getDatabase();
@@ -422,7 +395,19 @@ export function deleteLexicon(id: number): boolean {
         throw new Error(`Lexicon entry with id ${id} not found`);
     }
 
-    // Delete the lexicon entry (cascades to spelling and ancestry as child)
+    // Manual cascade deletion (required if FKs are disabled/unreliable)
+
+    // 1. Delete spelling
+    db.run('DELETE FROM lexicon_spelling WHERE lexicon_id = ?', [id]);
+
+    // 2. Delete ancestry where this is the child
+    db.run('DELETE FROM lexicon_ancestry WHERE lexicon_id = ?', [id]);
+
+    // 3. Delete ancestry where this is the ancestor
+    // This effectively acts as CASCADE (removing the relationship)
+    db.run('DELETE FROM lexicon_ancestry WHERE ancestor_id = ?', [id]);
+
+    // 4. Delete the lexicon entry
     db.run('DELETE FROM lexicon WHERE id = ?', [id]);
 
     const changes = db.getRowsModified();
@@ -654,6 +639,11 @@ export function getLexiconAncestryEntries(lexiconId: number): LexiconAncestry[] 
  * Add an ancestor to a lexicon entry.
  */
 export function addAncestorToLexicon(lexiconId: number, input: CreateLexiconAncestryInput): LexiconAncestry {
+    // Check for cycles
+    if (wouldCreateCycle(lexiconId, input.ancestor_id)) {
+        throw new Error(`Cannot add ancestor: would create a cycle (lexicon ${lexiconId} is an ancestor of ${input.ancestor_id})`);
+    }
+
     const db = getDatabase();
 
     db.run(`
@@ -1084,7 +1074,7 @@ export function handleGraphemeDeletion(
         if (shouldMarkAttention) {
             markedForAttentionCount++;
         } else {
-            respelledCount++; // Count as "handled" since auto_spell entries will auto-fix
+            respelledCount; // Count as "handled" since auto_spell entries will auto-fix
         }
     }
 
