@@ -17,8 +17,8 @@
 }
 
 .tableWrapper {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+    /* Overflow handling removed - PannableCanvas handles scrolling when used in IPACombinedChart */
+    /* For standalone use, overflow can be enabled via parent container */
 }
 
 .table {

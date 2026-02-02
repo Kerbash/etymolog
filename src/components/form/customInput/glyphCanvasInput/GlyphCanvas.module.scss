@@ -20,11 +20,10 @@
     touch-action: pan-x pan-y pinch-zoom;
 }
 
-/* Wrapper to contain the infinite canvas content */
-.canvasWrapper {
+/* Inner canvas wrapper - fills the container */
+.canvasInner {
     position: absolute;
     inset: 0;
-    overflow: hidden;
 }
 
 .canvasContainer.empty {
@@ -98,42 +97,3 @@
     }
 }
 
-/* Zoom controls */
-.controls {
-    position: absolute;
-    bottom: 8px;
-    right: 8px;
-    display: flex;
-    gap: 4px;
-    z-index: 10;
-}
-
-.controlButton {
-    width: 28px;
-    height: 28px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid var(--border-primary);
-    border-radius: 4px;
-    background: var(--surface-raised);
-    color: var(--text-primary);
-    font-size: 1rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.15s ease;
-
-    &:hover {
-        background: var(--surface-raised-hover, var(--interactive-hover));
-        border-color: var(--interactive-base);
-    }
-
-    &:focus {
-        outline: 2px solid var(--status-info, dodgerblue);
-        outline-offset: 2px;
-    }
-
-    &:active {
-        transform: scale(0.95);
-    }
-}

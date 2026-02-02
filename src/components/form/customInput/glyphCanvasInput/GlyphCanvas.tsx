@@ -2,7 +2,7 @@
  * GlyphCanvas Component
  *
  * A pannable/zoomable canvas for displaying selected glyphs.
- * Uses react-zoom-pan-pinch for pan and zoom functionality.
+ * Uses PannableCanvas for consistent pan and zoom functionality.
  *
  * @module glyphCanvasInput/GlyphCanvas
  */
@@ -10,8 +10,8 @@
 'use client';
 
 import { forwardRef, useImperativeHandle, useMemo, useRef } from 'react';
-import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
-import type { ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
+import { PannableCanvas } from 'cyber-components/interactable/canvas/pannableCanvas';
+import type { PannableCanvasRef } from 'cyber-components/interactable/canvas/pannableCanvas';
 import classNames from 'classnames';
 import DOMPurify from 'dompurify';
 
@@ -58,7 +58,7 @@ const GlyphCanvas = forwardRef<GlyphCanvasRef, GlyphCanvasProps>(
         },
         ref
     ) {
-        const transformRef = useRef<ReactZoomPanPinchRef>(null);
+        const pannableRef = useRef<PannableCanvasRef>(null);
 
         // Get glyphs from IDs
         const selectedGlyphs = useMemo(() => {
@@ -81,13 +81,13 @@ const GlyphCanvas = forwardRef<GlyphCanvasRef, GlyphCanvasProps>(
         const svgWidth = Math.max(bounds.width, 200);
         const svgHeight = Math.max(bounds.height, 80);
 
-        // Expose imperative methods
+        // Expose imperative methods - delegate to PannableCanvas
         useImperativeHandle(ref, () => ({
             resetView: () => {
-                transformRef.current?.resetTransform();
+                pannableRef.current?.resetView();
             },
             fitToView: () => {
-                transformRef.current?.centerView();
+                pannableRef.current?.fitToView();
             },
         }), []);
 
@@ -112,81 +112,32 @@ const GlyphCanvas = forwardRef<GlyphCanvasRef, GlyphCanvasProps>(
                 className={classNames(styles.canvasContainer, className)}
                 style={{ ...style, minHeight }}
             >
-                {/* Absolutely positioned wrapper isolates infinite canvas from parent layout */}
-                <div className={styles.canvasWrapper}>
-                    <TransformWrapper
-                        ref={transformRef}
-                        initialScale={initialScale}
-                        minScale={minScale}
-                        maxScale={maxScale}
-                        centerOnInit
-                        doubleClick={{ disabled: false, mode: 'reset' }}
-                        wheel={{ disabled: false, step: 0.1 }}
-                        panning={{ velocityDisabled: false }}
-                        pinch={{ disabled: false }}
+                <PannableCanvas
+                    ref={pannableRef}
+                    contentWidth={svgWidth}
+                    contentHeight={svgHeight}
+                    initialScale={initialScale}
+                    minScale={minScale}
+                    maxScale={maxScale}
+                    showControls={showControls}
+                    centerOnInit
+                    enableVelocity
+                    className={styles.canvasInner}
+                    ariaLabel={`Canvas with ${selectedGlyphIds.length} glyphs`}
+                >
+                    <svg
+                        width={svgWidth}
+                        height={svgHeight}
+                        viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+                        className={styles.svg}
+                        role="img"
+                        aria-label={`Canvas with ${selectedGlyphIds.length} glyphs`}
                     >
-                        {({ zoomIn, zoomOut, resetTransform }) => (
-                            <>
-                                <TransformComponent
-                                    wrapperStyle={{
-                                        width: '100%',
-                                        height: '100%',
-                                        overflow: 'hidden',
-                                    }}
-                                    contentStyle={{
-                                        width: svgWidth,
-                                        height: svgHeight,
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                    }}
-                                >
-                                    <svg
-                                        width={svgWidth}
-                                        height={svgHeight}
-                                        viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-                                        className={styles.svg}
-                                        role="img"
-                                        aria-label={`Canvas with ${selectedGlyphIds.length} glyphs`}
-                                    >
-                                        {positionedGlyphs.map((pg) => (
-                                            <GlyphNode key={`${pg.glyph.id}-${pg.index}`} positionedGlyph={pg} />
-                                        ))}
-                                    </svg>
-                                </TransformComponent>
-
-                                {showControls && (
-                                    <div className={styles.controls}>
-                                        <button
-                                            type="button"
-                                            className={styles.controlButton}
-                                            onClick={() => zoomIn()}
-                                            aria-label="Zoom in"
-                                        >
-                                            +
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className={styles.controlButton}
-                                            onClick={() => zoomOut()}
-                                            aria-label="Zoom out"
-                                        >
-                                            −
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className={styles.controlButton}
-                                            onClick={() => resetTransform()}
-                                            aria-label="Reset view"
-                                        >
-                                            ⟲
-                                        </button>
-                                    </div>
-                                )}
-                            </>
-                        )}
-                    </TransformWrapper>
-                </div>
+                        {positionedGlyphs.map((pg) => (
+                            <GlyphNode key={`${pg.glyph.id}-${pg.index}`} positionedGlyph={pg} />
+                        ))}
+                    </svg>
+                </PannableCanvas>
             </div>
         );
     }

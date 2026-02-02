@@ -19,7 +19,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import classNames from 'classnames';
 
 import IconButton from 'cyber-components/interactable/buttons/iconButton/iconButton';
-import { IPAConsonantChart, IPAVowelChart } from '../../../display/ipaChart';
+import { IPACombinedChart } from '../../../display/ipaChart';
 import { useEtymolog } from '../../../../db';
 import { flex, graphic } from 'utils-styles';
 import type { GraphemeComplete } from '../../../../db/types';
@@ -110,22 +110,13 @@ export default function IPAChartPage() {
                 </span>
             </div>
 
-            {/* Charts */}
-            <div className={styles.chartsContainer}>
-                <IPAConsonantChart
-                    phonemeMap={phonemeMap}
-                    onCellClick={handleCellClick}
-                    isLoading={isLoading}
-                    className={styles.consonantSection}
-                />
-
-                <IPAVowelChart
-                    phonemeMap={phonemeMap}
-                    onCellClick={handleCellClick}
-                    isLoading={isLoading}
-                    className={styles.vowelSection}
-                />
-            </div>
+            {/* Combined IPA Chart with pan/zoom */}
+            <IPACombinedChart
+                phonemeMap={phonemeMap}
+                onCellClick={handleCellClick}
+                isLoading={isLoading}
+                className={styles.chartCanvas}
+            />
 
             {/* Additional info */}
             <div className={styles.infoSection}>

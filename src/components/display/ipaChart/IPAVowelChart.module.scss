@@ -18,9 +18,10 @@
 
 .chartContainer {
     position: relative;
-    width: 100%;
-    max-width: 500px;
-    aspect-ratio: 1;
+    /* Size is now fixed for predictable rendering in PannableCanvas */
+    /* When used standalone, parent container can add max-width constraints */
+    width: 600px;
+    height: 600px;
 }
 
 .vowelSvg {

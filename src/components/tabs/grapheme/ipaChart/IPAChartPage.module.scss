@@ -44,18 +44,10 @@
     }
 }
 
-.chartsContainer {
-    display: flex;
-    flex-direction: column;
-    gap: 3rem;
-}
-
-.consonantSection {
+.chartCanvas {
     width: 100%;
-}
-
-.vowelSection {
-    max-width: 500px;
+    border-radius: 8px;
+    border: 1px solid var(--border-primary);
 }
 
 .infoSection {
