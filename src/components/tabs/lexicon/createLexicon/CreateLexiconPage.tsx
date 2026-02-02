@@ -38,8 +38,7 @@ export default function CreateLexiconPage() {
     // Form submission handler
     const handleSubmit = useCallback(async (formData: Record<string, unknown>) => {
         try {
-            // Extract form values
-            const lemma = formData.lemma as string;
+            // Extract form values; lemma input removed - derive from pronunciation if needed
             const pronunciation = formData.pronunciation as string | undefined;
             const meaning = formData.meaning as string | undefined;
             const partOfSpeech = formData.partOfSpeech as string | undefined;
@@ -48,7 +47,6 @@ export default function CreateLexiconPage() {
             // Build create input using glyph_order format (Two-List Architecture)
             // This supports both real graphemes AND IPA fallback characters
             const input: CreateLexiconInput = {
-                lemma: lemma.trim(),
                 pronunciation: pronunciation?.trim() || undefined,
                 is_native: isNative,
                 auto_spell: autoSpell,

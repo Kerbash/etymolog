@@ -206,7 +206,7 @@ export function getAllLexicon(): Lexicon[] {
     const result = db.exec(
         `SELECT id, lemma, pronunciation, is_native, auto_spell, meaning, part_of_speech, notes, glyph_order, needs_attention, created_at, updated_at 
          FROM lexicon 
-         ORDER BY needs_attention DESC, lemma ASC`
+         ORDER BY needs_attention DESC, COALESCE(pronunciation, lemma) ASC`
     );
 
     if (result.length === 0) {
@@ -265,7 +265,7 @@ export function getAllLexiconWithUsage(): LexiconWithUsage[] {
         FROM lexicon l
         LEFT JOIN lexicon_ancestry la ON l.id = la.ancestor_id
         GROUP BY l.id
-        ORDER BY l.needs_attention DESC, l.lemma ASC
+        ORDER BY l.needs_attention DESC, COALESCE(l.pronunciation, l.lemma) ASC
     `);
 
     if (result.length === 0) {
@@ -287,8 +287,8 @@ export function searchLexicon(query: string): Lexicon[] {
     const result = db.exec(
         `SELECT id, lemma, pronunciation, is_native, auto_spell, meaning, part_of_speech, notes, glyph_order, needs_attention, created_at, updated_at 
          FROM lexicon 
-         WHERE lemma LIKE ? OR pronunciation LIKE ? OR meaning LIKE ?
-         ORDER BY needs_attention DESC, lemma ASC`,
+         WHERE pronunciation LIKE ? OR meaning LIKE ? OR lemma LIKE ?
+         ORDER BY needs_attention DESC, COALESCE(pronunciation, lemma) ASC`,
         [`%${query}%`, `%${query}%`, `%${query}%`]
     );
 
@@ -309,7 +309,7 @@ export function getLexiconByNative(isNative: boolean): Lexicon[] {
         `SELECT id, lemma, pronunciation, is_native, auto_spell, meaning, part_of_speech, notes, glyph_order, needs_attention, created_at, updated_at 
          FROM lexicon 
          WHERE is_native = ?
-         ORDER BY needs_attention DESC, lemma ASC`,
+         ORDER BY needs_attention DESC, COALESCE(pronunciation, lemma) ASC`,
         [isNative ? 1 : 0]
     );
 
@@ -602,7 +602,7 @@ export function getDescendantsByLexiconId(ancestorId: number): LexiconDescendant
         FROM lexicon l
         JOIN lexicon_ancestry la ON l.id = la.lexicon_id
         WHERE la.ancestor_id = ?
-        ORDER BY l.lemma ASC
+        ORDER BY COALESCE(l.pronunciation, l.lemma) ASC
     `, [ancestorId]);
 
     if (result.length === 0) {
@@ -1023,13 +1023,13 @@ export function getLexiconEntriesUsingGrapheme(graphemeId: number): Lexicon[] {
 
     const result = db.exec(`
         SELECT DISTINCT l.id, l.lemma, l.pronunciation, l.is_native, l.auto_spell, 
-               l.meaning, l.part_of_speech, l.notes, l.glyph_order, l.needs_attention, 
-               l.created_at, l.updated_at
-        FROM lexicon l
-        JOIN lexicon_spelling ls ON l.id = ls.lexicon_id
-        WHERE ls.grapheme_id = ?
-        ORDER BY l.lemma ASC
-    `, [graphemeId]);
+                l.meaning, l.part_of_speech, l.notes, l.glyph_order, l.needs_attention, 
+                l.created_at, l.updated_at
+         FROM lexicon l
+         JOIN lexicon_spelling ls ON l.id = ls.lexicon_id
+         WHERE ls.grapheme_id = ?
+         ORDER BY COALESCE(l.pronunciation, l.lemma) ASC
+     `, [graphemeId]);
 
     if (result.length === 0) {
         return [];

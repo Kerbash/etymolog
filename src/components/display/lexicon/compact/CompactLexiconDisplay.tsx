@@ -35,7 +35,8 @@ export default function CompactLexiconDisplay({ lexiconData, graphemeMap, onClic
             className={classNames(styles.compactCard, { [styles.clickable]: !!onClick })}
             onClick={onClick}
         >
-            <h3 className={styles.lemma}>{lexiconData.lemma}</h3>
+            {/* Title: show pronunciation in /slashes/ if present, otherwise show lemma */}
+            <h3 className={styles.lemma}>{lexiconData.pronunciation ? `/${lexiconData.pronunciation}/` : lexiconData.lemma}</h3>
 
             {hasSpelling ? (
                     <GlyphSpellingDisplay
@@ -52,9 +53,7 @@ export default function CompactLexiconDisplay({ lexiconData, graphemeMap, onClic
 
             <div className={styles.spellingText} title={textualSpelling}>{textualSpelling}</div>
 
-            <span className={styles.pronunciation}>
-                {lexiconData.pronunciation ? `/${lexiconData.pronunciation}/` : '—'}
-            </span>
+            {/* Pronunciation already shown in title; removed secondary pronunciation element */}
 
             {truncatedMeaning && (
                 <p className={styles.meaning}>{truncatedMeaning}</p>

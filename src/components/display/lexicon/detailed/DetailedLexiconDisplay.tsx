@@ -43,12 +43,9 @@ export default function DetailedLexiconDisplay({
                         No spelling
                     </div>
                 )}
-                <h2 className={styles.detailedLexiconLemma}>{lexiconData.lemma}</h2>
-                {lexiconData.pronunciation && (
-                    <span className={styles.detailedLexiconPronunciation}>
-                        /{lexiconData.pronunciation}/
-                    </span>
-                )}
+                {/* Primary title: pronunciation in slashes, or lemma fallback */}
+                <h2 className={styles.detailedLexiconLemma}>{lexiconData.pronunciation ? `/${lexiconData.pronunciation}/` : lexiconData.lemma}</h2>
+
                 <div className={styles.detailedLexiconBadges}>
                     {!lexiconData.is_native && (
                         <span className={styles.externalBadge}>External</span>
@@ -113,7 +110,7 @@ export default function DetailedLexiconDisplay({
                                 {lexiconData.ancestors.map((entry, index) => (
                                     <span key={`${entry.ancestor.id}-${index}`} className={styles.ancestorItem}>
                                         <span className={styles.ancestorType}>{entry.ancestry_type}</span>
-                                        <span className={styles.ancestorLemma}>{entry.ancestor.lemma}</span>
+                                        <span className={styles.ancestorLemma}>{entry.ancestor.pronunciation ?? entry.ancestor.lemma}</span>
                                     </span>
                                 ))}
                             </div>

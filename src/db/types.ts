@@ -309,7 +309,7 @@ export type AncestryType = 'derived' | 'borrowed' | 'compound' | 'blend' | 'calq
  * Input for creating a new lexicon entry.
  */
 export interface CreateLexiconInput {
-    lemma: string;
+    lemma?: string;
     pronunciation?: string;
     is_native?: boolean;
     auto_spell?: boolean;
@@ -546,4 +546,3 @@ export interface AutoSpellEntry {
     /** The IPA character (only present for virtual glyphs) */
     ipaCharacter?: string;
 }
-

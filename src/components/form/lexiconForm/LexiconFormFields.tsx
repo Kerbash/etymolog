@@ -93,7 +93,7 @@ function getSmartFieldValue(field: registerFieldReturnType): string {
     return inputEl?.value ?? '';
 }
 
-export default function LexiconFormFields({
+export function LexiconFormFields({
                                               registerField,
                                               mode,
                                               initialData,
@@ -170,20 +170,11 @@ export default function LexiconFormFields({
         onAncestorsChange?.(ancestors);
     }, [ancestors, onAncestorsChange]);
 
-    // Validation for lemma
-    const lemmaValidation = useMemo(() => TextInputValidatorFactory({
-        required: {
-            value: true,
-            message: "Lemma is required"
-        },
-    }), []);
-
+    // Note: Lemma input removed from form UI. The database still stores a lemma
+    // column for backwards compatibility, but users will now edit/display
+    // pronunciation as the primary identifier.
+    //
     // Register fields
-    const lemmaField = registerField("lemma", {
-        defaultValue: mode === 'edit' && initialData?.lemma ? initialData.lemma : undefined,
-        validation: lemmaValidation,
-    });
-
     const pronunciationField = registerField("pronunciation", {
         defaultValue: mode === 'edit' && initialData?.pronunciation ? initialData.pronunciation : undefined,
     });
@@ -214,9 +205,7 @@ export default function LexiconFormFields({
             initializedRef.current = true;
 
             setTimeout(() => {
-                if (initialData.lemma) {
-                    setSmartFieldValue(lemmaField, initialData.lemma);
-                }
+                // Lemma field removed. Initialize pronunciation and other fields.
                 if (initialData.pronunciation) {
                     setSmartFieldValue(pronunciationField, initialData.pronunciation);
                 }
@@ -231,7 +220,7 @@ export default function LexiconFormFields({
                 }
             }, 0);
         }
-    }, [mode, initialData, lemmaField, pronunciationField, meaningField, partOfSpeechField, notesField]);
+    }, [mode, initialData, pronunciationField, meaningField, partOfSpeechField, notesField]);
 
     // Handle auto-spell request
     const handleRequestAutoSpell = useCallback(() => {
@@ -316,210 +305,202 @@ export default function LexiconFormFields({
 
     // Sync ancestry tree with selected ancestors to show deep history
     useEffect(() => {
-        // Find ancestors that are not yet in the ancestryTree
-        const currentAncestorIds = new Set(ancestryTree?.ancestors?.map(a => a.entry.id) ?? []);
-        const missingAncestors = ancestors.filter(a => !currentAncestorIds.has(a.ancestorId));
+        if (!missingAncestorsExist()) return;
 
-        if (missingAncestors.length === 0) return;
+        // Fetch missing ancestry trees and merge into existing tree
+        const newTrees: LexiconAncestryNode[] = [];
+        let hasNewData = false;
 
-        // Fetch missing ancestry trees
-        const fetchMissing = () => {
-             const newTrees: LexiconAncestryNode[] = [];
-             let hasNewData = false;
+        for (const ancestor of ancestors) {
+            // If ancestor already present in ancestryTree, skip
+            const existingIds = new Set(ancestryTree?.ancestors?.map(a => a.entry.id) ?? []);
+            if (existingIds.has(ancestor.ancestorId)) continue;
 
-             for (const ancestor of missingAncestors) {
-                 const result = api.lexicon.getAncestryTree(ancestor.ancestorId);
-                 if (result.success && result.data) {
-                     newTrees.push({
-                         ...result.data,
-                         ancestry_type: ancestor.ancestryType
-                     });
-                     hasNewData = true;
-                 }
-             }
+            const result = api.lexicon.getAncestryTree(ancestor.ancestorId);
+            if (result.success && result.data) {
+                newTrees.push({ ...result.data, ancestry_type: ancestor.ancestryType });
+                hasNewData = true;
+            }
+        }
 
-             if (hasNewData) {
-                 setAncestryTree(prev => {
-                     // If we don't have a tree yet, create a shell for the current word
-                     const baseEntry = prev?.entry ?? {
-                         id: initialData?.id ?? -1,
-                         lemma: getSmartFieldValue(lemmaField) || 'New Word',
-                         is_native: true,
-                         auto_spell: false,
-                         meaning: null,
-                         part_of_speech: null,
-                         notes: null,
-                         pronunciation: null,
-                         glyph_order: "[]",
-                         needs_attention: false,
-                         created_at: new Date().toISOString(),
-                         updated_at: new Date().toISOString()
-                     };
+        if (!hasNewData) return;
 
-                     return {
-                         entry: baseEntry,
-                         ancestors: [
-                             ...(prev?.ancestors ?? []),
-                             ...newTrees
-                         ]
-                     };
-                 });
-             }
-        };
+        setAncestryTree(prev => {
+            // Create a base entry shell if we don't have one yet
+            const baseEntry = prev?.entry ?? {
+                id: initialData?.id ?? -1,
+                // Use pronunciation as display placeholder when lemma input removed
+                lemma: getSmartFieldValue(pronunciationField) || 'New Word',
+                is_native: true,
+                auto_spell: false,
+                meaning: null,
+                part_of_speech: null,
+                notes: null,
+                pronunciation: null,
+                glyph_order: "[]",
+                needs_attention: false,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+            } as Lexicon;
 
-        fetchMissing();
-    }, [ancestors, ancestryTree, api, initialData, lemmaField]);
+            return {
+                entry: baseEntry,
+                ancestors: [
+                    ...(prev?.ancestors ?? []),
+                    ...newTrees
+                ]
+            } as LexiconAncestryNode;
+        });
 
-    return (
-        <div className={classNames(styles.formFields, className)}>
-            {/* Basic Info Section */}
-            <div className={styles.section}>
-                {/* Spelling Section */}
-                <div className={styles.section}>
-                    <h3 className={styles.sectionHeader}>Spelling</h3>
+        function missingAncestorsExist() {
+            const currentAncestorIds = new Set(ancestryTree?.ancestors?.map(a => a.entry.id) ?? []);
+            return ancestors.some(a => !currentAncestorIds.has(a.ancestorId));
+        }
+    }, [ancestors, ancestryTree, api, initialData, pronunciationField]);
 
-                    <GlyphCanvasInput
-                        {...spellingField}
-                        availableGlyphs={availableGraphemes}
-                        defaultValue={spellingIds}
-                        initialGlyphOrder={glyphOrder}
-                        onSelectionChange={handleSpellingChange}
-                        autoSpellPreview={autoSpellEnabled ? autoSpellPreview : null}
-                        onRequestAutoSpell={autoSpellEnabled ? handleRequestAutoSpell : undefined}
-                        enableIpaMode={true}
-                        initialVirtualGlyphs={autoSpellVirtualGlyphs}
-                    />
+     return (
+         <div className={classNames(styles.formFields, className)}>
+             {/* Basic Info Section */}
+             <div className={styles.section}>
+                 {/* Spelling Section */}
+                 <div className={styles.section}>
+                     <h3 className={styles.sectionHeader}>Spelling</h3>
 
-                    {/* Hidden state sync */}
-                    <input type="hidden" name="isNative" value={isNative.toString()}/>
-                    <input type="hidden" name="autoSpell" value={autoSpellEnabled.toString()}/>
-                </div>
+                     <GlyphCanvasInput
+                         {...spellingField}
+                         availableGlyphs={availableGraphemes}
+                         defaultValue={spellingIds}
+                         initialGlyphOrder={glyphOrder}
+                         onSelectionChange={handleSpellingChange}
+                         autoSpellPreview={autoSpellEnabled ? autoSpellPreview : null}
+                         onRequestAutoSpell={autoSpellEnabled ? handleRequestAutoSpell : undefined}
+                         enableIpaMode={true}
+                         initialVirtualGlyphs={autoSpellVirtualGlyphs}
+                     />
 
-                <h3 className={styles.sectionHeader}>Basic Information</h3>
+                     {/* Hidden state sync */}
+                     <input type="hidden" name="isNative" value={isNative.toString()}/>
+                     <input type="hidden" name="autoSpell" value={autoSpellEnabled.toString()}/>
+                 </div>
 
-                <div className={classNames(flex.flexCol, flex.flexGapM)}>
-                    {/* Lemma (required) */}
-                    <HoverToolTip content="The citation form or dictionary headword for this word">
-                        <LabelShiftTextInput
-                            displayName="Lemma"
-                            asInput={true}
-                            {...lemmaField}
-                        />
-                    </HoverToolTip>
+                 <h3 className={styles.sectionHeader}>Basic Information</h3>
 
-                    {/* Pronunciation (IPA) */}
-                    <HoverToolTip content="IPA pronunciation (optional for external words)">
-                        <LabelShiftTextCustomKeyboardInput
-                            displayName="Pronunciation"
-                            characters={IPA_CHARACTERS}
-                            {...pronunciationField}
-                        />
-                    </HoverToolTip>
+                 <div className={classNames(flex.flexCol, flex.flexGapM)}>
+                     {/* Pronunciation (IPA) */}
+                     <HoverToolTip content="IPA pronunciation (optional for external words)">
+                         <LabelShiftTextCustomKeyboardInput
+                             displayName="Pronunciation"
+                             characters={IPA_CHARACTERS}
+                             {...pronunciationField}
+                         />
+                     </HoverToolTip>
 
-                    {/* Meaning */}
-                    <HoverToolTip content="Definition or gloss">
-                        <LabelShiftTextInput
-                            displayName="Meaning"
-                            asInput={true}
-                            {...meaningField}
-                        />
-                    </HoverToolTip>
+                     {/* Meaning */}
+                     <HoverToolTip content="Definition or gloss">
+                         <LabelShiftTextInput
+                             displayName="Meaning"
+                             asInput={true}
+                             {...meaningField}
+                         />
+                     </HoverToolTip>
 
-                    {/* Part of Speech */}
-                    <HoverToolTip content="Part of speech (e.g., noun, verb, adjective)">
-                        <LabelShiftTextInput
-                            displayName="Part of Speech"
-                            asInput={true}
-                            {...partOfSpeechField}
-                        />
-                    </HoverToolTip>
+                     {/* Part of Speech */}
+                     <HoverToolTip content="Part of speech (e.g., noun, verb, adjective)">
+                         <LabelShiftTextInput
+                             displayName="Part of Speech"
+                             asInput={true}
+                             {...partOfSpeechField}
+                         />
+                     </HoverToolTip>
 
-                    {/* Notes */}
-                    <HoverToolTip content="Additional notes, usage examples, or comments">
-                        <LabelShiftTextInput
-                            displayName="Notes"
-                            asInput={false}
-                            {...notesField}
-                        />
-                    </HoverToolTip>
-                </div>
-            </div>
+                     {/* Notes */}
+                     <HoverToolTip content="Additional notes, usage examples, or comments">
+                         <LabelShiftTextInput
+                             displayName="Notes"
+                             asInput={false}
+                             {...notesField}
+                         />
+                     </HoverToolTip>
+                 </div>
+             </div>
 
-            {/* Options Section */}
-            <div className={styles.section}>
-                <h3 className={styles.sectionHeader}>Options</h3>
+             {/* Options Section */}
+             <div className={styles.section}>
+                 <h3 className={styles.sectionHeader}>Options</h3>
 
-                <div className={styles.checkboxRow}>
-                    <label className={styles.checkboxLabel}>
-                        <input
-                            type="checkbox"
-                            checked={isNative}
-                            onChange={(e) => setIsNative(e.target.checked)}
-                        />
-                        <span>Native Word</span>
-                    </label>
-                    <HoverToolTip
-                        content="Check if this word is native to the conlang. External/borrowed words may not have pronunciation.">
-                        <span className={styles.helpIcon}>?</span>
-                    </HoverToolTip>
-                </div>
+                 <div className={styles.checkboxRow}>
+                     <label className={styles.checkboxLabel}>
+                         <input
+                             type="checkbox"
+                             checked={isNative}
+                             onChange={(e) => setIsNative(e.target.checked)}
+                         />
+                         <span>Native Word</span>
+                     </label>
+                     <HoverToolTip
+                         content="Check if this word is native to the conlang. External/borrowed words may not have pronunciation.">
+                         <span className={styles.helpIcon}>?</span>
+                     </HoverToolTip>
+                 </div>
 
-                <div className={styles.checkboxRow}>
-                    <label className={classNames(styles.checkboxLabel, {[styles.disabled]: !isNative})}>
-                        <input
-                            type="checkbox"
-                            checked={autoSpellEnabled && isNative}
-                            onChange={(e) => setAutoSpellEnabled(e.target.checked)}
-                            disabled={!isNative}
-                        />
-                        <span>Auto-Spell</span>
-                    </label>
-                    <HoverToolTip content="Automatically generate spelling from pronunciation using grapheme mappings.">
-                        <span className={styles.helpIcon}>?</span>
-                    </HoverToolTip>
-                </div>
+                 <div className={styles.checkboxRow}>
+                     <label className={classNames(styles.checkboxLabel, {[styles.disabled]: !isNative})}>
+                         <input
+                             type="checkbox"
+                             checked={autoSpellEnabled && isNative}
+                             onChange={(e) => setAutoSpellEnabled(e.target.checked)}
+                             disabled={!isNative}
+                         />
+                         <span>Auto-Spell</span>
+                     </label>
+                     <HoverToolTip content="Automatically generate spelling from pronunciation using grapheme mappings.">
+                         <span className={styles.helpIcon}>?</span>
+                     </HoverToolTip>
+                 </div>
 
-                {!isNative && (
-                    <div className={styles.externalNote}>
-                        External word: pronunciation is optional and auto-spell is disabled.
-                    </div>
-                )}
-            </div>
+                 {!isNative && (
+                     <div className={styles.externalNote}>
+                         External word: pronunciation is optional and auto-spell is disabled.
+                     </div>
+                 )}
+             </div>
 
-            {/* Etymology Section */}
-            <div className={styles.section}>
-                <h3 className={styles.sectionHeader}>Etymology</h3>
+             {/* Etymology Section */}
+             <div className={styles.section}>
+                 <h3 className={styles.sectionHeader}>Etymology</h3>
 
-                <AncestryInput
-                    {...ancestryField}
-                    currentLexiconId={initialData?.id}
-                    currentLemma={initialData?.lemma ?? 'New Word'}
-                    availableLexicon={availableLexicon}
-                    excludeIds={excludeAncestorIds}
-                    checkCycle={initialData?.id ? checkCycle : undefined}
-                    ancestryTree={ancestryTree}
-                    defaultValue={ancestors}
-                    onChange={setAncestors}
-                />
-            </div>
-        </div>
-    );
-}
+                 <AncestryInput
+                     {...ancestryField}
+                     currentLexiconId={initialData?.id}
+                     currentLemma={initialData?.lemma ?? 'New Word'}
+                     availableLexicon={availableLexicon}
+                     excludeIds={excludeAncestorIds}
+                     checkCycle={initialData?.id ? checkCycle : undefined}
+                     ancestryTree={ancestryTree}
+                     defaultValue={ancestors}
+                     onChange={setAncestors}
+                 />
+             </div>
+         </div>
+     );
+ }
 
-/**
- * Type for the form data produced by LexiconFormFields
- */
-export interface LexiconFormDataOutput {
-    lemma: string;
-    pronunciation?: string;
-    meaning?: string;
-    partOfSpeech?: string;
-    notes?: string;
-    isNative: boolean;
-    autoSpell: boolean;
-    /** @deprecated Use glyphOrder instead */
-    spellingGraphemeIds: number[];
-    /** glyph_order format for Two-List Architecture */
-    glyphOrder: SpellingEntry[];
-    ancestors: LexiconAncestorFormRow[];
-}
+// Also provide default export for backward compatibility
+export default LexiconFormFields;
+
+ /**
+  * Type for the form data produced by LexiconFormFields
+  */
+ export interface LexiconFormDataOutput {
+     pronunciation?: string;
+     meaning?: string;
+     partOfSpeech?: string;
+     notes?: string;
+     isNative: boolean;
+     autoSpell: boolean;
+     /** @deprecated Use glyphOrder instead */
+     spellingGraphemeIds: number[];
+     /** glyph_order format for Two-List Architecture */
+     glyphOrder: SpellingEntry[];
+     ancestors: LexiconAncestorFormRow[];
+ }

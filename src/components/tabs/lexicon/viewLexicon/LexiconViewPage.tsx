@@ -85,7 +85,7 @@ export default function LexiconViewPage() {
         if (!lexiconId) return { success: false, error: 'No lexicon ID' };
 
         try {
-            const lemma = formData.lemma as string;
+            // Lemma removed from form; use pronunciation as primary label
             const pronunciation = formData.pronunciation as string | undefined;
             const meaning = formData.meaning as string | undefined;
             const partOfSpeech = formData.partOfSpeech as string | undefined;
@@ -93,8 +93,9 @@ export default function LexiconViewPage() {
 
             // Update basic fields AND glyph_order together (Two-List Architecture)
             const updateInput: UpdateLexiconInput = {
-                lemma: lemma.trim(),
-                pronunciation: pronunciation?.trim() || null,
+                // Keep lemma populated for backward compatibility by copying pronunciation if present
+                lemma: (pronunciation?.trim() || lexicon?.lemma || '').trim() || undefined,
+                pronunciation: pronunciation?.trim() || undefined,
                 meaning: meaning?.trim() || null,
                 part_of_speech: partOfSpeech?.trim() || null,
                 notes: notes?.trim() || null,
@@ -141,7 +142,7 @@ export default function LexiconViewPage() {
         if (lexicon) {
             const descendantCount = lexicon.descendants?.length ?? 0;
             if (descendantCount > 0) {
-                const names = lexicon.descendants.slice(0, 3).map(d => d.descendant.lemma).join(', ');
+                const names = lexicon.descendants.slice(0, 3).map(d => d.descendant.pronunciation ?? d.descendant.lemma).join(', ');
                 const more = descendantCount > 3 ? ` and ${descendantCount - 3} more` : '';
                 setDeleteWarning(
                     `This word has ${descendantCount} descendant${descendantCount !== 1 ? 's' : ''}: ${names}${more}. ` +
@@ -217,7 +218,7 @@ export default function LexiconViewPage() {
                         iconName="arrow-left"
                         aria-label="Back to Lexicon"
                     />
-                    <h2 className={styles.title}>{lexicon.lemma}</h2>
+                    <h2 className={styles.title}>{lexicon.pronunciation ?? lexicon.lemma}</h2>
                     <div className={styles.headerActions}>
                         {!isEditing && (
                             <>
@@ -316,7 +317,7 @@ export default function LexiconViewPage() {
                                                 className={styles.descendantItem}
                                             >
                                                 <span className={styles.descendantType}>{d.ancestry_type}</span>
-                                                <span className={styles.descendantLemma}>{d.descendant.lemma}</span>
+                                                <span className={styles.descendantLemma}>{d.descendant.pronunciation ?? d.descendant.lemma}</span>
                                             </Link>
                                         ))}
                                     </div>

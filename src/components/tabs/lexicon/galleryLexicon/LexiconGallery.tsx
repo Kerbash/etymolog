@@ -39,8 +39,8 @@ interface LexiconGalleryProps {
 
 // Sort options for the gallery
 const SORT_OPTIONS: SortOption[] = [
-    { value: 'lemma-asc', displayComponent: <span>Lemma (A-Z)</span> },
-    { value: 'lemma-desc', displayComponent: <span>Lemma (Z-A)</span> },
+    { value: 'pronunciation-asc', displayComponent: <span>Pronunciation (A-Z)</span> },
+    { value: 'pronunciation-desc', displayComponent: <span>Pronunciation (Z-A)</span> },
     { value: 'descendants-desc', displayComponent: <span>Most Descendants</span> },
     { value: 'descendants-asc', displayComponent: <span>Fewest Descendants</span> },
     { value: 'created-desc', displayComponent: <span>Newest First</span> },
@@ -75,7 +75,7 @@ export default function LexiconGallery({
     // Gallery state
     const [viewMode, setViewMode] = useState<GalleryViewMode>(mapViewMode(defaultViewMode));
     const [searchQuery, setSearchQuery] = useState('');
-    const [sortBy, setSortBy] = useState('lemma-asc');
+    const [sortBy, setSortBy] = useState('pronunciation-asc');
     const [curPage, setCurPage] = useState(1);
     const [maxResultPerPage, setMaxResultPerPage] = useState(24);
     const [nativeFilter, setNativeFilter] = useState<NativeFilter>('all');
@@ -95,12 +95,12 @@ export default function LexiconGallery({
         if (searchQuery.trim()) {
             const query = searchQuery.toLowerCase().trim();
             result = result.filter(lexicon => {
-                // Search by lemma
-                if (lexicon.lemma.toLowerCase().includes(query)) {
+                // Search by pronunciation (primary)
+                if (lexicon.pronunciation?.toLowerCase().includes(query)) {
                     return true;
                 }
-                // Search by pronunciation
-                if (lexicon.pronunciation?.toLowerCase().includes(query)) {
+                // Fallback: search by lemma
+                if (lexicon.lemma.toLowerCase().includes(query)) {
                     return true;
                 }
                 // Search by meaning
@@ -114,10 +114,10 @@ export default function LexiconGallery({
         // Sort
         result = [...result].sort((a, b) => {
             switch (sortBy) {
-                case 'lemma-asc':
-                    return a.lemma.localeCompare(b.lemma);
-                case 'lemma-desc':
-                    return b.lemma.localeCompare(a.lemma);
+                case 'pronunciation-asc':
+                    return (a.pronunciation ?? a.lemma).localeCompare(b.pronunciation ?? b.lemma);
+                case 'pronunciation-desc':
+                    return (b.pronunciation ?? b.lemma).localeCompare(a.pronunciation ?? a.lemma);
                 case 'descendants-desc':
                     return (b.descendants?.length ?? 0) - (a.descendants?.length ?? 0);
                 case 'descendants-asc':
@@ -241,7 +241,7 @@ export default function LexiconGallery({
                     iconName="trash"
                     iconColor={'var(--status-bad)'}
                     onClick={(e: React.MouseEvent) => handleDelete(lexicon, e)}
-                    aria-label={`Delete ${lexicon.lemma}`}
+                    aria-label={`Delete ${lexicon.pronunciation ?? lexicon.lemma}`}
                 />
             </div>
 
@@ -259,7 +259,7 @@ export default function LexiconGallery({
                     iconName="trash"
                     iconColor={'var(--status-bad)'}
                     onClick={(e: React.MouseEvent) => handleDelete(lexicon, e)}
-                    aria-label={`Delete ${lexicon.lemma}`}
+                    aria-label={`Delete ${lexicon.pronunciation ?? lexicon.lemma}`}
                 />
             </div>
             <CompactLexiconDisplay
@@ -327,6 +327,9 @@ export default function LexiconGallery({
 
     return (
         <>
+            {/* Filter controls */}
+            <div style={{ marginBottom: '0.5rem' }}>{filterSlot}</div>
+
             <DataGallery
                 // Data
                 data={paginatedLexicons}
@@ -348,9 +351,6 @@ export default function LexiconGallery({
                 sortOptions={SORT_OPTIONS}
                 sortBy={sortBy}
                 setSortBy={setSortBy}
-
-                // Custom filter slot
-                filterSlot={filterSlot}
 
                 // View mode
                 viewMode={viewMode}
@@ -415,7 +415,7 @@ export default function LexiconGallery({
                     <h2 style={{ marginTop: 0 }}>Delete word</h2>
 
                     <p>
-                        Are you sure you want to delete <strong>{lexiconToDelete?.lemma}</strong>?
+                        Are you sure you want to delete <strong>{lexiconToDelete?.pronunciation ?? lexiconToDelete?.lemma}</strong>?
                     </p>
 
                     {deleteWarning && (

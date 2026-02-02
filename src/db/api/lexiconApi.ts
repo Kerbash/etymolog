@@ -98,14 +98,21 @@ function createLexicon(request: CreateLexiconInput): ApiResponse<LexiconComplete
     if (dbError) return dbError;
 
     // Validation
-    if (!request.lemma || request.lemma.trim() === '') {
-        return errorResponse('VALIDATION_ERROR', 'Lemma is required');
+    // Lemma is deprecated in forms; derive from pronunciation when missing to preserve DB constraint
+    const lemmaValue = (request.lemma && request.lemma.trim())
+        ? request.lemma.trim()
+        : (request.pronunciation && request.pronunciation.trim())
+            ? request.pronunciation.trim()
+            : undefined;
+
+    if (!lemmaValue) {
+        return errorResponse('VALIDATION_ERROR', 'Lemma or pronunciation is required');
     }
 
     try {
         const lexicon = serviceCreateLexicon({
             ...request,
-            lemma: request.lemma.trim(),
+            lemma: lemmaValue,
             pronunciation: request.pronunciation?.trim(),
             meaning: request.meaning?.trim(),
             part_of_speech: request.part_of_speech?.trim(),

@@ -127,10 +127,10 @@ export default function EtymologyTreeNode({
                     </span>
                 )}
 
-                {/* Lemma */}
-                <span className={styles.lemma}>{node.entry.lemma}</span>
+                {/* Primary label: pronunciation (fallback to lemma) */}
+                <span className={styles.lemma}>{node.entry.pronunciation ?? node.entry.lemma}</span>
 
-                {/* Pronunciation */}
+                {/* Pronunciation (secondary display) */}
                 {node.entry.pronunciation && (
                     <span className={styles.pronunciation}>/{node.entry.pronunciation}/</span>
                 )}
