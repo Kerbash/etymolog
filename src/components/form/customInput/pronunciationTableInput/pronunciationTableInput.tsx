@@ -11,7 +11,6 @@ import LabelShiftTextCustomKeyboardInput from "smart-form/input/fancy/redditStyl
 import { SmartForm, useSmartForm } from "smart-form/smartForm";
 import type { useSmartFormRef } from "smart-form/types";
 import { IPA_CHARACTERS } from "cyber-components/interactable/customKeyboard/ipaCharacters";
-import { ProcessingLockModalProvider } from "cyber-components/graphics/loading/processingLockModal/processingLockModal";
 
 /** Translation keys -------------------------------------- */
 
@@ -99,19 +98,17 @@ export const PronunciationTableInput = forwardRef((
     }, [rows]);
 
     return (
-        <ProcessingLockModalProvider>
-            <PronunciationTableInputInner
-                rows={rows}
-                setRows={setRows}
-                fieldStateRef={fieldStateRef}
-                registerSmartFieldProps={registerSmartFieldProps}
-                t={t}
-                maxRows={maxRows}
-                requirePronunciation={requirePronunciation}
-                className={className}
-                idPrefix={idPrefix}
-            />
-        </ProcessingLockModalProvider>
+        <PronunciationTableInputInner
+            rows={rows}
+            setRows={setRows}
+            fieldStateRef={fieldStateRef}
+            registerSmartFieldProps={registerSmartFieldProps}
+            t={t}
+            maxRows={maxRows}
+            requirePronunciation={requirePronunciation}
+            className={className}
+            idPrefix={idPrefix}
+        />
     );
 });
 

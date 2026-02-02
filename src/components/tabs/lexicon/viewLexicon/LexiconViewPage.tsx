@@ -20,7 +20,6 @@ import IconButton from 'cyber-components/interactable/buttons/iconButton/iconBut
 import Button from 'cyber-components/interactable/buttons/button/button.tsx';
 import { buttonStyles } from 'cyber-components/interactable/buttons/button/button.tsx';
 import Modal from 'cyber-components/container/modal/modal.tsx';
-import { ProcessingLockModalProvider } from 'cyber-components/graphics/loading/processingLockModal/processingLockModal';
 import classNames from 'classnames';
 import { flex, sizing } from "utils-styles";
 import styles from './LexiconViewPage.module.scss';
@@ -208,160 +207,158 @@ export default function LexiconViewPage() {
     }
 
     return (
-        <ProcessingLockModalProvider>
-            <div className={classNames(styles.viewPage, flex.flexColumn, sizing.parentSize)}>
-                {/* Header */}
-                <div className={styles.header}>
-                    <IconButton
-                        as={Link}
-                        to="/lexicon"
-                        iconName="arrow-left"
-                        aria-label="Back to Lexicon"
-                    />
-                    <h2 className={styles.title}>{lexicon.pronunciation ?? lexicon.lemma}</h2>
-                    <div className={styles.headerActions}>
-                        {!isEditing && (
-                            <>
-                                <IconButton
-                                    iconName="pencil"
-                                    onClick={handleStartEdit}
-                                    aria-label="Edit"
-                                >
-                                    Edit
-                                </IconButton>
-                                <IconButton
-                                    iconName="trash"
-                                    iconColor="var(--status-bad)"
-                                    onClick={handleDeleteClick}
-                                    aria-label="Delete"
-                                >
-                                    Delete
-                                </IconButton>
-                            </>
-                        )}
-                    </div>
-                </div>
-
-                {/* Content */}
-                <div className={styles.content}>
-                    {isEditing ? (
-                        /* Edit Mode */
-                        <SmartForm
-                            ref={smartFormRef}
-                            {...formProps}
-                            registerField={registerField}
-                            isFormValid={isFormValid}
-                            className={styles.formContainer}
-                        >
-                            <LexiconFormFields
-                                registerField={registerField}
-                                mode="edit"
-                                initialData={lexicon}
-                                onGlyphOrderChange={setGlyphOrder}
-                                onAncestorsChange={setAncestors}
-                            />
-
-                            <div className={styles.editActions}>
-                                <Button
-                                    type="button"
-                                    onClick={handleCancelEdit}
-                                    className={buttonStyles.secondary}
-                                >
-                                    Cancel
-                                </Button>
-                                <Button
-                                    type="submit"
-                                    className={buttonStyles.primary}
-                                    disabled={!isFormValid}
-                                >
-                                    Save Changes
-                                </Button>
-                            </div>
-                        </SmartForm>
-                    ) : (
-                        /* View Mode */
+        <div className={classNames(styles.viewPage, flex.flexColumn, sizing.parentSize)}>
+            {/* Header */}
+            <div className={styles.header}>
+                <IconButton
+                    as={Link}
+                    to="/lexicon"
+                    iconName="arrow-left"
+                    aria-label="Back to Lexicon"
+                />
+                <h2 className={styles.title}>{lexicon.pronunciation ?? lexicon.lemma}</h2>
+                <div className={styles.headerActions}>
+                    {!isEditing && (
                         <>
-                            <section className={styles.displaySection}>
-                                <DetailedLexiconDisplay
-                                    lexiconData={lexicon}
-                                    graphemeMap={graphemeMap}
-                                    showAncestry={false}
-                                />
-                            </section>
-
-                            {/* Etymology Tree */}
-                            {ancestryTree && (
-                                <section className={styles.etymologySection}>
-                                    <h3 className={styles.sectionTitle}>Etymology Tree</h3>
-                                    <EtymologyTree
-                                        rootNode={ancestryTree}
-                                        direction="ancestors"
-                                        maxDepth={3}
-                                        onNodeClick={handleTreeNodeClick}
-                                        currentWordId={lexiconId}
-                                    />
-                                </section>
-                            )}
-
-                            {/* Descendants */}
-                            {lexicon.descendants && lexicon.descendants.length > 0 && (
-                                <section className={styles.descendantsSection}>
-                                    <h3 className={styles.sectionTitle}>
-                                        Descendants ({lexicon.descendants.length})
-                                    </h3>
-                                    <div className={styles.descendantsList}>
-                                        {lexicon.descendants.map(d => (
-                                            <Link
-                                                key={d.descendant.id}
-                                                to={`/lexicon/db/${d.descendant.id}`}
-                                                className={styles.descendantItem}
-                                            >
-                                                <span className={styles.descendantType}>{d.ancestry_type}</span>
-                                                <span className={styles.descendantLemma}>{d.descendant.pronunciation ?? d.descendant.lemma}</span>
-                                            </Link>
-                                        ))}
-                                    </div>
-                                </section>
-                            )}
+                            <IconButton
+                                iconName="pencil"
+                                onClick={handleStartEdit}
+                                aria-label="Edit"
+                            >
+                                Edit
+                            </IconButton>
+                            <IconButton
+                                iconName="trash"
+                                iconColor="var(--status-bad)"
+                                onClick={handleDeleteClick}
+                                aria-label="Delete"
+                            >
+                                Delete
+                            </IconButton>
                         </>
                     )}
                 </div>
+            </div>
 
-                {/* Delete Confirmation Modal */}
-                <Modal
-                    isOpen={deleteModalOpen}
-                    setIsOpen={setDeleteModalOpen}
-                    onClose={() => setDeleteModalOpen(false)}
-                    allowClose={!isDeleting}
-                >
-                    <div className={styles.deleteModal}>
-                        <h2>Delete Word</h2>
-                        <p>Are you sure you want to delete <strong>{lexicon.lemma}</strong>?</p>
+            {/* Content */}
+            <div className={styles.content}>
+                {isEditing ? (
+                    /* Edit Mode */
+                    <SmartForm
+                        ref={smartFormRef}
+                        {...formProps}
+                        registerField={registerField}
+                        isFormValid={isFormValid}
+                        className={styles.formContainer}
+                    >
+                        <LexiconFormFields
+                            registerField={registerField}
+                            mode="edit"
+                            initialData={lexicon}
+                            onGlyphOrderChange={setGlyphOrder}
+                            onAncestorsChange={setAncestors}
+                        />
 
-                        {deleteWarning && (
-                            <div className={styles.deleteWarning}>
-                                <strong>Warning:</strong> {deleteWarning}
-                            </div>
-                        )}
-
-                        <div className={styles.deleteActions}>
+                        <div className={styles.editActions}>
                             <Button
-                                onClick={() => setDeleteModalOpen(false)}
-                                disabled={isDeleting}
+                                type="button"
+                                onClick={handleCancelEdit}
+                                className={buttonStyles.secondary}
                             >
                                 Cancel
                             </Button>
                             <Button
-                                onClick={confirmDelete}
-                                disabled={isDeleting}
-                                style={{ background: 'var(--danger)', color: 'white' }}
+                                type="submit"
+                                className={buttonStyles.primary}
+                                disabled={!isFormValid}
                             >
-                                {isDeleting ? 'Deleting...' : 'Delete Word'}
+                                Save Changes
                             </Button>
                         </div>
-                    </div>
-                </Modal>
+                    </SmartForm>
+                ) : (
+                    /* View Mode */
+                    <>
+                        <section className={styles.displaySection}>
+                            <DetailedLexiconDisplay
+                                lexiconData={lexicon}
+                                graphemeMap={graphemeMap}
+                                showAncestry={false}
+                            />
+                        </section>
+
+                        {/* Etymology Tree */}
+                        {ancestryTree && (
+                            <section className={styles.etymologySection}>
+                                <h3 className={styles.sectionTitle}>Etymology Tree</h3>
+                                <EtymologyTree
+                                    rootNode={ancestryTree}
+                                    direction="ancestors"
+                                    maxDepth={3}
+                                    onNodeClick={handleTreeNodeClick}
+                                    currentWordId={lexiconId}
+                                />
+                            </section>
+                        )}
+
+                        {/* Descendants */}
+                        {lexicon.descendants && lexicon.descendants.length > 0 && (
+                            <section className={styles.descendantsSection}>
+                                <h3 className={styles.sectionTitle}>
+                                    Descendants ({lexicon.descendants.length})
+                                </h3>
+                                <div className={styles.descendantsList}>
+                                    {lexicon.descendants.map(d => (
+                                        <Link
+                                            key={d.descendant.id}
+                                            to={`/lexicon/db/${d.descendant.id}`}
+                                            className={styles.descendantItem}
+                                        >
+                                            <span className={styles.descendantType}>{d.ancestry_type}</span>
+                                            <span className={styles.descendantLemma}>{d.descendant.pronunciation ?? d.descendant.lemma}</span>
+                                        </Link>
+                                    ))}
+                                </div>
+                            </section>
+                        )}
+                    </>
+                )}
             </div>
-        </ProcessingLockModalProvider>
+
+            {/* Delete Confirmation Modal */}
+            <Modal
+                isOpen={deleteModalOpen}
+                setIsOpen={setDeleteModalOpen}
+                onClose={() => setDeleteModalOpen(false)}
+                allowClose={!isDeleting}
+            >
+                <div className={styles.deleteModal}>
+                    <h2>Delete Word</h2>
+                    <p>Are you sure you want to delete <strong>{lexicon.lemma}</strong>?</p>
+
+                    {deleteWarning && (
+                        <div className={styles.deleteWarning}>
+                            <strong>Warning:</strong> {deleteWarning}
+                        </div>
+                    )}
+
+                    <div className={styles.deleteActions}>
+                        <Button
+                            onClick={() => setDeleteModalOpen(false)}
+                            disabled={isDeleting}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={confirmDelete}
+                            disabled={isDeleting}
+                            style={{ background: 'var(--danger)', color: 'white' }}
+                        >
+                            {isDeleting ? 'Deleting...' : 'Delete Word'}
+                        </Button>
+                    </div>
+                </div>
+            </Modal>
+        </div>
     );
 }

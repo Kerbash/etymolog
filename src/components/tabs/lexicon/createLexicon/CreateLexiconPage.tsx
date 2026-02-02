@@ -16,7 +16,6 @@ import { LexiconFormFields } from '../../../form/lexiconForm';
 import IconButton from 'cyber-components/interactable/buttons/iconButton/iconButton.tsx';
 import Button from 'cyber-components/interactable/buttons/button/button.tsx';
 import { buttonStyles } from 'cyber-components/interactable/buttons/button/button.tsx';
-import { ProcessingLockModalProvider } from 'cyber-components/graphics/loading/processingLockModal/processingLockModal';
 import classNames from 'classnames';
 import { flex, sizing } from "utils-styles";
 import styles from './CreateLexiconPage.module.scss';
@@ -110,69 +109,67 @@ export default function CreateLexiconPage() {
     }
 
     return (
-        <ProcessingLockModalProvider>
-            <div className={classNames(styles.createPage, flex.flexColumn, sizing.parentSize)}>
-                {/* Header */}
-                <div className={styles.header}>
-                    <IconButton
-                        as={Link}
-                        to="/lexicon"
-                        iconName="arrow-left"
-                        aria-label="Back to Lexicon"
+        <div className={classNames(styles.createPage, flex.flexColumn, sizing.parentSize)}>
+            {/* Header */}
+            <div className={styles.header}>
+                <IconButton
+                    as={Link}
+                    to="/lexicon"
+                    iconName="arrow-left"
+                    aria-label="Back to Lexicon"
+                />
+                <h2 className={styles.title}>Create New Word</h2>
+            </div>
+
+            {/* Form */}
+            <SmartForm
+                ref={smartFormRef}
+                {...formProps}
+                registerField={registerField}
+                isFormValid={isFormValid}
+                className={styles.formContainer}
+            >
+                <LexiconFormFields
+                    registerField={registerField}
+                    mode="create"
+                    onGlyphOrderChange={setGlyphOrder}
+                    onAncestorsChange={setAncestors}
+                />
+
+                {/* Hidden checkboxes for state sync */}
+                <div style={{ display: 'none' }}>
+                    <input
+                        type="checkbox"
+                        name="isNativeCheckbox"
+                        checked={isNative}
+                        onChange={handleCheckboxChange}
                     />
-                    <h2 className={styles.title}>Create New Word</h2>
+                    <input
+                        type="checkbox"
+                        name="autoSpellCheckbox"
+                        checked={autoSpell}
+                        onChange={handleCheckboxChange}
+                    />
                 </div>
 
-                {/* Form */}
-                <SmartForm
-                    ref={smartFormRef}
-                    {...formProps}
-                    registerField={registerField}
-                    isFormValid={isFormValid}
-                    className={styles.formContainer}
-                >
-                    <LexiconFormFields
-                        registerField={registerField}
-                        mode="create"
-                        onGlyphOrderChange={setGlyphOrder}
-                        onAncestorsChange={setAncestors}
-                    />
-
-                    {/* Hidden checkboxes for state sync */}
-                    <div style={{ display: 'none' }}>
-                        <input
-                            type="checkbox"
-                            name="isNativeCheckbox"
-                            checked={isNative}
-                            onChange={handleCheckboxChange}
-                        />
-                        <input
-                            type="checkbox"
-                            name="autoSpellCheckbox"
-                            checked={autoSpell}
-                            onChange={handleCheckboxChange}
-                        />
-                    </div>
-
-                    {/* Actions */}
-                    <div className={styles.actions}>
-                        <Button
-                            as={Link}
-                            to="/lexicon"
-                            className={buttonStyles.secondary}
-                        >
-                            Cancel
-                        </Button>
-                        <Button
-                            type="submit"
-                            className={buttonStyles.primary}
-                            disabled={!isFormValid}
-                        >
-                            Create Word
-                        </Button>
-                    </div>
-                </SmartForm>
-            </div>
-        </ProcessingLockModalProvider>
+                {/* Actions */}
+                <div className={styles.actions}>
+                    <Button
+                        as={Link}
+                        to="/lexicon"
+                        className={buttonStyles.secondary}
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        type="submit"
+                        className={buttonStyles.primary}
+                        disabled={!isFormValid}
+                    >
+                        Create Word
+                    </Button>
+                </div>
+            </SmartForm>
+        </div>
     );
 }
