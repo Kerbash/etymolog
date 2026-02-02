@@ -21,7 +21,7 @@
 
 import classNames from "classnames";
 import {useState, useMemo, useEffect, useRef, useCallback} from "react";
-import type {LexiconComplete, LexiconAncestorFormRow, AutoSpellResultExtended} from "../../../db/types";
+import type {LexiconComplete, LexiconAncestorFormRow, AutoSpellResultExtended, LexiconAncestryNode} from "../../../db/types";
 import type {registerFieldReturnType} from "smart-form/types";
 import {useEtymolog} from "../../../db";
 import {buildVirtualGlyphMap} from "../../../db/autoSpellService";
@@ -278,14 +278,97 @@ export default function LexiconFormFields({
         return result.success ? result.data ?? false : false;
     }, [api]);
 
-    // Exclude IDs for ancestry selection (self + already selected)
+    // Use efficient descendant retrieval for exclusion if available
+    const [descendantIds, setDescendantIds] = useState<number[]>([]);
+    // Full ancestry tree for preview
+    const [ancestryTree, setAncestryTree] = useState<LexiconAncestryNode | null>(null);
+
+    useEffect(() => {
+        if (!initialData?.id) return;
+
+        // Fetch descendants to exclude from selection
+        const descResult = api.lexicon.getAllDescendantIds(initialData.id);
+        if (descResult.success && descResult.data) {
+           setDescendantIds(descResult.data);
+        }
+
+        // Fetch full ancestry tree for preview
+        const treeResult = api.lexicon.getAncestryTree(initialData.id);
+        if (treeResult.success && treeResult.data) {
+            setAncestryTree(treeResult.data);
+        }
+    }, [initialData?.id, api]);
+
+    // Exclude IDs for ancestry selection (self + already selected + descendants)
     const excludeAncestorIds = useMemo(() => {
         const ids = ancestors.map(a => a.ancestorId);
         if (initialData?.id) {
             ids.push(initialData.id);
+            // Also exclude all descendants to prevent cycles at the root
+            // (Only relevant if we have existing descendants, since closure table catches cycle attempts
+            // but hiding them in dropdown is better UX)
+            if (descendantIds.length > 0) {
+                ids.push(...descendantIds);
+            }
         }
         return ids;
-    }, [ancestors, initialData?.id]);
+    }, [ancestors, initialData?.id, descendantIds]);
+
+    // Sync ancestry tree with selected ancestors to show deep history
+    useEffect(() => {
+        // Find ancestors that are not yet in the ancestryTree
+        const currentAncestorIds = new Set(ancestryTree?.ancestors?.map(a => a.entry.id) ?? []);
+        const missingAncestors = ancestors.filter(a => !currentAncestorIds.has(a.ancestorId));
+
+        if (missingAncestors.length === 0) return;
+
+        // Fetch missing ancestry trees
+        const fetchMissing = () => {
+             const newTrees: LexiconAncestryNode[] = [];
+             let hasNewData = false;
+
+             for (const ancestor of missingAncestors) {
+                 const result = api.lexicon.getAncestryTree(ancestor.ancestorId);
+                 if (result.success && result.data) {
+                     newTrees.push({
+                         ...result.data,
+                         ancestry_type: ancestor.ancestryType
+                     });
+                     hasNewData = true;
+                 }
+             }
+
+             if (hasNewData) {
+                 setAncestryTree(prev => {
+                     // If we don't have a tree yet, create a shell for the current word
+                     const baseEntry = prev?.entry ?? {
+                         id: initialData?.id ?? -1,
+                         lemma: getSmartFieldValue(lemmaField) || 'New Word',
+                         is_native: true,
+                         auto_spell: false,
+                         meaning: null,
+                         part_of_speech: null,
+                         notes: null,
+                         pronunciation: null,
+                         glyph_order: "[]",
+                         needs_attention: false,
+                         created_at: new Date().toISOString(),
+                         updated_at: new Date().toISOString()
+                     };
+
+                     return {
+                         entry: baseEntry,
+                         ancestors: [
+                             ...(prev?.ancestors ?? []),
+                             ...newTrees
+                         ]
+                     };
+                 });
+             }
+        };
+
+        fetchMissing();
+    }, [ancestors, ancestryTree, api, initialData, lemmaField]);
 
     return (
         <div className={classNames(styles.formFields, className)}>
@@ -414,6 +497,7 @@ export default function LexiconFormFields({
                     availableLexicon={availableLexicon}
                     excludeIds={excludeAncestorIds}
                     checkCycle={initialData?.id ? checkCycle : undefined}
+                    ancestryTree={ancestryTree}
                     defaultValue={ancestors}
                     onChange={setAncestors}
                 />

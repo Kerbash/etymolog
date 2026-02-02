@@ -12,7 +12,7 @@
  */
 
 import { useMemo, useCallback, memo } from 'react';
-import type { Lexicon, LexiconAncestryNode, AncestryType } from '../../../../db/types';
+import type { Lexicon, LexiconAncestryNode, AncestryType } from '@src/db/types';
 import { CanvasDAGChart } from 'cyber-components/interactable/canvas/canvasFlowChart';
 import type { DAGInput } from 'cyber-components/interactable/canvas/canvasFlowChart';
 import AncestryNodeDisplay from './AncestryNodeDisplay';
@@ -96,18 +96,19 @@ const AncestryPreviewTree = memo(function AncestryPreviewTree({
 
     // Transform data to DAGInput format
     const dagData = useMemo<DAGInput>(() => {
-        // If we have full ancestry tree with ancestors, use it
+        // 1. Generate the FULL graph from persisted history (if available)
+        let fullDAG: DAGInput | null = null;
         if (ancestryTree && ancestryTree.ancestors && ancestryTree.ancestors.length > 0) {
-            return ancestryToDAG(ancestryTree, {
+            fullDAG = ancestryToDAG(ancestryTree, {
                 renderNode,
                 currentWordId: currentWord.id,
                 maxDepth: 10,
             });
         }
 
-        // If we have selected ancestors from form, use simple preview
+        // 2. Generate the BASIC graph from current form selection
         if (selectedAncestors && selectedAncestors.length > 0) {
-            return selectedAncestorsToDAG(
+            const basicDAG = selectedAncestorsToDAG(
                 selectedAncestors.map(a => ({
                     ancestor: a.ancestor,
                     ancestryType: a.ancestryType,
@@ -115,14 +116,81 @@ const AncestryPreviewTree = memo(function AncestryPreviewTree({
                 currentWord,
                 renderNode
             );
+
+            // 3. Merge: Use Basic DAG as base (correct direct parents), enrich with Full DAG (deep history)
+            if (fullDAG) {
+                const mergedNodes = { ...basicDAG.nodes };
+                const mergedEdges = [...basicDAG.edges];
+                const existingEdgeKeys = new Set(mergedEdges.map(e => `${e.sourceId}->${e.targetId}`));
+
+                // Identify selected ancestor IDs
+                // const selectedIds = new Set(selectedAncestors.map(a => `lexicon-${a.ancestor.id}`));
+
+                // Find edges in fullDAG that do NOT connect to the current word
+                // (i.e., edges deep in the history)
+                // AND ensure they belong to a chain that eventually connects to a selected ancestor
+                // const currentWordNodeId = currentWord.id ? `lexicon-${currentWord.id}` : 'current-word';
+
+                // We want to keep all nodes/edges from fullDAG that are "upstream" of any node currently in basicDAG (except the current word itself)
+
+                // Simple approach: Add all nodes/edges from fullDAG excluding those directly touching currentWordNodeId
+                // provided they are reachable from the selected ancestors.
+
+                // Better: Just check if a selected ancestor exists in fullDAG.
+                // If yes, copy its entire upstream subgraph from fullDAG to mergedDAG.
+
+                for (const ancestor of selectedAncestors) {
+                    const ancestorNodeId = `lexicon-${ancestor.ancestor.id}`;
+
+                    // If this ancestor existed in the persisted history
+                    if (fullDAG.nodes[ancestorNodeId]) {
+                        // Traverse upstream from this node in fullDAG
+                        const stack = [ancestorNodeId];
+                        const visited = new Set<string>();
+
+                        while (stack.length > 0) {
+                            const nodeId = stack.pop()!;
+                            if (visited.has(nodeId)) continue;
+                            visited.add(nodeId);
+
+                            // Copy node if not present
+                            if (!mergedNodes[nodeId] && fullDAG.nodes[nodeId]) {
+                                mergedNodes[nodeId] = fullDAG.nodes[nodeId];
+                            }
+
+                            // Find incoming edges to this node in fullDAG
+                            const incomingEdges = fullDAG.edges.filter(e => e.targetId === nodeId);
+
+                            for (const edge of incomingEdges) {
+                                // Add edge if not present
+                                const edgeKey = `${edge.sourceId}->${edge.targetId}`;
+                                if (!existingEdgeKeys.has(edgeKey)) {
+                                    mergedEdges.push(edge);
+                                    existingEdgeKeys.add(edgeKey);
+                                }
+
+                                // Add source to stack
+                                stack.push(edge.sourceId);
+                            }
+                        }
+                    }
+                }
+
+                return { nodes: mergedNodes, edges: mergedEdges };
+            }
+
+            return basicDAG;
         }
 
-        // No ancestors - return just the current word node
+        // Fallback: If no selection but we have history (e.g. initial load before form init?), use history
+        // But `selectedAncestors` should be populated if `rows` are populated.
+        // If rows are empty, we show empty.
+
         return currentWordOnlyDAG;
     }, [ancestryTree, selectedAncestors, currentWord, renderNode, currentWordOnlyDAG]);
 
     // Count ancestors for display
-    const ancestorCount = ancestryTree?.ancestors?.length ?? selectedAncestors?.length ?? 0;
+    const ancestorCount = selectedAncestors?.length ?? 0;
 
     return (
         <div className={styles.previewContainer} style={{ maxHeight }}>

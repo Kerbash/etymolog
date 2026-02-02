@@ -987,81 +987,6 @@ interface SpellingDisplayEntry {
     grapheme?: Grapheme;        // For grapheme type
     ipaCharacter?: string;      // For ipa type
 }
-```
-
-### Type Definitions
-
-```typescript
-// Core Types (src/db/types.ts)
-
-interface Glyph {
-    id: number;
-    name: string;
-    svg_data: string;
-    category: string | null;
-    notes: string | null;
-    created_at: string;
-    updated_at: string;
-}
-
-interface Grapheme {
-    id: number;
-    name: string;
-    category: string | null;
-    notes: string | null;
-    created_at: string;
-    updated_at: string;
-}
-
-interface Phoneme {
-    id: number;
-    grapheme_id: number;
-    phoneme: string;
-    use_in_auto_spelling: boolean;
-    context: string | null;
-}
-
-interface Lexicon {
-    id: number;
-    lemma: string;                    // Citation form / searchable name
-    pronunciation: string | null;     // IPA notation (nullable for external words)
-    is_native: boolean;               // true = conlang word, false = external reference
-    auto_spell: boolean;              // Whether to auto-generate spelling
-    meaning: string | null;           // Word definition/gloss
-    part_of_speech: string | null;    // Freeform until PoS table exists
-    notes: string | null;
-    glyph_order: string;              // JSON array of spelling entries
-    needs_attention: boolean;         // Manual review required (e.g., after grapheme deletion)
-    created_at: string;
-    updated_at: string;
-}
-
-type AncestryType = 'derived' | 'borrowed' | 'compound' | 'blend' | 'calque' | 'other';
-
-// Composite Types
-interface GraphemeComplete extends Grapheme {
-    glyphs: Glyph[];      // Ordered by position
-    phonemes: Phoneme[];
-}
-
-interface GlyphWithUsage extends Glyph {
-    usageCount: number;   // Number of graphemes using this glyph
-}
-
-interface LexiconComplete extends Lexicon {
-    spellingDisplay: SpellingDisplayEntry[];  // Full ordered spelling with graphemes & IPA
-    spelling: Grapheme[];                      // Legacy: graphemes only (no IPA fallbacks)
-    hasIpaFallbacks: boolean;                  // Whether spelling contains IPA chars
-    ancestors: LexiconAncestorEntry[];         // Direct parent words
-    descendants: LexiconDescendantEntry[];     // Words derived from this
-}
-
-interface SpellingDisplayEntry {
-    type: 'grapheme' | 'ipa';
-    position: number;
-    grapheme?: Grapheme;        // For grapheme type
-    ipaCharacter?: string;      // For ipa type
-}
 
 interface LexiconAncestorEntry {
     ancestor: Lexicon;
@@ -1327,7 +1252,7 @@ dp[i] = best solution for processing characters 0..i-1
 Base: dp[0] = { coverage: 0, graphemeCount: 0 }
 
 For each position i from 1 to n:
-    1. Try SKIP (fallback mode only): create virtual glyph for char at i-1
+    1. Try SKIP (fallback mode): create virtual glyph for char at i-1
        newState = { coverage: dp[i-1].coverage, graphemeCount: dp[i-1].graphemeCount + 1 }
 
     2. Try each phoneme match ending at i:
@@ -1468,6 +1393,19 @@ interface AutoSpellResultExtended extends AutoSpellResult {
 **Constraints**: UNIQUE(lexicon_id, ancestor_id)
 **Indexes**: `idx_lexicon_ancestry_lexicon`, `idx_lexicon_ancestry_ancestor`
 
+#### 8. `lexicon_ancestry_closure` — Transitive Closure Table
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `ancestor_id` | INTEGER | NOT NULL, FK → lexicon(id) ON DELETE CASCADE |
+| `descendant_id` | INTEGER | NOT NULL, FK → lexicon(id) ON DELETE CASCADE |
+| `depth` | INTEGER | NOT NULL (path length) |
+
+**Constraints**: PRIMARY KEY(ancestor_id, descendant_id)
+**Indexes**: `idx_closure_ancestor`, `idx_closure_descendant`
+
+**Purpose**: Stores all paths in the ancestor hierarchy to enable O(1) descendant checks and cycle detection. Automatically maintained by `closureService`.
+
 ### Delete Behavior
 
 | Operation | Behavior |
@@ -1497,6 +1435,7 @@ src/
 │   ├── glyphService.ts              # Glyph CRUD (backend)
 │   ├── graphemeService.ts           # Grapheme/Phoneme CRUD (backend)
 │   ├── lexiconService.ts            # Lexicon CRUD (backend)
+│   ├── closureService.ts            # Transitive Closure logic (cycle checks, O(1) ancestry)
 │   ├── autoSpellService.ts          # Auto-spelling from pronunciation
 │   ├── formHandler.ts               # Form-to-DB transformation
 │   ├── useGlyphs.ts                 # Legacy hook (deprecated)

@@ -45,6 +45,12 @@ import type {
     AncestryType,
     SpellingDisplayEntry,
 } from './types';
+import {
+    addClosurePaths,
+    removeClosurePaths,
+    rebuildClosureTable,
+    wouldCreateCycleClosure
+} from './closureService';
 
 // =============================================================================
 // LEXICON CRUD OPERATIONS
@@ -640,7 +646,7 @@ export function getLexiconAncestryEntries(lexiconId: number): LexiconAncestry[] 
  */
 export function addAncestorToLexicon(lexiconId: number, input: CreateLexiconAncestryInput): LexiconAncestry {
     // Check for cycles
-    if (wouldCreateCycle(lexiconId, input.ancestor_id)) {
+    if (wouldCreateCycleClosure(lexiconId, input.ancestor_id)) {
         throw new Error(`Cannot add ancestor: would create a cycle (lexicon ${lexiconId} is an ancestor of ${input.ancestor_id})`);
     }
 
@@ -656,6 +662,9 @@ export function addAncestorToLexicon(lexiconId: number, input: CreateLexiconAnce
 
     // Update lexicon's updated_at
     db.run(`UPDATE lexicon SET updated_at = datetime('now') WHERE id = ?`, [lexiconId]);
+
+    // Update closure table
+    addClosurePaths(lexiconId, input.ancestor_id);
 
     persistDatabase();
 
@@ -688,6 +697,9 @@ export function setLexiconAncestry(lexiconId: number, ancestry: CreateLexiconAnc
     // Update lexicon's updated_at
     db.run(`UPDATE lexicon SET updated_at = datetime('now') WHERE id = ?`, [lexiconId]);
 
+    // Rebuild closure table to be safe since we did a bulk change involving deletes
+    rebuildClosureTable();
+
     persistDatabase();
 }
 
@@ -702,6 +714,10 @@ export function removeAncestorFromLexicon(lexiconId: number, ancestorId: number)
     const changes = db.getRowsModified();
     if (changes > 0) {
         db.run(`UPDATE lexicon SET updated_at = datetime('now') WHERE id = ?`, [lexiconId]);
+
+        // Remove closure paths (currently implemented as full rebuild in closureService)
+        removeClosurePaths(lexiconId, ancestorId);
+
         persistDatabase();
     }
 
@@ -719,6 +735,10 @@ export function clearLexiconAncestry(lexiconId: number): number {
     const changes = db.getRowsModified();
     if (changes > 0) {
         db.run(`UPDATE lexicon SET updated_at = datetime('now') WHERE id = ?`, [lexiconId]);
+
+        // Ancestry cleared, rebuild closure (simplest approach for now)
+        rebuildClosureTable();
+
         persistDatabase();
     }
 
@@ -811,7 +831,17 @@ export function getAllAncestorIds(id: number, maxDepth: number = 50): number[] {
 export function getAllDescendantIds(id: number, maxDepth: number = 50): number[] {
     const db = getDatabase();
 
-    // Use recursive CTE for efficiency
+    // Use closure table for O(1) if available
+    const closureResult = db.exec(`
+        SELECT descendant_id FROM lexicon_ancestry_closure
+        WHERE ancestor_id = ?
+    `, [id]);
+
+    if (closureResult.length > 0) {
+        return closureResult[0].values.map(row => row[0] as number);
+    }
+
+    // Fallback to recursive CTE (if closure table empty/broken)
     const result = db.exec(`
         WITH RECURSIVE descendants AS (
             SELECT lexicon_id, 1 as depth
@@ -847,15 +877,7 @@ export function getAllDescendantIds(id: number, maxDepth: number = 50): number[]
  * we cannot make ancestorId an ancestor of lexiconId.
  */
 export function wouldCreateCycle(lexiconId: number, ancestorId: number): boolean {
-    // Self-reference is always a cycle
-    if (lexiconId === ancestorId) {
-        return true;
-    }
-
-    // Get all ancestors of the potential ancestor
-    // If lexiconId is in that set, adding ancestorId as parent of lexiconId creates a cycle
-    const ancestorsOfAncestor = getAllAncestorIds(ancestorId);
-    return ancestorsOfAncestor.includes(lexiconId);
+    return wouldCreateCycleClosure(lexiconId, ancestorId);
 }
 
 // =============================================================================
