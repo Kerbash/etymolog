@@ -558,6 +558,7 @@ export function clearDatabase(): void {
     if (!db) return;
 
     // Delete in order respecting foreign keys
+    db.run('DELETE FROM lexicon_ancestry_closure');
     db.run('DELETE FROM lexicon_ancestry');
     db.run('DELETE FROM lexicon_spelling');
     db.run('DELETE FROM lexicon');
@@ -565,7 +566,7 @@ export function clearDatabase(): void {
     db.run('DELETE FROM grapheme_glyphs');
     db.run('DELETE FROM graphemes');
     db.run('DELETE FROM glyphs');
-    db.run(`DELETE FROM sqlite_sequence WHERE name IN ('glyphs', 'graphemes', 'grapheme_glyphs', 'phonemes', 'lexicon', 'lexicon_spelling', 'lexicon_ancestry')`);
+    db.run(`DELETE FROM sqlite_sequence WHERE name IN ('glyphs', 'graphemes', 'grapheme_glyphs', 'phonemes', 'lexicon', 'lexicon_spelling', 'lexicon_ancestry', 'lexicon_ancestry_closure')`);
     persistDatabase();
     console.log('[DB] Database cleared');
 }
@@ -576,6 +577,7 @@ export function clearDatabase(): void {
 export function resetDatabase(): void {
     if (!db) return;
 
+    db.run('DROP TABLE IF EXISTS lexicon_ancestry_closure');
     db.run('DROP TABLE IF EXISTS lexicon_ancestry');
     db.run('DROP TABLE IF EXISTS lexicon_spelling');
     db.run('DROP TABLE IF EXISTS lexicon');

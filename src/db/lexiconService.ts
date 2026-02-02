@@ -1096,7 +1096,7 @@ export function handleGraphemeDeletion(
         if (shouldMarkAttention) {
             markedForAttentionCount++;
         } else {
-            respelledCount; // Count as "handled" since auto_spell entries will auto-fix
+            respelledCount++; // Count as "handled" since auto_spell entries will auto-fix
         }
     }
 
