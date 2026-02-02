@@ -1,0 +1,46 @@
+/**
+ * IPACombinedChart Component Styles
+ */
+
+.container {
+    width: 100%;
+    height: 600px;
+    min-height: 400px;
+
+    @media (min-width: 768px) {
+        height: 700px;
+    }
+
+    @media (min-width: 1200px) {
+        height: 800px;
+    }
+}
+
+.canvas {
+    width: 100%;
+    height: 100%;
+}
+
+.chartsLayout {
+    display: flex;
+    flex-direction: column;
+    background: var(--surface-base);
+
+    /* Use intrinsic sizing - canvas clips the overflow */
+    width: max-content;
+    min-width: 100%;
+}
+
+/* Override individual chart styles when inside combined canvas */
+.consonantChart {
+    /* Canvas handles all overflow clipping - table sizes naturally */
+    width: max-content;
+}
+
+.vowelChart {
+    /* Vowel chart has fixed dimensions for SVG viewBox accuracy */
+    :global(.chartContainer) {
+        width: 600px;
+        height: 600px;
+    }
+}
