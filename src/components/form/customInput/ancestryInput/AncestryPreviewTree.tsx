@@ -1,17 +1,22 @@
 /**
  * AncestryPreviewTree
  * -------------------
- * Wraps CanvasFlowChart to display an ancestry tree preview.
+ * Wraps CanvasDAGChart to display an ancestry tree preview.
  * Shows selected ancestors and their full ancestry chains in a
- * left-to-right flowchart (ancestors on left, current word on right).
+ * left-to-right chart (ancestors on left, current word on right).
+ *
+ * Uses DAG (Directed Acyclic Graph) rendering to properly support:
+ * - Multiple parents (compound words, blends)
+ * - Diamond patterns (shared ancestors)
+ * - Edge labels showing ancestry types
  */
 
 import { useMemo, useCallback, memo } from 'react';
 import type { Lexicon, LexiconAncestryNode, AncestryType } from '../../../../db/types';
-import CanvasFlowChart from 'cyber-components/interactable/canvas/canvasFlowChart';
-import type { FlowChartNode } from 'cyber-components/interactable/canvas/canvasFlowChart';
+import { CanvasDAGChart } from 'cyber-components/interactable/canvas/canvasFlowChart';
+import type { DAGInput } from 'cyber-components/interactable/canvas/canvasFlowChart';
 import AncestryNodeDisplay from './AncestryNodeDisplay';
-import { ancestryToFlowChart, selectedAncestorsToFlowChart, ANCESTRY_TYPE_COLORS } from './ancestryTreeTransformer';
+import { ancestryToDAG, selectedAncestorsToDAG, ANCESTRY_TYPE_COLORS } from './ancestryTreeTransformer';
 import styles from './AncestryPreviewTree.module.scss';
 
 export interface AncestryPreviewTreeProps {
@@ -34,11 +39,14 @@ export interface AncestryPreviewTreeProps {
 }
 
 /**
- * Displays an ancestry tree using CanvasFlowChart.
+ * Displays an ancestry tree using CanvasDAGChart.
  *
  * When `ancestryTree` is provided, displays the full recursive ancestry.
- * Otherwise, displays a simple tree of selected ancestors -> current word.
+ * Otherwise, displays a simple graph of selected ancestors -> current word.
  * Always shows at least the current word node.
+ *
+ * DAG format properly handles multiple parents (e.g., compound words)
+ * without node duplication or freezing issues.
  */
 const AncestryPreviewTree = memo(function AncestryPreviewTree({
     ancestryTree,
@@ -63,31 +71,34 @@ const AncestryPreviewTree = memo(function AncestryPreviewTree({
         );
     }, [onNodeClick]);
 
-    // Create the current word node (always shown)
-    const currentWordNode = useMemo<FlowChartNode>(() => ({
-        id: currentWord.id ? `lexicon-${currentWord.id}` : 'current-word',
-        displayElement: renderNode(
-            {
-                id: currentWord.id ?? -1,
-                lemma: currentWord.lemma,
-                pronunciation: null,
-                is_native: true,
-            } as LexiconAncestryNode['entry'],
-            true,
-            null
-        ),
-        children: [],
-        data: {
-            isCurrentWord: true,
-            lexiconId: currentWord.id,
+    // Create the current word node for when there are no ancestors
+    const currentWordOnlyDAG = useMemo<DAGInput>(() => ({
+        nodes: {
+            [currentWord.id ? `lexicon-${currentWord.id}` : 'current-word']: {
+                displayElement: renderNode(
+                    {
+                        id: currentWord.id ?? -1,
+                        lemma: currentWord.lemma,
+                        pronunciation: null,
+                        is_native: true,
+                    } as LexiconAncestryNode['entry'],
+                    true,
+                    null
+                ),
+                data: {
+                    isCurrentWord: true,
+                    lexiconId: currentWord.id,
+                },
+            },
         },
+        edges: [],
     }), [currentWord.id, currentWord.lemma, renderNode]);
 
-    // Transform data to FlowChartNode format
-    const flowChartData = useMemo<FlowChartNode[]>(() => {
+    // Transform data to DAGInput format
+    const dagData = useMemo<DAGInput>(() => {
         // If we have full ancestry tree with ancestors, use it
         if (ancestryTree && ancestryTree.ancestors && ancestryTree.ancestors.length > 0) {
-            return ancestryToFlowChart(ancestryTree, {
+            return ancestryToDAG(ancestryTree, {
                 renderNode,
                 currentWordId: currentWord.id,
                 maxDepth: 10,
@@ -96,9 +107,9 @@ const AncestryPreviewTree = memo(function AncestryPreviewTree({
 
         // If we have selected ancestors from form, use simple preview
         if (selectedAncestors && selectedAncestors.length > 0) {
-            return selectedAncestorsToFlowChart(
+            return selectedAncestorsToDAG(
                 selectedAncestors.map(a => ({
-                    entry: a.ancestor,
+                    ancestor: a.ancestor,
                     ancestryType: a.ancestryType,
                 })),
                 currentWord,
@@ -107,8 +118,8 @@ const AncestryPreviewTree = memo(function AncestryPreviewTree({
         }
 
         // No ancestors - return just the current word node
-        return [currentWordNode];
-    }, [ancestryTree, selectedAncestors, currentWord, renderNode, currentWordNode]);
+        return currentWordOnlyDAG;
+    }, [ancestryTree, selectedAncestors, currentWord, renderNode, currentWordOnlyDAG]);
 
     // Count ancestors for display
     const ancestorCount = ancestryTree?.ancestors?.length ?? selectedAncestors?.length ?? 0;
@@ -136,8 +147,8 @@ const AncestryPreviewTree = memo(function AncestryPreviewTree({
             </div>
 
             <div className={styles.chartContainer}>
-                <CanvasFlowChart
-                    data={flowChartData}
+                <CanvasDAGChart
+                    data={dagData}
                     layout={{
                         direction: 'horizontal',
                         levelSpacing: 100,
@@ -162,7 +173,7 @@ const AncestryPreviewTree = memo(function AncestryPreviewTree({
                     initialScale={0.9}
                     minScale={0.3}
                     maxScale={2}
-                    ariaLabel="Etymology tree showing word ancestry"
+                    ariaLabel="Etymology graph showing word ancestry"
                 />
             </div>
 

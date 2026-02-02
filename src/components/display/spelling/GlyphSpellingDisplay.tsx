@@ -139,6 +139,24 @@ const GlyphSpellingDisplay = forwardRef<GlyphSpellingDisplayRef, GlyphSpellingDi
             getContentBounds: () => internalRef.current?.getContentBounds() ?? bounds,
         }), [bounds]);
 
+        // Static mode container style - MUST be before conditional returns to satisfy hooks rules
+        const overflowMap = { clip: 'hidden', scroll: 'auto', visible: 'visible' } as const;
+        const containerStyle = useMemo<React.CSSProperties>(
+            () => ({
+                ...style,
+                // Scale container dimensions by zoom factor
+                width: (width ?? bounds.width) * zoom,
+                height: (height ?? bounds.height) * zoom,
+                overflow: overflowMap[overflow],
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                // If glyphEmPx was provided, set font-size on the container so 1em==glyphEmPx
+                fontSize: glyphEmPx ? `${glyphEmPx}px` : undefined,
+            }),
+            [style, width, height, bounds.width, bounds.height, overflow, glyphEmPx, zoom]
+        );
+
         // Handle empty state
         if (normalizedGlyphs.length === 0) {
             if (emptyContent) {
@@ -177,23 +195,6 @@ const GlyphSpellingDisplay = forwardRef<GlyphSpellingDisplayRef, GlyphSpellingDi
         }
 
         // Static mode (default) - preserve backward compatibility
-        const overflowMap = { clip: 'hidden', scroll: 'auto', visible: 'visible' } as const;
-        const containerStyle = useMemo<React.CSSProperties>(
-            () => ({
-                ...style,
-                // Scale container dimensions by zoom factor
-                width: (width ?? bounds.width) * zoom,
-                height: (height ?? bounds.height) * zoom,
-                overflow: overflowMap[overflow],
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                // If glyphEmPx was provided, set font-size on the container so 1em==glyphEmPx
-                fontSize: glyphEmPx ? `${glyphEmPx}px` : undefined,
-            }),
-            [style, width, height, bounds.width, bounds.height, overflow, glyphEmPx, zoom]
-        );
-
         return (
             <div
                 className={classNames(styles.container, styles.centered, className)}

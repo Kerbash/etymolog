@@ -1,19 +1,22 @@
 /**
  * Ancestry Tree Transformer
  * -------------------------
- * Transforms LexiconAncestryNode data into FlowChartNode format.
+ * Transforms LexiconAncestryNode data into FlowChartNode or DAGInput format.
  *
  * The key transformation is REVERSING the tree direction:
  * - LexiconAncestryNode: Current word is root, ancestors are children
- * - FlowChartNode: Root ancestors are parents (left), current word is leaf (right)
+ * - FlowChartNode/DAGInput: Root ancestors are parents (left), current word is leaf (right)
  *
- * This ensures the flowchart displays ancestors on the left flowing to
+ * This ensures the chart displays ancestors on the left flowing to
  * the current word on the right in horizontal layout.
+ *
+ * **Recommended:** Use DAGInput format (ancestryToDAG, selectedAncestorsToDAG) for
+ * multiple parents support. FlowChartNode format is kept for backward compatibility.
  */
 
 import type { ReactNode } from 'react';
-import type { LexiconAncestryNode, AncestryType } from '../../../../db/types';
-import type { FlowChartNode } from 'cyber-components/interactable/canvas/canvasFlowChart';
+import type { LexiconAncestryNode, AncestryType, Lexicon } from '../../../../db/types';
+import type { FlowChartNode, DAGInput, DAGEdge, DAGNodeData } from 'cyber-components/interactable/canvas/canvasFlowChart';
 
 /**
  * Color mapping for ancestry types (matching EtymologyTreeNode)
@@ -329,3 +332,168 @@ export function selectedAncestorsToFlowChart(
         },
     }));
 }
+
+// =============================================================================
+// DAG TRANSFORMERS (for CanvasDAGChart - supports multiple parents)
+// =============================================================================
+
+/**
+ * Transforms a LexiconAncestryNode tree into DAGInput format.
+ *
+ * Unlike FlowChart format (tree-only), DAGInput properly supports:
+ * - Multiple parents (compound words, blends)
+ * - Diamond patterns (shared ancestors)
+ * - Edge labels with ancestry types
+ *
+ * @param rootNode - The root LexiconAncestryNode (current word with its ancestry tree)
+ * @param options - Transformation options including render function
+ * @returns DAGInput with nodes record and edges array
+ */
+export function ancestryToDAG(
+    rootNode: LexiconAncestryNode,
+    options: TransformOptions
+): DAGInput {
+    const { renderNode, currentWordId, maxDepth = 10 } = options;
+    const nodes: Record<string, DAGNodeData> = {};
+    const edges: DAGEdge[] = [];
+    const visited = new Set<number>();
+
+    // Add the current word as rightmost node
+    const currentId = `lexicon-${rootNode.entry.id}`;
+    nodes[currentId] = {
+        displayElement: renderNode(rootNode.entry, true, null),
+        data: {
+            isCurrentWord: true,
+            lexiconId: rootNode.entry.id,
+        },
+    };
+    visited.add(rootNode.entry.id);
+
+    /**
+     * Recursively processes ancestors, adding nodes and edges.
+     * Edges flow from ancestor (source) to child (target).
+     */
+    function processAncestors(
+        node: LexiconAncestryNode,
+        childId: string,
+        depth: number
+    ): void {
+        if (depth > maxDepth) return;
+
+        for (const ancestor of node.ancestors ?? []) {
+            const ancestorId = `lexicon-${ancestor.entry.id}`;
+
+            // Add edge: ancestor → child (with ancestry type label)
+            edges.push({
+                sourceId: ancestorId,
+                targetId: childId,
+                label: ancestor.ancestry_type ?? undefined,
+                labelStyle: ancestor.ancestry_type ? {
+                    fill: ANCESTRY_TYPE_COLORS[ancestor.ancestry_type],
+                    fontSize: '0.65rem',
+                } : undefined,
+            });
+
+            // Add node if not already visited (handles diamond patterns)
+            if (!visited.has(ancestor.entry.id)) {
+                visited.add(ancestor.entry.id);
+                nodes[ancestorId] = {
+                    displayElement: renderNode(
+                        ancestor.entry,
+                        ancestor.entry.id === currentWordId,
+                        ancestor.ancestry_type
+                    ),
+                    data: {
+                        lexiconId: ancestor.entry.id,
+                        isCurrentWord: ancestor.entry.id === currentWordId,
+                    },
+                };
+
+                // Recurse to ancestor's ancestors
+                processAncestors(ancestor, ancestorId, depth + 1);
+            }
+        }
+    }
+
+    // Start processing from the root node's ancestors
+    processAncestors(rootNode, currentId, 0);
+
+    return { nodes, edges };
+}
+
+/**
+ * Creates a DAGInput for preview from selected ancestors.
+ * Used in create/edit forms when we don't have full ancestry data.
+ *
+ * All ancestors connect to the current word, properly handling
+ * compound words and multiple parent scenarios.
+ *
+ * @param ancestors - Array of selected ancestor entries with ancestry types
+ * @param currentWord - The current word being edited
+ * @param renderNode - Function to render node content
+ * @returns DAGInput with nodes record and edges array
+ */
+export function selectedAncestorsToDAG(
+    ancestors: Array<{
+        ancestor: Lexicon;
+        ancestryType: AncestryType;
+    }>,
+    currentWord: { lemma: string; id?: number },
+    renderNode: TransformOptions['renderNode']
+): DAGInput {
+    const nodes: Record<string, DAGNodeData> = {};
+    const edges: DAGEdge[] = [];
+
+    // Create the current word node
+    const currentId = currentWord.id ? `lexicon-${currentWord.id}` : 'current-word';
+    nodes[currentId] = {
+        displayElement: renderNode(
+            {
+                id: currentWord.id ?? -1,
+                lemma: currentWord.lemma,
+                pronunciation: null,
+                is_native: true,
+            } as LexiconAncestryNode['entry'],
+            true,
+            null
+        ),
+        data: {
+            isCurrentWord: true,
+            lexiconId: currentWord.id,
+        },
+    };
+
+    // Add each ancestor and create edges
+    for (const { ancestor, ancestryType } of ancestors) {
+        const ancestorId = `lexicon-${ancestor.id}`;
+
+        // Add ancestor node (skip if duplicate)
+        if (!nodes[ancestorId]) {
+            nodes[ancestorId] = {
+                displayElement: renderNode(
+                    ancestor as LexiconAncestryNode['entry'],
+                    false,
+                    ancestryType
+                ),
+                data: {
+                    lexiconId: ancestor.id,
+                    isCurrentWord: false,
+                },
+            };
+        }
+
+        // Add edge: ancestor → current word
+        edges.push({
+            sourceId: ancestorId,
+            targetId: currentId,
+            label: ancestryType,
+            labelStyle: {
+                fill: ANCESTRY_TYPE_COLORS[ancestryType],
+                fontSize: '0.65rem',
+            },
+        });
+    }
+
+    return { nodes, edges };
+}
+
