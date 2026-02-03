@@ -55,8 +55,15 @@ export default function IPACombinedChart({
                 minScale={0.3}
                 maxScale={2}
                 showControls
-                centerOnInit
-                contentDimensions={{ initialPosition: 'top' }}
+                contentDimensions={{
+                    initialPosition: "top",
+                    autoFit: {
+                        enabled: true,
+                        axis: 'width',
+                        padding: 16,
+                        refitOnResize: true,
+                    },
+                }}
                 doubleClickMode="disabled"
                 controlsPosition="bottom-right"
                 ariaLabel="IPA Chart - International Phonetic Alphabet"
