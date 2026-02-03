@@ -29,6 +29,7 @@
     /* Use intrinsic sizing - canvas clips the overflow */
     width: max-content;
     min-width: 100%;
+    padding: 2em;
 }
 
 /* Override individual chart styles when inside combined canvas */

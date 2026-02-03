@@ -114,8 +114,7 @@ const GlyphCanvas = forwardRef<GlyphCanvasRef, GlyphCanvasProps>(
             >
                 <PannableCanvas
                     ref={pannableRef}
-                    canvasWidth={svgWidth}
-                    canvasHeight={svgHeight}
+                    contentDimensions={{ width: svgWidth, height: svgHeight }}
                     initialScale={initialScale}
                     minScale={minScale}
                     maxScale={maxScale}
