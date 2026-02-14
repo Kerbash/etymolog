@@ -62,8 +62,8 @@ describe('GlyphSpellingDisplay', () => {
             );
             const svg = container.querySelector('svg');
             expect(svg).toBeTruthy();
-            const foreignObjects = container.querySelectorAll('foreignObject');
-            expect(foreignObjects.length).toBe(3);
+            const nestedSvgs = container.querySelectorAll('svg svg');
+            expect(nestedSvgs.length).toBe(3);
         });
         it('returns null when empty and no emptyContent', () => {
             const { container } = renderSync(
@@ -149,8 +149,8 @@ describe('GlyphSpellingDisplay', () => {
                     canvas: { width: 500 }
                 })
             );
-            const foreignObjects = container.querySelectorAll('foreignObject');
-            expect(foreignObjects.length).toBe(100);
+            const nestedSvgs = container.querySelectorAll('svg svg');
+            expect(nestedSvgs.length).toBe(100);
         });
         it('handles mixed virtual and real glyphs', () => {
             const mixedGlyphs = [...mockGlyphs, mockVirtualGlyph];
@@ -160,8 +160,8 @@ describe('GlyphSpellingDisplay', () => {
                     showVirtualGlyphStyling: true
                 })
             );
-            const foreignObjects = container.querySelectorAll('foreignObject');
-            expect(foreignObjects.length).toBe(4);
+            const nestedSvgs = container.querySelectorAll('svg svg');
+            expect(nestedSvgs.length).toBe(4);
         });
     });
 });

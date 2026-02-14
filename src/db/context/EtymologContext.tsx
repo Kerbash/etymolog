@@ -306,6 +306,7 @@ export function EtymologProvider({ children }: EtymologProviderProps) {
                 updateAncestry: wrapWithRefresh(etymologApi.lexicon.updateAncestry, refreshLexicon),
                 applyAutoSpelling: wrapWithRefresh(etymologApi.lexicon.applyAutoSpelling, refreshLexicon),
             },
+            phrase: etymologApi.phrase,
         };
     }, [refresh, refreshGlyphs, refreshGraphemes, refreshLexicon]);
 

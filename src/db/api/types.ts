@@ -319,4 +319,5 @@ export interface EtymologApi {
     settings: SettingsApi;
     database: DatabaseApi;
     lexicon: import('./lexiconApi').LexiconApi;
+    phrase: import('./phraseApi').PhraseApi;
 }

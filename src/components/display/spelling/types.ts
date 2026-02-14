@@ -383,4 +383,6 @@ export interface GlyphSpellingDisplayRef {
     getTransform: () => ViewportTransform;
     /** Get the content bounds (the actual size of rendered glyphs) */
     getContentBounds: () => LayoutBounds;
+    /** Get the SVG element for export purposes */
+    getSvgElement: () => SVGSVGElement | null;
 }

@@ -57,7 +57,11 @@
 
 .scaledSpellingWrapper {
     width: 100%;
-    height: 100%;
+    /* Allow the wrapper to size to its content instead of forcing full height.
+       Forcing height:100% collapses when the parent doesn't have an explicit height,
+       resulting in zero-height canvases. Use auto so the scaling logic can measure
+       the natural size of the inner content. */
+    height: auto;
     display: flex;
     align-items: center;
     justify-content: center;

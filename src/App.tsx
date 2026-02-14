@@ -11,6 +11,7 @@ import RouterTabContainer, {tabContainerBorderStyle} from "cyber-components/cont
 import LexiconMain from "./components/tabs/lexicon/main.tsx";
 import GraphemeMain from "./components/tabs/grapheme/main.tsx";
 import GraphotacticMain from "./components/tabs/graphotactic/main.tsx";
+import TranslatorMain from "./components/tabs/translator/main.tsx";
 
 const sections = [
     {
@@ -23,6 +24,11 @@ const sections = [
         toggle: 'Script Maker',
         content:
             <GraphemeMain/>
+    },
+    {
+        path: 'translator',
+        toggle: 'Translator',
+        content: <TranslatorMain/>
     }
 ];
 

@@ -90,6 +90,8 @@ const GlyphSpellingDisplay = forwardRef<GlyphSpellingDisplayRef, GlyphSpellingDi
     ) {
         // Internal ref for interactive mode
         const internalRef = useRef<GlyphSpellingDisplayRef>(null);
+        // SVG ref for static mode
+        const staticSvgRef = useRef<SVGSVGElement>(null);
 
         // Memoize normalization context to prevent unnecessary re-renders
         const normalizationContext = useMemo(
@@ -137,6 +139,13 @@ const GlyphSpellingDisplay = forwardRef<GlyphSpellingDisplayRef, GlyphSpellingDi
             panTo: (x: number, y: number) => internalRef.current?.panTo(x, y),
             getTransform: () => internalRef.current?.getTransform() ?? { scale: 1, positionX: 0, positionY: 0 },
             getContentBounds: () => internalRef.current?.getContentBounds() ?? bounds,
+            getSvgElement: () => {
+                // Try to get from interactive mode first, fall back to static mode
+                if (internalRef.current?.getSvgElement) {
+                    return internalRef.current.getSvgElement();
+                }
+                return staticSvgRef.current;
+            },
         }), [bounds]);
 
         // Static mode container style - MUST be before conditional returns to satisfy hooks rules
@@ -201,6 +210,7 @@ const GlyphSpellingDisplay = forwardRef<GlyphSpellingDisplayRef, GlyphSpellingDi
                 style={containerStyle}
             >
                 <GlyphSpellingCore
+                    ref={staticSvgRef}
                     positions={positions}
                     bounds={bounds}
                     showVirtualGlyphStyling={showVirtualGlyphStyling}

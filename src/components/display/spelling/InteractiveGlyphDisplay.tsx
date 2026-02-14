@@ -1,12 +1,12 @@
 ﻿/**
  * InteractiveGlyphDisplay Component
- * 
+ *
  * Wraps GlyphSpellingCore with pan/zoom functionality using react-zoom-pan-pinch.
  * This creates the "simulated paper" experience with viewport control.
  *
  * @module display/spelling/InteractiveGlyphDisplay
  */
-import { forwardRef, useImperativeHandle } from 'react';
+import { forwardRef, useImperativeHandle, useRef } from 'react';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import classNames from 'classnames';
 import type { 
@@ -52,14 +52,21 @@ export const InteractiveGlyphDisplay = forwardRef<GlyphSpellingDisplayRef, Inter
             refMethods,
             handleTransformChange,
         } = useViewport(bounds, viewport, onTransformChange);
-        // Expose imperative methods
-        useImperativeHandle(ref, () => refMethods, [refMethods]);
+
+        // Ref to the SVG element for export
+        const svgRef = useRef<SVGSVGElement>(null);
+
+        // Expose imperative methods including SVG element access
+        useImperativeHandle(ref, () => ({
+            ...refMethods,
+            getSvgElement: () => svgRef.current,
+        }), [refMethods]);
         // Calculate canvas dimensions
         const canvasWidth = canvas?.width ?? bounds.width;
         const canvasHeight = canvas?.height ?? bounds.height;
-        // Viewport dimensions
+        // Viewport dimensions (use canvas height as default, not bounds height)
         const viewportWidth = viewport?.width ?? '100%';
-        const viewportHeight = viewport?.height ?? bounds.height;
+        const viewportHeight = viewport?.height ?? canvasHeight;
         return (
             <div
                 className={classNames(styles.interactiveContainer, className)}
@@ -101,6 +108,7 @@ export const InteractiveGlyphDisplay = forwardRef<GlyphSpellingDisplayRef, Inter
                                 }}
                             >
                                 <GlyphSpellingCore
+                                    ref={svgRef}
                                     positions={positions}
                                     bounds={bounds}
                                     showVirtualGlyphStyling={showVirtualGlyphStyling}

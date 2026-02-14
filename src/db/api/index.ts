@@ -45,12 +45,18 @@ export type {
     UpdateAncestryRequest,
 } from './lexiconApi';
 
+// Re-export phrase API types
+export type {
+    PhraseApi,
+} from './phraseApi';
+
 // Import API implementations
 import { glyphApi } from './glyphApi';
 import { graphemeApi, phonemeApi } from './graphemeApi';
 import { settingsApi, getCurrentSettings, subscribeToSettings } from './settingsApi';
 import { databaseApi, initDatabase } from './databaseApi';
 import { lexiconApi } from './lexiconApi';
+import { phraseApi } from './phraseApi';
 
 /**
  * Complete Etymolog API.
@@ -63,10 +69,11 @@ export const etymologApi = {
     settings: settingsApi,
     database: databaseApi,
     lexicon: lexiconApi,
+    phrase: phraseApi,
 } as const;
 
 // Re-export individual APIs for direct access if needed
-export { glyphApi, graphemeApi, phonemeApi, settingsApi, databaseApi, lexiconApi };
+export { glyphApi, graphemeApi, phonemeApi, settingsApi, databaseApi, lexiconApi, phraseApi };
 
 // Re-export utility functions
 export { getCurrentSettings, subscribeToSettings, initDatabase };

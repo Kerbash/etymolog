@@ -3,7 +3,7 @@
  * Pure SVG rendering of glyph sequences.
  * @module display/spelling/GlyphSpellingCore
  */
-import { useMemo, memo } from 'react';
+import { useMemo, memo, forwardRef } from 'react';
 import DOMPurify from 'dompurify';
 import classNames from 'classnames';
 import type { PositionedGlyph, LayoutBounds } from './types';
@@ -27,9 +27,26 @@ const GlyphItem = memo(function GlyphItem({
     showVirtualGlyphStyling: boolean;
 }) {
     const { glyph, x, y, width: w, height: h, rotation } = positioned;
-    const sanitizedSvg = useMemo(() => DOMPurify.sanitize(glyph.svg_data, {
-        USE_PROFILES: { svg: true, svgFilters: true },
-    }), [glyph.svg_data]);
+    const positionedSvg = useMemo(() => {
+        const cleaned = DOMPurify.sanitize(glyph.svg_data, {
+            USE_PROFILES: { svg: true, svgFilters: true },
+        });
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(cleaned, 'image/svg+xml');
+        const svgEl = doc.documentElement;
+
+        // Position and size as a nested SVG element (no foreignObject needed)
+        svgEl.setAttribute('x', String(x));
+        svgEl.setAttribute('y', String(y));
+        svgEl.setAttribute('width', String(w));
+        svgEl.setAttribute('height', String(h));
+
+        if (!svgEl.getAttribute('viewBox')) {
+            svgEl.setAttribute('viewBox', '0 0 100 100');
+        }
+
+        return new XMLSerializer().serializeToString(svgEl);
+    }, [glyph.svg_data, x, y, w, h]);
     const transform = rotation
         ? `rotate(${rotation} ${x + w / 2} ${y + h / 2})`
         : undefined;
@@ -40,14 +57,7 @@ const GlyphItem = memo(function GlyphItem({
                 [styles.virtualGlyph]: glyph.isVirtual && showVirtualGlyphStyling,
             })}
         >
-            <foreignObject x={x} y={y} width={w} height={h}>
-                <div
-                    // @ts-expect-error - xmlns is valid for foreignObject content
-                    xmlns="http://www.w3.org/1999/xhtml"
-                    className={styles.glyphWrapper}
-                    dangerouslySetInnerHTML={{ __html: sanitizedSvg }}
-                />
-            </foreignObject>
+            <g dangerouslySetInnerHTML={{ __html: positionedSvg }} />
             {glyph.isVirtual && showVirtualGlyphStyling && (
                 <rect
                     x={x}
@@ -62,31 +72,33 @@ const GlyphItem = memo(function GlyphItem({
         </g>
     );
 });
-export const GlyphSpellingCore = memo(function GlyphSpellingCore({
-    positions,
-    bounds,
-    showVirtualGlyphStyling = true,
-    className,
-    backgroundColor,
-    showPaperEffect = false,
-    zoom = 1,
-}: GlyphSpellingCoreProps) {
-    const viewBox = boundsToViewBox(bounds);
-    return (
-        <svg
-            className={classNames(styles.svg, className, {
-                [styles.paperEffect]: showPaperEffect,
-            })}
-            viewBox={viewBox}
-            preserveAspectRatio="xMidYMid meet"
-            width={bounds.width}
-            height={bounds.height}
-            style={{
-                backgroundColor,
-                transform: zoom !== 1 ? `scale(${zoom})` : undefined,
-                transformOrigin: 'top left',
-            }}
-        >
+export const GlyphSpellingCore = memo(forwardRef<SVGSVGElement, GlyphSpellingCoreProps>(
+    function GlyphSpellingCore({
+        positions,
+        bounds,
+        showVirtualGlyphStyling = true,
+        className,
+        backgroundColor,
+        showPaperEffect = false,
+        zoom = 1,
+    }, ref) {
+        const viewBox = boundsToViewBox(bounds);
+        return (
+            <svg
+                ref={ref}
+                className={classNames(styles.svg, className, {
+                    [styles.paperEffect]: showPaperEffect,
+                })}
+                viewBox={viewBox}
+                preserveAspectRatio="xMidYMid meet"
+                width={bounds.width}
+                height={bounds.height}
+                style={{
+                    backgroundColor,
+                    transform: zoom !== 1 ? `scale(${zoom})` : undefined,
+                    transformOrigin: 'top left',
+                }}
+            >
             {showPaperEffect && (
                 <rect
                     x={bounds.minX}
@@ -106,5 +118,5 @@ export const GlyphSpellingCore = memo(function GlyphSpellingCore({
             ))}
         </svg>
     );
-});
+}));
 export default GlyphSpellingCore;

@@ -546,3 +546,54 @@ export interface AutoSpellEntry {
     /** The IPA character (only present for virtual glyphs) */
     ipaCharacter?: string;
 }
+
+// =============================================================================
+// PHRASE TRANSLATION TYPES (Ephemeral Translation)
+// =============================================================================
+
+/**
+ * Represents a single word from an input phrase.
+ */
+export interface PhraseWord {
+    /** Original word from input phrase */
+    originalWord: string;
+    /** Normalized word (lowercase, trimmed) */
+    normalizedWord: string;
+    /** Position in the phrase (0-indexed) */
+    position: number;
+}
+
+/**
+ * Translation result for a single word in a phrase.
+ */
+export interface PhraseWordTranslation {
+    /** Original word */
+    word: PhraseWord;
+    /** Translation result type */
+    type: 'lexicon' | 'autospell';
+    /** Lexicon entry if found */
+    lexiconEntry?: LexiconComplete;
+    /** Spelling display entries */
+    spellingDisplay: SpellingDisplayEntry[];
+    /** Whether uses virtual glyphs */
+    hasVirtualGlyphs: boolean;
+}
+
+/**
+ * Complete result of translating an English phrase to conlang.
+ * This is ephemeral - computed on-demand, not persisted to database.
+ */
+export interface PhraseTranslationResult {
+    /** Original input phrase */
+    originalPhrase: string;
+    /** Normalized phrase */
+    normalizedPhrase: string;
+    /** Individual word translations */
+    wordTranslations: PhraseWordTranslation[];
+    /** Combined spelling for display (includes word separators) */
+    combinedSpelling: SpellingDisplayEntry[];
+    /** Whether any word uses virtual glyphs */
+    hasVirtualGlyphs: boolean;
+    /** Translation timestamp */
+    timestamp: string;
+}
