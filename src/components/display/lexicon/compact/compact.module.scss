@@ -33,15 +33,43 @@
     max-width: 100%;
 }
 
-.svgContainer {
-    width: 80px;
-    height: 48px;
+.spellingContainer {
+    width: 180px;
+    height: 60px;
     display: flex;
     align-items: center;
     justify-content: center;
     margin: 0.5rem 0;
-    gap: 2px;
+    overflow: hidden;
+    position: relative;
+
+    // Constrain and scale the GlyphSpellingDisplay to fit
+    > div {
+        max-width: 100%;
+        max-height: 100%;
+        transform-origin: center center;
+
+        // If the content width exceeds container, it will be clipped
+        // The overflow: hidden on parent handles this
+        // The centering ensures it stays in the middle
+    }
 }
+
+.scaledSpellingWrapper {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: visible;
+}
+
+.scaledSpellingContent {
+    transition: transform 0.2s ease;
+    will-change: transform;
+}
+
+
 
 
 .noSpelling {

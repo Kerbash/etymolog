@@ -1,5 +1,5 @@
 import type { LexiconComplete, GraphemeComplete } from '../../../../db/types';
-import { GlyphSpellingDisplay } from '../../spelling';
+import { ScaledGlyphSpellingDisplay } from './ScaledGlyphSpellingDisplay';
 import styles from './compact.module.scss';
 import classNames from 'classnames';
 
@@ -39,14 +39,14 @@ export default function CompactLexiconDisplay({ lexiconData, graphemeMap, onClic
             <h3 className={styles.lemma}>{lexiconData.pronunciation ? `/${lexiconData.pronunciation}/` : lexiconData.lemma}</h3>
 
             {hasSpelling ? (
-                    <GlyphSpellingDisplay
+                <div className={styles.spellingContainer}>
+                    <ScaledGlyphSpellingDisplay
                         glyphs={lexiconData.spellingDisplay}
                         graphemeMap={graphemeMap}
-                        strategy="ltr"
-                        config="compact"
-                        zoom={2}
-                        emptyContent={<span className={styles.noSpelling}>(no spelling)</span>}
+                        maxWidth={180}
+                        maxHeight={60}
                     />
+                </div>
             ) : (
                 <div className={styles.noSpelling}>(no spelling)</div>
             )}

@@ -256,7 +256,10 @@ export function EtymologProvider({ children }: EtymologProviderProps) {
             glyph: {
                 ...etymologApi.glyph,
                 create: wrapWithRefresh(etymologApi.glyph.create, refresh),
-                update: wrapWithRefresh(etymologApi.glyph.update, refreshGlyphs),
+                // Glyph update must refresh all data since:
+                // - graphemesComplete contains embedded Glyph[] (denormalized)
+                // - lexiconComplete displays graphemes which contain glyphs
+                update: wrapWithRefresh(etymologApi.glyph.update, refresh),
                 delete: wrapWithRefresh(etymologApi.glyph.delete, refresh),
                 forceDelete: wrapWithRefresh(etymologApi.glyph.forceDelete, refresh),
                 cascadeDelete: wrapWithRefresh(etymologApi.glyph.cascadeDelete, refresh),
