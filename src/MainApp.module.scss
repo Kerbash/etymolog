@@ -1,0 +1,8 @@
+@import '@styles/modal.module.scss';
+
+.modalContent {
+    @extend .modalContentTemplate;
+    padding: 1.5rem;
+    min-width: 400px;
+    max-width: 500px;
+}

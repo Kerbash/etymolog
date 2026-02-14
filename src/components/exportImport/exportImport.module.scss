@@ -1,0 +1,63 @@
+@import '@styles/modal.module.scss';
+
+.modalContent {
+    @extend .modalContentTemplate;
+    padding: 1.5rem;
+    min-width: 400px;
+    max-width: 600px;
+}
+
+.menuItem {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    font-size: 0.9rem;
+    text-align: left;
+    border: none;
+    background: transparent;
+    color: var(--text-primary, #ccc);
+    cursor: pointer;
+    transition: background 0.2s ease;
+    white-space: nowrap;
+
+    &:hover:not(:disabled) {
+        background: var(--color-bg-hover, rgba(255, 255, 255, 0.05));
+    }
+
+    &:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+}
+
+.textarea {
+    width: 100%;
+    min-height: 200px;
+    padding: 0.5em;
+    font-family: monospace;
+    font-size: 0.85rem;
+    background: var(--surface-raised, #1a1a2e);
+    color: var(--text-primary, #ccc);
+    border: 1px solid var(--border-primary, #333);
+    border-radius: 4px;
+    outline: none;
+    resize: vertical;
+}
+
+.fileInput {
+    width: 100%;
+    padding: 0.5em;
+    font-size: 0.9rem;
+    color: var(--text-primary, #ccc);
+}
+
+.errorMessage {
+    color: var(--color-danger, #ff4444);
+    font-size: 0.85rem;
+    margin: 0;
+}
+
+.fileName {
+    font-size: 0.85rem;
+    color: var(--text-secondary, #888);
+    margin: 0;
+}
