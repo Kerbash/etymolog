@@ -1,0 +1,168 @@
+/**
+ * IPASyllabaryChart Component Styles
+ *
+ * Lightweight cell styling handled entirely in CSS — no per-cell
+ * React components, so hover/active states are pure CSS.
+ */
+
+.syllabaryChart {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.chartTitle {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.table {
+    border-collapse: collapse;
+    font-size: 0.875rem;
+
+    th, td {
+        border: 1px solid var(--border-primary);
+        padding: 1px;
+        text-align: center;
+        vertical-align: middle;
+    }
+}
+
+// Top-left corner cells
+.cornerCell {
+    background: var(--surface-raised);
+    width: 50px;
+    min-width: 40px;
+}
+
+// Vowel backness group header (Front / Central / Back)
+.backnessHeader {
+    background: var(--surface-raised);
+    color: var(--text-secondary);
+    font-weight: 600;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.35rem 0.25rem;
+    border-bottom: 2px solid var(--interactive-base);
+}
+
+// Individual vowel column headers
+.columnHeader {
+    background: var(--surface-raised);
+    color: var(--text-primary);
+    font-weight: 500;
+    font-size: 0.85rem;
+    padding: 0.3rem 0.125rem;
+    white-space: nowrap;
+    min-width: 48px;
+    font-family: 'Charis SIL', 'Doulos SIL', 'Gentium Plus', 'Noto Sans', serif;
+}
+
+// Consonant row header
+.rowHeader {
+    background: var(--surface-raised);
+    color: var(--text-primary);
+    font-weight: 500;
+    font-size: 0.95rem;
+    text-align: center;
+    padding: 0.25rem 0.5rem;
+    white-space: nowrap;
+    font-family: 'Charis SIL', 'Doulos SIL', 'Gentium Plus', 'Noto Sans', serif;
+}
+
+// Group separator row (Plosives, Nasals, etc.)
+.groupSeparator {
+    td {
+        background: var(--surface-raised);
+        color: var(--interactive-base);
+        font-weight: 600;
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        padding: 0.5rem 0.75rem;
+        text-align: left;
+        border-top: 2px solid var(--border-primary);
+    }
+}
+
+// ============================================================================
+// Syllable cells — lightweight, CSS-only interaction
+// ============================================================================
+
+.syllableCell {
+    background: var(--bg-tertiary);
+    padding: 1px;
+    cursor: pointer;
+    width: 48px;
+    height: 48px;
+
+    &:hover {
+        background: var(--interactive-hover);
+    }
+
+    &:active {
+        background: var(--interactive-active);
+    }
+}
+
+// Assigned cell highlight
+.assigned {
+    background: var(--surface-raised);
+    border-color: var(--border-primary);
+}
+
+// Unassigned IPA text inside a cell
+.cellIpa {
+    font-family: 'Charis SIL', 'Doulos SIL', 'Gentium Plus', 'Noto Sans', serif;
+    color: var(--text-primary-muted);
+    font-size: 0.7rem;
+    opacity: 0.5;
+    user-select: none;
+
+    .syllableCell:hover & {
+        opacity: 1;
+    }
+}
+
+// Assigned glyph container
+.cellAssigned {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+}
+
+.glyphDisplay {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    > div {
+        width: 100% !important;
+        height: 100% !important;
+    }
+
+    svg {
+        width: 100% !important;
+        height: 100% !important;
+    }
+}
+
+// Special vowel-only (∅) row
+.vowelRow {
+    .rowHeader {
+        font-style: italic;
+        color: var(--text-secondary);
+        font-family: sans-serif;
+    }
+
+    td, th {
+        border-bottom: 2px solid var(--interactive-base);
+    }
+}

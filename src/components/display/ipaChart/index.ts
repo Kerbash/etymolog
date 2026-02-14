@@ -11,4 +11,5 @@ export { default as IPAChartCell } from './IPAChartCell';
 export { default as IPAConsonantChart } from './IPAConsonantChart';
 export { default as IPAVowelChart } from './IPAVowelChart';
 export { default as IPACombinedChart } from './IPACombinedChart';
+export { default as IPASyllabaryChart } from './IPASyllabaryChart';
 export * from './types';

@@ -57,6 +57,20 @@ export interface IPAVowelChartProps {
 }
 
 /**
+ * Props for syllabary chart component.
+ */
+export interface IPASyllabaryChartProps {
+    /** Map of phonemes to graphemes for lookup */
+    phonemeMap: Map<string, GraphemeComplete>;
+    /** Click handler for IPA cells */
+    onCellClick?: (ipa: string, grapheme?: GraphemeComplete | null) => void;
+    /** Whether the chart is loading */
+    isLoading?: boolean;
+    /** Optional class name */
+    className?: string;
+}
+
+/**
  * Props for the main IPA Chart Page.
  */
 export interface IPAChartPageProps {

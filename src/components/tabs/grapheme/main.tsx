@@ -9,6 +9,7 @@
  */
 
 // External imports
+import type React from "react";
 import { Link, Routes, Route } from "react-router-dom";
 import classNames from "classnames";
 
@@ -16,6 +17,7 @@ import classNames from "classnames";
 import RouterTabContainer from "cyber-components/container/tabContainer/routerTabContainer.tsx";
 import IconButton from "cyber-components/interactable/buttons/iconButton/iconButton.tsx";
 import { buttonStyles } from "cyber-components/interactable/buttons/button/button.tsx";
+import DropDownSmall from "cyber-components/container/dropDownSmall/dropDownSmall.tsx";
 
 // Local components & utilities
 import NewGraphemeForm from "./newGrapheme/newGrapheme.tsx";
@@ -23,11 +25,20 @@ import GraphemeGallery from "./galleryGrapheme/graphemeGallery.tsx";
 import GlyphGallery from "./galleryGlyphs/galleryGlyphs.tsx";
 import { GlyphEditPage } from "./editGlyph";
 import IPAChartPage from "./ipaChart/IPAChartPage.tsx";
+import SyllabaryChartPage from "./syllabaryChart/SyllabaryChartPage.tsx";
 import { PunctuationPage } from "./punctuation";
 
 import { flex, sizing } from "utils-styles";
 import GraphemeEditPage from "./editGrapheme/GraphemeEditPage.tsx";
 import NewGlyphPage from "./newGlyph/NewGlyphPage.tsx";
+
+const dropdownLinkStyle: React.CSSProperties = {
+    display: 'block',
+    padding: '0.75rem 1rem',
+    textDecoration: 'none',
+    color: 'inherit',
+    fontSize: '0.9rem',
+};
 
 /**
  * Small navigation used inside the grapheme/glyph screens.
@@ -44,13 +55,21 @@ function GraphemeNav() {
             >
                 New Grapheme
             </IconButton>
-            <IconButton
-                as={Link}
-                to="/script-maker/chart"
-                iconName="grid-3x3"
+            <DropDownSmall
+                toggleBtn={
+                    <IconButton iconName="grid-3x3" as="span">View Chart</IconButton>
+                }
+                contentPin="bottom-start"
+                ariaLabel="Select chart type"
+                showCaret={false}
             >
-                View IPA Chart
-            </IconButton>
+                <Link to="/script-maker/chart" style={dropdownLinkStyle}>
+                    IPA Chart
+                </Link>
+                <Link to="/script-maker/syllabary" style={dropdownLinkStyle}>
+                    Syllabary
+                </Link>
+            </DropDownSmall>
             <IconButton
                 as={Link}
                 to="/script-maker/punctuation"
@@ -123,6 +142,7 @@ function GraphemesTab() {
                 <Route path="create" element={<CreateGraphemePage />} />
                 <Route path="grapheme/db/:id" element={<GraphemeEditPage />} />
                 <Route path="chart" element={<IPAChartPage />} />
+                <Route path="syllabary" element={<SyllabaryChartPage />} />
                 <Route path="punctuation" element={<PunctuationPage />} />
             </Routes>
         </div>
