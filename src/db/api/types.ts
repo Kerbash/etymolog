@@ -44,6 +44,75 @@ export type ApiErrorCode =
 // =============================================================================
 
 /**
+ * Configuration for a single punctuation mark.
+ * Controls how word/sentence separators and punctuation are rendered.
+ */
+export interface PunctuationConfig {
+    /**
+     * Grapheme ID to use for this punctuation mark.
+     * null means use the default virtual glyph (IPA character).
+     */
+    graphemeId: number | null;
+
+    /**
+     * When true, this punctuation mark is not rendered at all.
+     * Takes precedence over graphemeId.
+     */
+    useNoGlyph: boolean;
+}
+
+/**
+ * All punctuation settings for a conlang.
+ * These define how separators and punctuation marks are rendered in translations.
+ */
+export interface PunctuationSettings {
+    /** Word separator (space equivalent) */
+    wordSeparator: PunctuationConfig;
+    /** Sentence separator (period equivalent) */
+    sentenceSeparator: PunctuationConfig;
+    /** Comma */
+    comma: PunctuationConfig;
+    /** Question mark */
+    questionMark: PunctuationConfig;
+    /** Exclamation mark */
+    exclamationMark: PunctuationConfig;
+    /** Colon */
+    colon: PunctuationConfig;
+    /** Semicolon */
+    semicolon: PunctuationConfig;
+    /** Ellipsis */
+    ellipsis: PunctuationConfig;
+    /** Quotation marks (open) */
+    quotationOpen: PunctuationConfig;
+    /** Quotation marks (close) */
+    quotationClose: PunctuationConfig;
+}
+
+/**
+ * Default punctuation configuration (virtual glyph, not hidden).
+ */
+export const DEFAULT_PUNCTUATION_CONFIG: PunctuationConfig = {
+    graphemeId: null,
+    useNoGlyph: false,
+};
+
+/**
+ * Default punctuation settings for all marks.
+ */
+export const DEFAULT_PUNCTUATION_SETTINGS: PunctuationSettings = {
+    wordSeparator: { ...DEFAULT_PUNCTUATION_CONFIG },
+    sentenceSeparator: { ...DEFAULT_PUNCTUATION_CONFIG },
+    comma: { ...DEFAULT_PUNCTUATION_CONFIG },
+    questionMark: { ...DEFAULT_PUNCTUATION_CONFIG },
+    exclamationMark: { ...DEFAULT_PUNCTUATION_CONFIG },
+    colon: { ...DEFAULT_PUNCTUATION_CONFIG },
+    semicolon: { ...DEFAULT_PUNCTUATION_CONFIG },
+    ellipsis: { ...DEFAULT_PUNCTUATION_CONFIG },
+    quotationOpen: { ...DEFAULT_PUNCTUATION_CONFIG },
+    quotationClose: { ...DEFAULT_PUNCTUATION_CONFIG },
+};
+
+/**
  * Application settings managed by the API layer.
  *
  * Settings are stored in two locations:
@@ -78,6 +147,13 @@ export interface EtymologSettings {
      * This is a conlang-specific setting.
      */
     autoManageGlyphs: boolean;
+
+    /**
+     * Punctuation settings for the conlang.
+     * Controls how word separators, sentence endings, and punctuation marks are rendered.
+     * This is a conlang-specific setting.
+     */
+    punctuation: PunctuationSettings;
 }
 
 /**
@@ -88,6 +164,7 @@ export const DEFAULT_SETTINGS: EtymologSettings = {
     defaultGalleryView: 'compact',
     autoSaveInterval: 0,
     autoManageGlyphs: false,
+    punctuation: { ...DEFAULT_PUNCTUATION_SETTINGS },
 };
 
 /**

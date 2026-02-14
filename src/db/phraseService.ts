@@ -16,10 +16,10 @@ import type {
     PhraseTranslationResult,
     LexiconComplete,
     SpellingDisplayEntry,
-    AutoSpellResultExtended,
+    GraphemeComplete,
 } from './types';
+import type { PunctuationSettings, PunctuationConfig } from './api/types';
 import { generateSpellingWithFallback } from './autoSpellService';
-import { generateVirtualGlyphId } from '../components/form/customInput/glyphCanvasInput/utils';
 
 /**
  * Split phrase into words, handling punctuation and whitespace.
@@ -122,14 +122,93 @@ export function translateWord(
  * Create a virtual space glyph entry for word separation.
  * This renders as a dashed box in the display.
  *
- * @returns SpellingDisplayEntry representing a space
+ * @param config - Optional punctuation config for word separator
+ * @param grapheme - Optional grapheme to use if config specifies graphemeId
+ * @returns SpellingDisplayEntry representing a space, or null if useNoGlyph is true
  */
-export function createSpaceSeparator(): SpellingDisplayEntry {
+export function createSpaceSeparator(
+    config?: PunctuationConfig,
+    grapheme?: GraphemeComplete | null
+): SpellingDisplayEntry | null {
+    // If configured to hide, return null
+    if (config?.useNoGlyph) {
+        return null;
+    }
+
+    // If a grapheme is assigned and available, use it
+    if (config?.graphemeId !== null && grapheme) {
+        return {
+            type: 'grapheme',
+            position: 0, // Position will be set when combining
+            grapheme: {
+                id: grapheme.id,
+                name: grapheme.name,
+                category: grapheme.category,
+                notes: grapheme.notes,
+                created_at: grapheme.created_at,
+                updated_at: grapheme.updated_at,
+            },
+        };
+    }
+
+    // Default: return virtual space
     return {
         type: 'ipa',
         position: 0, // Position will be set when combining
         ipaCharacter: ' ',
     };
+}
+
+/**
+ * Create a punctuation entry based on settings.
+ *
+ * @param character - The punctuation character (e.g., '.', '?', '!')
+ * @param config - Punctuation configuration from settings
+ * @param grapheme - Optional grapheme to use if config specifies graphemeId
+ * @returns SpellingDisplayEntry for the punctuation, or null if useNoGlyph is true
+ */
+export function createPunctuationEntry(
+    character: string,
+    config?: PunctuationConfig,
+    grapheme?: GraphemeComplete | null
+): SpellingDisplayEntry | null {
+    // If configured to hide, return null
+    if (config?.useNoGlyph) {
+        return null;
+    }
+
+    // If a grapheme is assigned and available, use it
+    if (config?.graphemeId !== null && grapheme) {
+        return {
+            type: 'grapheme',
+            position: 0, // Position will be set when combining
+            grapheme: {
+                id: grapheme.id,
+                name: grapheme.name,
+                category: grapheme.category,
+                notes: grapheme.notes,
+                created_at: grapheme.created_at,
+                updated_at: grapheme.updated_at,
+            },
+        };
+    }
+
+    // Default: return virtual punctuation
+    return {
+        type: 'ipa',
+        position: 0,
+        ipaCharacter: character,
+    };
+}
+
+/**
+ * Configuration options for phrase translation.
+ */
+export interface TranslationConfig {
+    /** Punctuation settings from global settings */
+    punctuationSettings?: PunctuationSettings;
+    /** Map of grapheme IDs to GraphemeComplete for punctuation */
+    punctuationGraphemes?: Map<number, GraphemeComplete>;
 }
 
 /**
@@ -142,11 +221,13 @@ export function createSpaceSeparator(): SpellingDisplayEntry {
  *
  * @param phrase - The English phrase to translate
  * @param lexiconEntries - All lexicon entries to search
+ * @param config - Optional translation configuration for punctuation
  * @returns PhraseTranslationResult with full translation data
  */
 export function translatePhrase(
     phrase: string,
-    lexiconEntries: LexiconComplete[]
+    lexiconEntries: LexiconComplete[],
+    config?: TranslationConfig
 ): PhraseTranslationResult {
     const originalPhrase = phrase;
     const normalizedPhrase = phrase.trim();
@@ -158,6 +239,12 @@ export function translatePhrase(
     const wordTranslations: PhraseWordTranslation[] = words.map(word =>
         translateWord(word, lexiconEntries)
     );
+
+    // Get word separator configuration
+    const wordSeparatorConfig = config?.punctuationSettings?.wordSeparator;
+    const wordSeparatorGrapheme = wordSeparatorConfig?.graphemeId !== null && wordSeparatorConfig?.graphemeId !== undefined
+        ? config?.punctuationGraphemes?.get(wordSeparatorConfig.graphemeId)
+        : null;
 
     // Combine spellings with space separators
     const combinedSpelling: SpellingDisplayEntry[] = [];
@@ -182,11 +269,14 @@ export function translatePhrase(
 
         // Add space separator (except after last word)
         if (i < wordTranslations.length - 1) {
-            const spaceSeparator = createSpaceSeparator();
-            combinedSpelling.push({
-                ...spaceSeparator,
-                position: globalPosition++,
-            });
+            const spaceSeparator = createSpaceSeparator(wordSeparatorConfig, wordSeparatorGrapheme);
+            // Only add if not configured to be hidden
+            if (spaceSeparator !== null) {
+                combinedSpelling.push({
+                    ...spaceSeparator,
+                    position: globalPosition++,
+                });
+            }
         }
     }
 

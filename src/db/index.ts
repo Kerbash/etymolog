@@ -59,6 +59,11 @@ export {
     type PhonemeApi,
     type SettingsApi,
     type DatabaseApi,
+    // Punctuation types
+    type PunctuationConfig,
+    type PunctuationSettings,
+    DEFAULT_PUNCTUATION_CONFIG,
+    DEFAULT_PUNCTUATION_SETTINGS,
     // Request/Response types
     type CreateGlyphRequest,
     type UpdateGlyphRequest,

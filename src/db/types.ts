@@ -597,3 +597,7 @@ export interface PhraseTranslationResult {
     /** Translation timestamp */
     timestamp: string;
 }
+
+// Re-export punctuation types for convenience
+export type { PunctuationConfig, PunctuationSettings } from './api/types';
+

@@ -15,7 +15,7 @@ import TranslationControls from './_components/TranslationControls';
 import styles from './translator.module.scss';
 
 export default function TranslatorHome() {
-    const { api, data } = useEtymolog();
+    const { api, data, settings } = useEtymolog();
 
     // State
     const [inputPhrase, setInputPhrase] = useState('');
@@ -37,7 +37,8 @@ export default function TranslatorHome() {
         const timer = setTimeout(() => {
             if (inputPhrase.trim()) {
                 setIsTranslating(true);
-                const result = api.phrase.translate(inputPhrase);
+                // Pass punctuation settings to the translate API
+                const result = api.phrase.translate(inputPhrase, settings.punctuation);
                 if (result.success && result.data) {
                     setTranslationResult(result.data);
                 } else {
@@ -51,7 +52,7 @@ export default function TranslatorHome() {
         }, 300); // 300ms debounce
 
         return () => clearTimeout(timer);
-    }, [inputPhrase, api]);
+    }, [inputPhrase, api, settings.punctuation]);
 
     return (
         <div className={styles.container}>

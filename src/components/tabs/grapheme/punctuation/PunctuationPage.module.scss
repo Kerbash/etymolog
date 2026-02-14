@@ -1,0 +1,140 @@
+.container {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1rem;
+    max-width: 1000px;
+}
+
+.loading, .error {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 300px;
+}
+
+.loadingText {
+    color: var(--color-text-muted);
+    font-style: italic;
+}
+
+.errorText {
+    color: var(--color-danger);
+}
+
+.nav {
+    margin-bottom: 0.5rem;
+}
+
+.pageTitle {
+    margin: 0;
+    font-size: 1.75rem;
+}
+
+.description {
+    color: var(--color-text-muted);
+    margin: 0;
+    line-height: 1.5;
+}
+
+.infoBox {
+    background-color: rgba(var(--color-primary-rgb), 0.08);
+    border-left: 4px solid var(--color-primary);
+    padding: 0.75rem 1rem;
+    border-radius: 0 8px 8px 0;
+
+    h4 {
+        margin: 0 0 0.5rem 0;
+        font-size: 0.95rem;
+        color: var(--color-primary);
+    }
+
+    p {
+        margin: 0;
+        font-size: 0.9rem;
+        color: var(--color-text);
+        line-height: 1.5;
+    }
+}
+
+.statsBar {
+    display: flex;
+    gap: 1.5rem;
+    padding: 0.5rem 0;
+}
+
+.stat {
+    font-size: 0.9rem;
+    color: var(--color-text-muted);
+
+    strong {
+        color: var(--color-text);
+    }
+}
+
+.table {
+    margin-top: 0.5rem;
+}
+
+.infoSection {
+    margin-top: 1.5rem;
+    padding: 1rem;
+    background-color: rgba(var(--color-secondary-rgb), 0.05);
+    border-radius: 8px;
+
+    h4 {
+        margin: 0 0 0.75rem 0;
+        font-size: 1rem;
+        color: var(--color-text);
+    }
+
+    ul {
+        margin: 0;
+        padding-left: 1.5rem;
+
+        li {
+            margin-bottom: 0.5rem;
+            line-height: 1.5;
+            color: var(--color-text-muted);
+
+            strong {
+                color: var(--color-text);
+            }
+
+            &:last-child {
+                margin-bottom: 0;
+            }
+        }
+    }
+}
+
+.modal {
+    max-width: 800px;
+    width: 90vw;
+}
+
+.modalContent {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1rem;
+}
+
+.modalTitle {
+    margin: 0;
+    font-size: 1.25rem;
+    color: var(--color-text);
+}
+
+.modalDescription {
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: 0.9rem;
+}
+
+.galleryContainer {
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+

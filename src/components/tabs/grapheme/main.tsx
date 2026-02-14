@@ -23,6 +23,7 @@ import GraphemeGallery from "./galleryGrapheme/graphemeGallery.tsx";
 import GlyphGallery from "./galleryGlyphs/galleryGlyphs.tsx";
 import { GlyphEditPage } from "./editGlyph";
 import IPAChartPage from "./ipaChart/IPAChartPage.tsx";
+import { PunctuationPage } from "./punctuation";
 
 import { flex, sizing } from "utils-styles";
 import GraphemeEditPage from "./editGrapheme/GraphemeEditPage.tsx";
@@ -49,6 +50,13 @@ function GraphemeNav() {
                 iconName="grid-3x3"
             >
                 View IPA Chart
+            </IconButton>
+            <IconButton
+                as={Link}
+                to="/script-maker/punctuation"
+                iconName="type"
+            >
+                Punctuation
             </IconButton>
         </nav>
     );
@@ -115,6 +123,7 @@ function GraphemesTab() {
                 <Route path="create" element={<CreateGraphemePage />} />
                 <Route path="grapheme/db/:id" element={<GraphemeEditPage />} />
                 <Route path="chart" element={<IPAChartPage />} />
+                <Route path="punctuation" element={<PunctuationPage />} />
             </Routes>
         </div>
     );

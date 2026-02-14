@@ -4,7 +4,7 @@
  * Unit tests for phrase translation functionality.
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
     tokenizePhrase,
     lookupWord,
@@ -176,12 +176,26 @@ describe('phraseService', () => {
     });
 
     describe('createSpaceSeparator', () => {
-        it('should create a space separator entry', () => {
+        it('should create a space separator entry when no config provided', () => {
             const result = createSpaceSeparator();
 
+            expect(result).not.toBeNull();
+            if (result === null) throw new Error('result should not be null');
             expect(result.type).toBe('ipa');
             expect(result.ipaCharacter).toBe(' ');
             expect(result.position).toBe(0);
+        });
+
+        it('should return null when useNoGlyph is true', () => {
+            const result = createSpaceSeparator({ graphemeId: null, useNoGlyph: true });
+            expect(result).toBeNull();
+        });
+
+        it('should return virtual glyph when useNoGlyph is false and no grapheme', () => {
+            const result = createSpaceSeparator({ graphemeId: null, useNoGlyph: false });
+            expect(result).not.toBeNull();
+            if (result === null) throw new Error('result should not be null');
+            expect(result.type).toBe('ipa');
         });
     });
 

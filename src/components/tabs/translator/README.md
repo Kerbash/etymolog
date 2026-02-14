@@ -136,8 +136,6 @@ interface PhraseTranslationResult {
 - ✅ Debounced translation (300ms)
 
 ### Limitations
-- Word separators are always virtual space glyphs (not customizable)
-- No custom punctuation glyph support
 - Autospelling is character-by-character (not phonologically accurate for English)
 - No translation history/caching
 - Single-line output only
@@ -146,8 +144,6 @@ interface PhraseTranslationResult {
 
 See the plan document for a complete list of future enhancements, including:
 
-- [ ] Customizable word separator graphemes
-- [ ] Customizable punctuation graphemes (. ? ! , etc.)
 - [ ] Translation history/cache in context
 - [ ] Batch translation from uploaded file
 - [ ] Copy to clipboard
@@ -158,6 +154,12 @@ See the plan document for a complete list of future enhancements, including:
 - [ ] Translation editing (adjust word choices)
 - [ ] Save favorite translations
 - [ ] IPA input mode for more accurate autospelling
+
+### Implemented Features
+
+- [x] Customizable word separator graphemes (via `/script-maker/punctuation`)
+- [x] Customizable punctuation graphemes (via `/script-maker/punctuation`)
+- [x] Option to hide word separators or punctuation entirely
 
 ## Usage Example
 

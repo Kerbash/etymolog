@@ -1,0 +1,172 @@
+.cell {
+    transition: background-color 0.15s ease;
+
+    &:hover {
+        background-color: rgba(var(--color-primary-rgb), 0.05);
+    }
+
+    &.hidden {
+        opacity: 0.6;
+    }
+}
+
+.symbolColumn {
+    width: 60px;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.symbol {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--color-text);
+    display: inline-block;
+    min-width: 40px;
+    padding: 0.25rem;
+    border-radius: 4px;
+    background-color: rgba(var(--color-secondary-rgb), 0.1);
+}
+
+.labelColumn {
+    vertical-align: middle;
+    min-width: 200px;
+}
+
+.labelContent {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+}
+
+.label {
+    font-weight: 600;
+    color: var(--color-text);
+    font-size: 0.95rem;
+}
+
+.description {
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+}
+
+.displayColumn {
+    width: 120px;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.glyphDisplay {
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 40px;
+}
+
+.virtualIndicator {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.125rem;
+    padding: 0.25rem;
+    border: 2px dashed rgba(var(--color-primary-rgb), 0.4);
+    border-radius: 4px;
+    min-width: 50px;
+}
+
+.virtualSymbol {
+    font-size: 1.25rem;
+    color: var(--color-primary);
+    opacity: 0.7;
+}
+
+.virtualText {
+    font-size: 0.65rem;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.hiddenIndicator {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.125rem;
+    padding: 0.25rem;
+    border: 2px dashed rgba(var(--color-danger-rgb), 0.4);
+    border-radius: 4px;
+    min-width: 50px;
+    opacity: 0.6;
+}
+
+.hiddenIcon {
+    font-size: 1.25rem;
+    color: var(--color-danger);
+}
+
+.hiddenText {
+    font-size: 0.65rem;
+    color: var(--color-danger);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.loading {
+    color: var(--color-text-muted);
+    font-size: 0.85rem;
+    font-style: italic;
+}
+
+.statusColumn {
+    width: 100px;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.statusBadge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+
+    &.assigned {
+        background-color: rgba(var(--color-success-rgb), 0.15);
+        color: var(--color-success);
+    }
+
+    &.virtual {
+        background-color: rgba(var(--color-warning-rgb), 0.15);
+        color: var(--color-warning);
+    }
+
+    &.hidden {
+        background-color: rgba(var(--color-danger-rgb), 0.15);
+        color: var(--color-danger);
+    }
+}
+
+.actionsColumn {
+    width: 140px;
+    text-align: right;
+    vertical-align: middle;
+}
+
+.actions {
+    display: flex;
+    gap: 0.25rem;
+    justify-content: flex-end;
+}
+
+.actionButton {
+    padding: 0.375rem;
+    min-width: 32px;
+    min-height: 32px;
+
+    &.activeNoGlyph {
+        background-color: rgba(var(--color-danger-rgb), 0.15);
+        color: var(--color-danger);
+    }
+}
+

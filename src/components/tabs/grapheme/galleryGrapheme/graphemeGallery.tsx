@@ -36,6 +36,15 @@ interface GraphemeGalleryProps {
     defaultViewMode?: ViewMode;
     /** Called when a grapheme is clicked (for compact view) */
     onGraphemeClick?: (grapheme: GraphemeComplete) => void;
+    /**
+     * When true, operates in selection mode for modals/pickers.
+     * - Hides delete buttons
+     * - Hides "create" buttons in empty state
+     * - Uses `onSelect` callback instead of navigation
+     */
+    selectionMode?: boolean;
+    /** Called when a grapheme is selected (only used in selectionMode) */
+    onSelect?: (grapheme: GraphemeComplete) => void;
 }
 
 // Sort options for the gallery
@@ -59,6 +68,8 @@ export default function GraphemeGallery({
                                             error: errorProp,
                                             defaultViewMode = 'expanded',
                                             onGraphemeClick,
+                                            selectionMode = false,
+                                            onSelect,
                                         }: GraphemeGalleryProps) {
     // Use etymolog context for API + optionally data
     const etymolog = useEtymolog();
@@ -93,8 +104,13 @@ export default function GraphemeGallery({
     // Navigation / default click handler
     const navigate = useNavigate();
     const defaultOnGraphemeClick = useCallback((g: GraphemeComplete) => {
+        // In selection mode, call onSelect instead of navigating
+        if (selectionMode && onSelect) {
+            onSelect(g);
+            return;
+        }
         navigate(`/script-maker/grapheme/db/${g.id}`);
-    }, [navigate]);
+    }, [navigate, selectionMode, onSelect]);
 
     const internalOnGraphemeClick = onGraphemeClick ?? defaultOnGraphemeClick;
 
@@ -225,36 +241,41 @@ export default function GraphemeGallery({
                 e.currentTarget.style.boxShadow = 'none';
             }}
         >
-            {/* Top-right delete button */}
-            <div style={{position: 'absolute', top: 8, right: 8, zIndex: 10}}>
-                <IconButton
-                    iconName="trash"
-                    iconColor={'var(--status-bad)'}
-                    onClick={(e: React.MouseEvent) => handleDelete(grapheme.id, e)}
-                    aria-label={`Delete grapheme ${grapheme.name}`}
-                />
-            </div>
+            {/* Top-right delete button - hidden in selection mode */}
+            {!selectionMode && (
+                <div style={{position: 'absolute', top: 8, right: 8, zIndex: 10}}>
+                    <IconButton
+                        iconName="trash"
+                        iconColor={'var(--status-bad)'}
+                        onClick={(e: React.MouseEvent) => handleDelete(grapheme.id, e)}
+                        aria-label={`Delete grapheme ${grapheme.name}`}
+                    />
+                </div>
+            )}
 
             <DetailedGraphemeDisplay graphemeData={grapheme}/>
         </div>
-    ), [internalOnGraphemeClick, handleDelete]);
+    ), [internalOnGraphemeClick, handleDelete, selectionMode]);
 
     const renderCompact = useCallback((grapheme: GraphemeComplete) => (
         <div style={{position: 'relative'}}>
-            <div style={{position: 'absolute', top: 6, right: 6, zIndex: 10}}>
-                <IconButton
-                    iconName="trash"
-                    iconColor={'var(--status-bad)'}
-                    onClick={(e: React.MouseEvent) => handleDelete(grapheme.id, e)}
-                    aria-label={`Delete grapheme ${grapheme.name}`}
-                />
-            </div>
+            {/* Delete button - hidden in selection mode */}
+            {!selectionMode && (
+                <div style={{position: 'absolute', top: 6, right: 6, zIndex: 10}}>
+                    <IconButton
+                        iconName="trash"
+                        iconColor={'var(--status-bad)'}
+                        onClick={(e: React.MouseEvent) => handleDelete(grapheme.id, e)}
+                        aria-label={`Delete grapheme ${grapheme.name}`}
+                    />
+                </div>
+            )}
             <CompactGraphemeDisplay
                 graphemeData={grapheme}
                 onClick={() => internalOnGraphemeClick(grapheme)}
             />
         </div>
-    ), [internalOnGraphemeClick, handleDelete]);
+    ), [internalOnGraphemeClick, handleDelete, selectionMode]);
 
     // Custom empty slot with create button
     const emptySlot = useCallback(({searchQuery, hasActiveFilters}: {
@@ -267,6 +288,17 @@ export default function GraphemeGallery({
                     <p>No graphemes match your search "{searchQuery}"</p>
                     <p style={{fontSize: '0.875rem', color: 'var(--text-secondary)'}}>
                         Try adjusting your search terms
+                    </p>
+                </div>
+            );
+        }
+        // In selection mode, show simpler message without create button
+        if (selectionMode) {
+            return (
+                <div style={{textAlign: 'center', padding: '2rem'}}>
+                    <p>No graphemes available for selection.</p>
+                    <p style={{fontSize: '0.875rem', color: 'var(--text-secondary)'}}>
+                        Create some graphemes first in the Script Maker.
                     </p>
                 </div>
             );
@@ -285,7 +317,7 @@ export default function GraphemeGallery({
                 </IconButton>
             </div>
         );
-    }, []);
+    }, [selectionMode]);
 
     return (
         <>
