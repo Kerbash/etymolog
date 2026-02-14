@@ -68,7 +68,7 @@ export default function PhraseDisplay({
                         maxZoom: 4
                     }}
                     showControls={true}
-                    showVirtualGlyphStyling={true}
+                    showVirtualGlyphStyling={false}
                 />
             </div>
 

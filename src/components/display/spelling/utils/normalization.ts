@@ -37,7 +37,6 @@ function generateVirtualSvg(ipaChar: string): string {
         .replace(/"/g, '&quot;');
 
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-        <rect x="5" y="5" width="90" height="90" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="5,5" rx="8"/>
         <text x="50" y="60" font-family="serif" font-size="48" text-anchor="middle" fill="currentColor">${escaped}</text>
     </svg>`;
 }
