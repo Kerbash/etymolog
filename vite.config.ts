@@ -10,6 +10,9 @@ export default defineConfig(() => {
 
     return {
         base,
+        build: {
+            outDir: 'docs'
+        },
         resolve: {
             alias: {
                 '@src': path.resolve(__dirname, 'src'),
