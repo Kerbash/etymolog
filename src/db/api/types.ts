@@ -125,6 +125,12 @@ export const DEFAULT_PUNCTUATION_SETTINGS: PunctuationSettings = {
  */
 export interface EtymologSettings {
     /**
+     * The name of the conlang.
+     * Empty string means no conlang has been created yet (redirects to /new).
+     */
+    conlangName: string;
+
+    /**
      * When true, uses a simplified script system mode.
      * This setting affects how graphemes and glyphs are displayed/managed.
      * Currently reserved for future use.
@@ -207,6 +213,7 @@ export const DEFAULT_WRITING_SYSTEM_SETTINGS: WritingSystemSettings = {
  * Default settings values.
  */
 export const DEFAULT_SETTINGS: EtymologSettings = {
+    conlangName: '',
     simpleScriptSystem: false,
     defaultGalleryView: 'compact',
     autoSaveInterval: 0,
