@@ -154,7 +154,54 @@ export interface EtymologSettings {
      * This is a conlang-specific setting.
      */
     punctuation: PunctuationSettings;
+
+    /**
+     * Writing system settings for the conlang.
+     * Controls directional flow of glyphs, words, and lines.
+     * This is a conlang-specific setting.
+     */
+    writingSystem: WritingSystemSettings;
 }
+
+// =============================================================================
+// WRITING SYSTEM TYPES
+// =============================================================================
+
+/**
+ * Directional flow value for writing system rules.
+ */
+export type DirectionValue = 'ltr' | 'rtl' | 'ttb' | 'btu';
+
+/**
+ * Writing system settings that define how the script flows directionally.
+ * Controls glyph arrangement within words, word ordering, and line wrapping.
+ */
+export interface WritingSystemSettings {
+    /** How glyphs flow within a word */
+    glyphDirection: DirectionValue;
+    /** How words flow in a sentence/line */
+    wordOrder: DirectionValue;
+    /** Where new lines go when wrapping */
+    lineProgression: DirectionValue;
+    /** Multi-glyph grapheme layout */
+    glyphStacking: 'horizontal' | 'vertical' | 'none';
+    /** Wrapping behavior */
+    wordWrap: 'word' | 'glyph' | 'none';
+    /** Glyph alignment within a line */
+    baselineAlignment: 'top' | 'center' | 'bottom';
+}
+
+/**
+ * Default writing system settings (standard LTR horizontal script).
+ */
+export const DEFAULT_WRITING_SYSTEM_SETTINGS: WritingSystemSettings = {
+    glyphDirection: 'ltr',
+    wordOrder: 'ltr',
+    lineProgression: 'ttb',
+    glyphStacking: 'horizontal',
+    wordWrap: 'word',
+    baselineAlignment: 'bottom',
+};
 
 /**
  * Default settings values.
@@ -165,6 +212,7 @@ export const DEFAULT_SETTINGS: EtymologSettings = {
     autoSaveInterval: 0,
     autoManageGlyphs: false,
     punctuation: { ...DEFAULT_PUNCTUATION_SETTINGS },
+    writingSystem: { ...DEFAULT_WRITING_SYSTEM_SETTINGS },
 };
 
 /**

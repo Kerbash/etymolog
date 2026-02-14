@@ -14,6 +14,8 @@ export type {
     UpdateSettingsInput,
     PunctuationConfig,
     PunctuationSettings,
+    DirectionValue,
+    WritingSystemSettings,
     CreateGlyphRequest,
     UpdateGlyphRequest,
     GlyphListResponse,
@@ -35,7 +37,7 @@ export type {
     EtymologApi,
 } from './types';
 
-export { DEFAULT_SETTINGS, DEFAULT_PUNCTUATION_CONFIG, DEFAULT_PUNCTUATION_SETTINGS } from './types';
+export { DEFAULT_SETTINGS, DEFAULT_PUNCTUATION_CONFIG, DEFAULT_PUNCTUATION_SETTINGS, DEFAULT_WRITING_SYSTEM_SETTINGS } from './types';
 
 // Re-export lexicon API types
 export type {

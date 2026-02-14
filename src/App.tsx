@@ -12,6 +12,7 @@ import LexiconMain from "./components/tabs/lexicon/main.tsx";
 import GraphemeMain from "./components/tabs/grapheme/main.tsx";
 import GraphotacticMain from "./components/tabs/graphotactic/main.tsx";
 import TranslatorMain from "./components/tabs/translator/main.tsx";
+import WritingSystemMain from "./components/tabs/writingSystem/main.tsx";
 
 const sections = [
     {
@@ -24,6 +25,11 @@ const sections = [
         toggle: 'Script Maker',
         content:
             <GraphemeMain/>
+    },
+    {
+        path: 'writing-system',
+        toggle: 'Writing System',
+        content: <WritingSystemMain/>
     },
     {
         path: 'translator',

@@ -27,7 +27,8 @@ export type LayoutStrategyType =
     | 'spiral'           // Outward spiral
     | 'block'            // Multi-row wrapping
     | 'circular'         // Ring layout
-    | 'boustrophedon';   // Alternating direction
+    | 'boustrophedon'    // Alternating direction
+    | 'composed-block';  // Writing-system-aware block
 
 /**
  * Configuration for layout strategies.
@@ -291,6 +292,27 @@ export interface GlyphSpellingDisplayProps {
      * Canvas coordinates remain fixed; this only affects display scale.
      */
     zoom?: number;
+
+    /**
+     * Writing system settings for composed block layout.
+     * When provided with block/composed-block strategy, enables
+     * writing-system-aware text flow.
+     */
+    writingSystem?: import('../../../db/api/types').WritingSystemSettings;
+
+    /**
+     * Word boundary indices in the glyph array.
+     * Indices of glyphs that are word separators.
+     * Used by the composed block strategy to group glyphs into words.
+     */
+    wordBoundaries?: number[];
+
+    /**
+     * Line break indices in the glyph array.
+     * Indices of glyphs that are explicit line breaks ('\n').
+     * Used by the composed block strategy to force new lines.
+     */
+    lineBreaks?: number[];
 }
 
 // =============================================================================

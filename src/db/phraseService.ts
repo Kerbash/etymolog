@@ -22,7 +22,16 @@ import type { PunctuationSettings, PunctuationConfig } from './api/types';
 import { generateSpellingWithFallback } from './autoSpellService';
 
 /**
+ * Sentinel value used in the word list to represent an explicit line break.
+ * When the tokenizer encounters a newline in the input, it inserts this
+ * marker so downstream code (combiner, layout strategy) can force a new line.
+ */
+export const LINE_BREAK_SENTINEL = '\n';
+
+/**
  * Split phrase into words, handling punctuation and whitespace.
+ * Newlines are preserved as LINE_BREAK_SENTINEL entries so the
+ * layout engine can insert explicit line breaks.
  *
  * @param phrase - The input phrase to tokenize
  * @returns Array of PhraseWord objects with original, normalized, and position
@@ -32,14 +41,37 @@ export function tokenizePhrase(phrase: string): PhraseWord[] {
         return [];
     }
 
-    // Split on whitespace and filter empty strings
-    const rawWords = phrase.split(/\s+/).filter(word => word.length > 0);
+    const result: PhraseWord[] = [];
+    let position = 0;
 
-    return rawWords.map((word, index) => ({
-        originalWord: word,
-        normalizedWord: word.toLowerCase().trim(),
-        position: index,
-    }));
+    // Split on newlines first to preserve line breaks
+    const lines = phrase.split(/\n/);
+
+    for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+        const line = lines[lineIdx];
+
+        // Split each line on horizontal whitespace
+        const rawWords = line.split(/[ \t]+/).filter(word => word.length > 0);
+
+        for (const word of rawWords) {
+            result.push({
+                originalWord: word,
+                normalizedWord: word.toLowerCase().trim(),
+                position: position++,
+            });
+        }
+
+        // Insert a line-break sentinel between lines (not after the last line)
+        if (lineIdx < lines.length - 1) {
+            result.push({
+                originalWord: LINE_BREAK_SENTINEL,
+                normalizedWord: LINE_BREAK_SENTINEL,
+                position: position++,
+            });
+        }
+    }
+
+    return result;
 }
 
 /**
@@ -235,8 +267,11 @@ export function translatePhrase(
     // Tokenize
     const words = tokenizePhrase(normalizedPhrase);
 
-    // Translate each word
-    const wordTranslations: PhraseWordTranslation[] = words.map(word =>
+    // Separate real words from line-break sentinels
+    const realWords = words.filter(w => w.originalWord !== LINE_BREAK_SENTINEL);
+
+    // Translate each real word
+    const wordTranslations: PhraseWordTranslation[] = realWords.map(word =>
         translateWord(word, lexiconEntries)
     );
 
@@ -246,13 +281,40 @@ export function translatePhrase(
         ? config?.punctuationGraphemes?.get(wordSeparatorConfig.graphemeId)
         : null;
 
-    // Combine spellings with space separators
+    // Combine spellings with space separators and line breaks
+    // Walk the original token list (which includes sentinels) to preserve order
     const combinedSpelling: SpellingDisplayEntry[] = [];
     let globalPosition = 0;
     let hasVirtualGlyphs = false;
+    let realWordIndex = 0;
+    let needsSeparator = false; // track whether a space separator is needed before the next word
 
-    for (let i = 0; i < wordTranslations.length; i++) {
-        const translation = wordTranslations[i];
+    for (let i = 0; i < words.length; i++) {
+        const token = words[i];
+
+        if (token.originalWord === LINE_BREAK_SENTINEL) {
+            // Emit a line-break entry (IPA '\n')
+            combinedSpelling.push({
+                type: 'ipa',
+                position: globalPosition++,
+                ipaCharacter: '\n',
+            });
+            needsSeparator = false; // no space separator needed after a line break
+            continue;
+        }
+
+        // It's a real word — insert space separator before it if needed
+        if (needsSeparator) {
+            const spaceSeparator = createSpaceSeparator(wordSeparatorConfig, wordSeparatorGrapheme);
+            if (spaceSeparator !== null) {
+                combinedSpelling.push({
+                    ...spaceSeparator,
+                    position: globalPosition++,
+                });
+            }
+        }
+
+        const translation = wordTranslations[realWordIndex++];
 
         // Add word's spelling
         for (const entry of translation.spellingDisplay) {
@@ -262,22 +324,11 @@ export function translatePhrase(
             });
         }
 
-        // Track if any word has virtual glyphs
         if (translation.hasVirtualGlyphs) {
             hasVirtualGlyphs = true;
         }
 
-        // Add space separator (except after last word)
-        if (i < wordTranslations.length - 1) {
-            const spaceSeparator = createSpaceSeparator(wordSeparatorConfig, wordSeparatorGrapheme);
-            // Only add if not configured to be hidden
-            if (spaceSeparator !== null) {
-                combinedSpelling.push({
-                    ...spaceSeparator,
-                    position: globalPosition++,
-                });
-            }
-        }
+        needsSeparator = true;
     }
 
     return {

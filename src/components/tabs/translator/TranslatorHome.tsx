@@ -6,12 +6,10 @@
  */
 
 import { useState, useEffect, useMemo } from 'react';
-import type { LayoutStrategyType } from '../../display/spelling/types';
 import type { PhraseTranslationResult, GraphemeComplete } from '../../../db/types';
 import { useEtymolog } from '../../../db/context/EtymologContext';
 import PhraseInput from './_components/PhraseInput';
 import PhraseDisplay from './_components/PhraseDisplay';
-import TranslationControls from './_components/TranslationControls';
 import styles from './translator.module.scss';
 
 export default function TranslatorHome() {
@@ -20,7 +18,6 @@ export default function TranslatorHome() {
     // State
     const [inputPhrase, setInputPhrase] = useState('');
     const [translationResult, setTranslationResult] = useState<PhraseTranslationResult | null>(null);
-    const [selectedStrategy, setSelectedStrategy] = useState<LayoutStrategyType>('block');
     const [isTranslating, setIsTranslating] = useState(false);
 
     // Build graphemeMap from context data for glyph resolution
@@ -31,6 +28,30 @@ export default function TranslatorHome() {
         }
         return map;
     }, [data.graphemesComplete]);
+
+    // Compute word and line-break boundary indices by scanning combinedSpelling directly.
+    // Word boundaries = indices of space separator entries.
+    // Line break boundaries = indices of '\n' entries.
+    const { wordBoundaries, lineBreaks } = useMemo(() => {
+        if (!translationResult) return { wordBoundaries: undefined, lineBreaks: undefined };
+
+        const wordBounds: number[] = [];
+        const lineBounds: number[] = [];
+
+        for (let i = 0; i < translationResult.combinedSpelling.length; i++) {
+            const entry = translationResult.combinedSpelling[i];
+            if (entry.type === 'ipa' && entry.ipaCharacter === '\n') {
+                lineBounds.push(i);
+            } else if (entry.type === 'ipa' && entry.ipaCharacter === ' ') {
+                wordBounds.push(i);
+            }
+        }
+
+        return {
+            wordBoundaries: wordBounds.length > 0 ? wordBounds : undefined,
+            lineBreaks: lineBounds.length > 0 ? lineBounds : undefined,
+        };
+    }, [translationResult]);
 
     // Debounced translation
     useEffect(() => {
@@ -54,6 +75,36 @@ export default function TranslatorHome() {
         return () => clearTimeout(timer);
     }, [inputPhrase, api, settings.punctuation]);
 
+    // === DEBUG: Log everything fed into the translator ===
+    if (translationResult) {
+        console.group('[TranslatorHome DEBUG]');
+        console.log('writingSystem settings:', settings.writingSystem);
+        console.log('wordBoundaries:', wordBoundaries);
+        console.log('wordTranslations count:', translationResult.wordTranslations.length);
+        console.log('combinedSpelling length:', translationResult.combinedSpelling.length);
+        console.log('combinedSpelling entries:',
+            translationResult.combinedSpelling.map((entry, i) => ({
+                index: i,
+                type: entry.type,
+                ipa: entry.ipaCharacter ?? null,
+                graphemeName: entry.grapheme?.name ?? null,
+                position: entry.position,
+                isBoundary: wordBoundaries?.includes(i) ? '<<< BOUNDARY' : '',
+            }))
+        );
+        console.log('wordTranslations detail:',
+            translationResult.wordTranslations.map((wt, i) => ({
+                wordIndex: i,
+                word: wt.word,
+                type: wt.type,
+                spellingLength: wt.spellingDisplay.length,
+                spellingEntries: wt.spellingDisplay.map(e => e.ipaCharacter ?? e.grapheme?.name ?? '?'),
+            }))
+        );
+        console.groupEnd();
+    }
+    // === END DEBUG ===
+
     return (
         <div className={styles.container}>
             <h2 className={styles.heading}>Phrase Translator</h2>
@@ -70,18 +121,14 @@ export default function TranslatorHome() {
             {isTranslating && <div className={styles.loading}>Translating...</div>}
 
             {translationResult && !isTranslating && (
-                <>
-                    <TranslationControls
-                        selectedStrategy={selectedStrategy}
-                        onStrategyChange={setSelectedStrategy}
-                    />
-
-                    <PhraseDisplay
-                        translationResult={translationResult}
-                        strategy={selectedStrategy}
-                        graphemeMap={graphemeMap}
-                    />
-                </>
+                <PhraseDisplay
+                    translationResult={translationResult}
+                    strategy="block"
+                    graphemeMap={graphemeMap}
+                    writingSystem={settings.writingSystem}
+                    wordBoundaries={wordBoundaries}
+                    lineBreaks={lineBreaks}
+                />
             )}
         </div>
     );

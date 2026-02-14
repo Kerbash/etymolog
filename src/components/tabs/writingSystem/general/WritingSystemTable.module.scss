@@ -1,0 +1,65 @@
+.container {
+    overflow-x: auto;
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    border-spacing: 0;
+    background-color: var(--color-background);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.headerRow {
+    background-color: rgba(var(--color-primary-rgb), 0.1);
+
+    th {
+        padding: 0.75rem 1rem;
+        text-align: left;
+        font-weight: 600;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--color-text);
+        border-bottom: 2px solid rgba(var(--color-primary-rgb), 0.2);
+    }
+}
+
+.headerLabel {
+    min-width: 200px;
+}
+
+.headerValue {
+    width: 200px;
+    text-align: center !important;
+}
+
+.categoryGroup {
+    tr:last-child td {
+        border-bottom: 1px solid rgba(var(--color-border-rgb), 0.3);
+    }
+}
+
+.categoryHeader {
+    background-color: rgba(var(--color-secondary-rgb), 0.08);
+
+    td {
+        padding: 0.5rem 1rem;
+        border-bottom: 1px solid rgba(var(--color-border-rgb), 0.2);
+    }
+}
+
+.categoryLabel {
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: var(--color-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.75px;
+}
+
+.table tbody tr td {
+    padding: 0.625rem 1rem;
+    border-bottom: 1px solid rgba(var(--color-border-rgb), 0.15);
+}

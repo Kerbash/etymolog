@@ -7,6 +7,7 @@
 
 import { useRef } from 'react';
 import type { PhraseTranslationResult, GraphemeComplete } from '../../../../db/types';
+import type { WritingSystemSettings } from '../../../../db/api/types';
 import type { LayoutStrategyType } from '../../../display/spelling/types';
 import type { GlyphSpellingDisplayRef } from '../../../display/spelling/types';
 import GlyphSpellingDisplay from '../../../display/spelling/GlyphSpellingDisplay';
@@ -18,12 +19,21 @@ interface PhraseDisplayProps {
     strategy: LayoutStrategyType;
     /** Map of grapheme ID to GraphemeComplete for resolving glyphs */
     graphemeMap?: Map<number, GraphemeComplete>;
+    /** Writing system settings for composed block layout */
+    writingSystem?: WritingSystemSettings;
+    /** Word boundary indices */
+    wordBoundaries?: number[];
+    /** Line break indices */
+    lineBreaks?: number[];
 }
 
 export default function PhraseDisplay({
     translationResult,
     strategy,
-    graphemeMap
+    graphemeMap,
+    writingSystem,
+    wordBoundaries,
+    lineBreaks,
 }: PhraseDisplayProps) {
     const glyphSpellingRef = useRef<GlyphSpellingDisplayRef>(null);
 
@@ -44,6 +54,9 @@ export default function PhraseDisplay({
                     glyphs={translationResult.combinedSpelling}
                     graphemeMap={graphemeMap}
                     strategy={strategy}
+                    writingSystem={writingSystem}
+                    wordBoundaries={wordBoundaries}
+                    lineBreaks={lineBreaks}
                     canvas={{
                         width: 800,
                         height: 600,

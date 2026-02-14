@@ -14,6 +14,7 @@ import classNames from 'classnames';
 import type { GlyphSpellingDisplayProps, GlyphSpellingDisplayRef } from './types';
 import { useNormalizedGlyphs } from './hooks/useNormalizedGlyphs';
 import { useGlyphPositions } from './hooks/useGlyphPositions';
+import { createComposedBlockStrategy } from './strategies';
 import { GlyphSpellingCore } from './GlyphSpellingCore';
 import { InteractiveGlyphDisplay } from './InteractiveGlyphDisplay';
 import styles from './GlyphSpellingDisplay.module.scss';
@@ -85,6 +86,9 @@ const GlyphSpellingDisplay = forwardRef<GlyphSpellingDisplayRef, GlyphSpellingDi
             style,
             glyphEmPx,
             zoom = 1,
+            writingSystem,
+            wordBoundaries,
+            lineBreaks,
         },
         ref
     ) {
@@ -107,8 +111,12 @@ const GlyphSpellingDisplay = forwardRef<GlyphSpellingDisplayRef, GlyphSpellingDi
             const base = (typeof config === 'string') ? {} : (config ?? {});
             const merged = { ...base } as Partial<typeof base & import('./types').LayoutStrategyConfig>;
 
-            if (canvas?.width && (strategy === 'block' || !strategy)) {
+            if (canvas?.width && (strategy === 'block' || strategy === 'composed-block' || !strategy)) {
                 (merged as any).maxWidth = canvas.width;
+            }
+
+            if (canvas?.height && (strategy === 'block' || strategy === 'composed-block' || !strategy)) {
+                (merged as any).maxHeight = canvas.height;
             }
 
             // If glyphEmPx is provided, override glyph sizes
@@ -118,7 +126,7 @@ const GlyphSpellingDisplay = forwardRef<GlyphSpellingDisplayRef, GlyphSpellingDi
             }
 
             return merged as Partial<import('./types').LayoutStrategyConfig> | import('./types').LayoutPreset;
-        }, [config, canvas?.width, strategy, glyphEmPx]);
+        }, [config, canvas?.width, canvas?.height, strategy, glyphEmPx]);
 
         // Use block strategy by default if canvas width is set for wrapping
         const effectiveStrategy = useMemo(() => {
@@ -128,8 +136,16 @@ const GlyphSpellingDisplay = forwardRef<GlyphSpellingDisplayRef, GlyphSpellingDi
             return strategy;
         }, [strategy, canvas?.width]);
 
+        // Create composed strategy when writing system settings are provided
+        const resolvedStrategy = useMemo(() => {
+            if (writingSystem && (effectiveStrategy === 'block' || effectiveStrategy === 'composed-block')) {
+                return createComposedBlockStrategy(writingSystem, wordBoundaries, lineBreaks);
+            }
+            return effectiveStrategy;
+        }, [writingSystem, wordBoundaries, lineBreaks, effectiveStrategy]);
+
         // Calculate positions using the selected strategy
-        const { positions, bounds } = useGlyphPositions(normalizedGlyphs, effectiveStrategy, effectiveConfig);
+        const { positions, bounds } = useGlyphPositions(normalizedGlyphs, resolvedStrategy, effectiveConfig);
 
         // Forward ref methods
         useImperativeHandle(ref, () => ({

@@ -44,6 +44,11 @@ export default function TranslationControls({
                     </option>
                 ))}
             </select>
+            {selectedStrategy === 'block' && (
+                <span className={styles.controlLabel} style={{ fontSize: '0.85rem', opacity: 0.7 }}>
+                    Using writing system rules for text flow
+                </span>
+            )}
         </div>
     );
 }

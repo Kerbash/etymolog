@@ -20,6 +20,7 @@ export { blockStrategy } from './blockStrategy';
 export { spiralStrategy } from './spiralStrategy';
 export { circularStrategy } from './circularStrategy';
 export { boustrophedonStrategy } from './boustrophedonStrategy';
+export { createComposedBlockStrategy } from './composedBlockStrategy';
 
 /**
  * Map of strategy names to strategy implementations.
@@ -33,6 +34,7 @@ const strategyMap: Record<LayoutStrategyType, LayoutStrategy> = {
     block: blockStrategy,
     circular: circularStrategy,
     boustrophedon: boustrophedonStrategy,
+    'composed-block': blockStrategy, // Fallback; real composed strategy is created via createComposedBlockStrategy
 };
 
 /**
