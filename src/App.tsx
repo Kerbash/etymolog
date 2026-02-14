@@ -19,24 +19,10 @@ const sections = [
         content: <LexiconMain/>
     },
     {
-        path: 'part-of-speech',
-        toggle: 'Part of Speech',
-        content:
-            <div>
-                Dictionary Content
-            </div>
-    },
-    {
         path: 'script-maker',
         toggle: 'Script Maker',
         content:
             <GraphemeMain/>
-    },
-    {
-        path: 'graphotactic',
-        toggle: 'Graphotactic',
-        content:
-            <GraphotacticMain/>
     }
 ];
 
