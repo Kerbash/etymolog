@@ -1,0 +1,96 @@
+// CustomBasicChart Styles
+
+.basicChart {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.table {
+    border-collapse: collapse;
+    font-size: 0.875rem;
+
+    th, td {
+        border: 1px solid var(--border-primary);
+        padding: 1px;
+        text-align: center;
+        vertical-align: middle;
+    }
+}
+
+.ipaRow {
+    td {
+        background: var(--surface-raised);
+        font-family: 'Charis SIL', 'Doulos SIL', 'Gentium Plus', 'Noto Sans', serif;
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: var(--text-primary);
+        padding: 0.3rem 0.25rem;
+    }
+}
+
+.cellIpaLabel {
+    font-family: 'Charis SIL', 'Doulos SIL', 'Gentium Plus', 'Noto Sans', serif;
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    user-select: none;
+}
+
+.syllableCell {
+    background: var(--bg-tertiary);
+    padding: 1px;
+    cursor: pointer;
+    width: 48px;
+    height: 48px;
+
+    &:hover {
+        background: var(--interactive-hover);
+    }
+
+    &:active {
+        background: var(--interactive-active);
+    }
+}
+
+.assigned {
+    background: var(--surface-raised);
+    border-color: var(--border-primary);
+}
+
+.cellIpa {
+    font-family: 'Charis SIL', 'Doulos SIL', 'Gentium Plus', 'Noto Sans', serif;
+    color: var(--text-primary-muted);
+    font-size: 0.7rem;
+    opacity: 0.5;
+    user-select: none;
+
+    .syllableCell:hover & {
+        opacity: 1;
+    }
+}
+
+.cellAssigned {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+}
+
+.glyphDisplay {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    > div {
+        width: 100% !important;
+        height: 100% !important;
+    }
+
+    svg {
+        width: 100% !important;
+        height: 100% !important;
+    }
+}

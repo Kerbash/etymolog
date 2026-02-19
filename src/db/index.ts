@@ -64,6 +64,10 @@ export {
     type PunctuationSettings,
     DEFAULT_PUNCTUATION_CONFIG,
     DEFAULT_PUNCTUATION_SETTINGS,
+    // Custom chart types
+    type BasicChartDefinition,
+    type SyllabaryChartDefinition,
+    type CustomChartDefinition,
     // Request/Response types
     type CreateGlyphRequest,
     type UpdateGlyphRequest,

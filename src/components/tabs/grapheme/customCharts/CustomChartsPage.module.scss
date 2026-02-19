@@ -1,0 +1,79 @@
+// CustomChartsPage Styles
+
+.container {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    padding-bottom: 2rem;
+}
+
+.nav {
+    margin-bottom: 0.5rem;
+}
+
+.pageTitle {
+    margin: 0;
+    font-size: 1.75rem;
+}
+
+.description {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin: 0;
+    max-width: 700px;
+    line-height: 1.5;
+}
+
+.statsBar {
+    display: flex;
+    gap: 1.5rem;
+    padding: 0.75rem 1rem;
+    background: var(--surface-raised);
+    border-radius: 8px;
+    font-size: 0.875rem;
+}
+
+.stat {
+    color: var(--text-secondary);
+
+    strong {
+        color: var(--interactive-base);
+    }
+}
+
+.chartsList {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.emptyState {
+    padding: 2rem;
+    text-align: center;
+    color: var(--text-secondary);
+    background: var(--surface-raised);
+    border-radius: 8px;
+    font-size: 0.9rem;
+
+    p {
+        margin: 0;
+    }
+}
+
+.loading,
+.error {
+    min-height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.loadingText {
+    color: var(--text-muted, #888);
+    font-size: 1rem;
+}
+
+.errorText {
+    color: var(--status-bad, #ef4444);
+    font-size: 1rem;
+}

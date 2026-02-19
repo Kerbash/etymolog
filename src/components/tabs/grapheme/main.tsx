@@ -27,6 +27,7 @@ import { GlyphEditPage } from "./editGlyph";
 import IPAChartPage from "./ipaChart/IPAChartPage.tsx";
 import SyllabaryChartPage from "./syllabaryChart/SyllabaryChartPage.tsx";
 import { PunctuationPage } from "./punctuation";
+import { CustomChartsPage } from "./customCharts";
 
 import { flex, sizing } from "utils-styles";
 import GraphemeEditPage from "./editGrapheme/GraphemeEditPage.tsx";
@@ -68,6 +69,9 @@ function GraphemeNav() {
                 </Link>
                 <Link to="/script-maker/syllabary" style={dropdownLinkStyle}>
                     Syllabary
+                </Link>
+                <Link to="/script-maker/custom-charts" style={dropdownLinkStyle}>
+                    Custom Charts
                 </Link>
             </DropDownSmall>
             <IconButton
@@ -144,6 +148,7 @@ function GraphemesTab() {
                 <Route path="chart" element={<IPAChartPage />} />
                 <Route path="syllabary" element={<SyllabaryChartPage />} />
                 <Route path="punctuation" element={<PunctuationPage />} />
+                <Route path="custom-charts" element={<CustomChartsPage />} />
             </Routes>
         </div>
     );

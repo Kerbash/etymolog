@@ -40,6 +40,29 @@ export type ApiErrorCode =
     | 'UNKNOWN_ERROR';
 
 // =============================================================================
+// CUSTOM CHART TYPES
+// =============================================================================
+
+interface CustomChartBase {
+    id: string;
+    name: string;
+    createdAt: string;
+}
+
+export interface BasicChartDefinition extends CustomChartBase {
+    type: 'basic';
+    ipaCharacters: string[];
+}
+
+export interface SyllabaryChartDefinition extends CustomChartBase {
+    type: 'syllabary';
+    xAxis: string[];
+    yAxis: string[];
+}
+
+export type CustomChartDefinition = BasicChartDefinition | SyllabaryChartDefinition;
+
+// =============================================================================
 // SETTINGS TYPES
 // =============================================================================
 
@@ -167,6 +190,11 @@ export interface EtymologSettings {
      * This is a conlang-specific setting.
      */
     writingSystem: WritingSystemSettings;
+
+    /**
+     * User-defined custom charts for organizing phoneme-grapheme mappings.
+     */
+    customCharts: CustomChartDefinition[];
 }
 
 // =============================================================================
@@ -220,6 +248,7 @@ export const DEFAULT_SETTINGS: EtymologSettings = {
     autoManageGlyphs: false,
     punctuation: { ...DEFAULT_PUNCTUATION_SETTINGS },
     writingSystem: { ...DEFAULT_WRITING_SYSTEM_SETTINGS },
+    customCharts: [],
 };
 
 /**

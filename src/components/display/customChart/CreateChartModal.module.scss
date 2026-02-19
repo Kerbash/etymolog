@@ -1,0 +1,52 @@
+@import '@styles/modal.module.scss';
+
+.modalContent {
+    @extend .modalContentTemplate;
+    padding: 1.5rem;
+    min-width: 400px;
+    max-width: 550px;
+}
+
+.stepDescription {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin: 0;
+}
+
+.typeButton {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 1rem;
+    border: 1px solid var(--border-primary);
+    border-radius: 8px;
+    background: var(--surface-raised);
+    color: var(--text-primary);
+    cursor: pointer;
+    text-align: left;
+    flex: 1;
+    transition: border-color 0.15s;
+
+    &:hover {
+        border-color: var(--interactive-base);
+    }
+
+    strong {
+        font-size: 1rem;
+    }
+
+    span {
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+        line-height: 1.4;
+    }
+}
+
+.fieldLabel {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
