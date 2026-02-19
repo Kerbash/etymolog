@@ -254,6 +254,7 @@ const PronunciationTableInputInner = ({
                                         characters={IPA_CHARACTERS}
                                         displayName={t("pronunciationLabel")}
                                         className={styles.textInput}
+                                        showBackspaceButton={true}
                                     />
                                 </td>
                                 <td>

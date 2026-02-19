@@ -46,7 +46,7 @@ const dropdownLinkStyle: React.CSSProperties = {
  */
 function GraphemeNav() {
     return (
-        <nav className={classNames(flex.flexRow, flex.flexGapM)} style={{ marginBottom: '1rem' }}>
+        <nav className={classNames(flex.flexRow, flex.flexGapM, flex.alignItemsCenter)} style={{ marginBottom: '1rem' }}>
             <IconButton
                 as={Link}
                 to="/script-maker/create"

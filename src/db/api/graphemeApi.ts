@@ -236,6 +236,7 @@ function updateGrapheme(id: number, request: UpdateGraphemeRequest): ApiResponse
     try {
         const grapheme = serviceUpdateGrapheme(id, {
             name: request.name?.trim(),
+            category: request.category !== undefined ? (request.category?.trim() || null) : undefined,
             notes: request.notes,
         });
         if (!grapheme) {
