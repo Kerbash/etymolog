@@ -6,7 +6,7 @@ import {VitePWA} from 'vite-plugin-pwa'
 export default defineConfig(() => {
     // Allow builds to set a custom base path (useful for GitHub Pages).
     // In CI we will set GH_PAGES_BASE="/REPO_NAME/". Defaults to '/'.
-    const base = process.env.GH_PAGES_BASE || '/'
+    const base = process.env.GH_PAGES_BASE || '/etymolog/'
 
     return {
         base,
