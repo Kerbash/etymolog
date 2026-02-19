@@ -11,7 +11,14 @@ export default defineConfig(() => {
     return {
         base,
         build: {
-            outDir: 'docs'
+            outDir: 'docs',
+            rollupOptions: {
+                output: {
+                    entryFileNames: 'assets/[name]-[hash].js',
+                    chunkFileNames: 'assets/[name]-[hash].js',
+                    assetFileNames: 'assets/[name]-[hash][extname]'
+                }
+            }
         },
         resolve: {
             alias: {
