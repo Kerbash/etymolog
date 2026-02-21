@@ -61,19 +61,20 @@ import type {
     InsertionStrategy,
     VirtualGlyph,
 } from './types';
-import type { Glyph, GlyphWithUsage, GraphemeComplete, AutoSpellResultExtended } from '../../../../db/types';
+import type {Glyph, GlyphWithUsage, GraphemeComplete, AutoSpellResultExtended} from '../../../../db/types';
 import {
     createGraphemeEntry,
     parseGlyphOrder,
     serializeGlyphOrder,
     type SpellingEntry,
 } from '../../../../db/utils/spellingUtils';
-import { defaultInsertionStrategy } from './strategies';
-import { GlyphCanvas } from './GlyphCanvas';
-import { GlyphKeyboardOverlay } from './GlyphKeyboardOverlay';
-import { buildRenderableMap, normalizeToRenderable, isVirtualGlyphId, createVirtualGlyph } from './utils';
+import {defaultInsertionStrategy} from './strategies';
+import {GlyphCanvas} from './GlyphCanvas';
+import {GlyphKeyboardOverlay} from './GlyphKeyboardOverlay';
+import {buildRenderableMap, normalizeToRenderable, isVirtualGlyphId, createVirtualGlyph} from './utils';
 
 import styles from './GlyphCanvasInput.module.scss';
+import HoverToolTip from "cyber-components/interactable/information/hoverToolTip/hoverToolTip.tsx";
 
 // Augment/extend the imported props type to include the optional helpers we need here
 // This keeps backwards compatibility if the upstream types don't include them yet.
@@ -142,7 +143,7 @@ const GlyphCanvasInput = forwardRef<GlyphCanvasInputRef, GlyphCanvasInputProps>(
         const canvasRef = useRef<GlyphCanvasRef>(null);
 
         // Parse initialGlyphOrder if provided to get initial state
-        const { initialIds, initialVirtualsFromGlyphOrder } = useMemo(() => {
+        const {initialIds, initialVirtualsFromGlyphOrder} = useMemo(() => {
             if (!initialGlyphOrder || initialGlyphOrder.length === 0) {
                 return {
                     initialIds: Array.isArray(defaultValue) ? defaultValue : defaultValue ?? [],
@@ -164,7 +165,7 @@ const GlyphCanvasInput = forwardRef<GlyphCanvasInputRef, GlyphCanvasInputProps>(
                 }
             }
 
-            return { initialIds: ids, initialVirtualsFromGlyphOrder: virtuals };
+            return {initialIds: ids, initialVirtualsFromGlyphOrder: virtuals};
         }, [initialGlyphOrder, defaultValue]);
 
         // State - track selected IDs (both grapheme IDs and virtual glyph IDs)
@@ -365,7 +366,13 @@ const GlyphCanvasInput = forwardRef<GlyphCanvasInputRef, GlyphCanvasInputProps>(
         }, [selectedIds, registerSmartFieldProps.name]);
 
         // Handle glyph selection from keyboard (both real and virtual glyphs)
-        const handleSelect = useCallback((glyph: { id: number; name?: string; svg_data?: string; category?: string | null; notes?: string | null }) => {
+        const handleSelect = useCallback((glyph: {
+            id: number;
+            name?: string;
+            svg_data?: string;
+            category?: string | null;
+            notes?: string | null
+        }) => {
             // If this is a virtual glyph (negative ID), add it to the virtual glyph map
             if (isVirtualGlyphId(glyph.id) && glyph.svg_data) {
                 setVirtualGlyphMap(prev => {
@@ -459,34 +466,41 @@ const GlyphCanvasInput = forwardRef<GlyphCanvasInputRef, GlyphCanvasInputProps>(
                             {hasVirtualGlyphs && <span className={styles.virtualIndicator}> (includes IPA)</span>}
                         </span>
                         {selectedIds.length > 0 && (
-                            <IconButton
-                                iconName="trash"
-                                onClick={handleClear}
-                                aria-label="Clear all glyphs"
-                                themeType="basic"
-                                iconSize="1rem"
-                                iconColor="var(--status-bad)"
-                            />
+                            <HoverToolTip content="Clear all glyphs">
+                                <IconButton
+                                    iconName="trash"
+                                    onClick={handleClear}
+                                    aria-label="Clear all glyphs"
+                                    themeType="basic"
+                                    iconSize="1rem"
+                                    iconColor="var(--status-bad)"
+                                />
+                            </HoverToolTip>
                         )}
 
                         {/* Auto-spell request button (optional) */}
                         {onRequestAutoSpell && (
+                            <HoverToolTip content="Generate spelling from pronunciation">
+                                <IconButton
+                                    iconName="magic"
+                                    onClick={onRequestAutoSpell}
+                                    aria-label="Request auto-spell preview"
+                                    themeType="basic"
+                                    iconSize="1rem"
+                                />
+                            </HoverToolTip>
+
+                        )}
+
+                        <HoverToolTip content="Open glyph keyboard">
                             <IconButton
-                                iconName="bolt"
-                                onClick={onRequestAutoSpell}
-                                aria-label="Request auto-spell preview"
+                                iconName="keyboard"
+                                onClick={handleOpenKeyboard}
+                                aria-label="Open glyph keyboard"
                                 themeType="basic"
                                 iconSize="1.25rem"
                             />
-                        )}
-
-                        <IconButton
-                            iconName="keyboard"
-                            onClick={handleOpenKeyboard}
-                            aria-label="Open glyph keyboard"
-                            themeType="basic"
-                            iconSize="1.25rem"
-                        />
+                        </HoverToolTip>
                     </div>
                 </div>
 
@@ -543,7 +557,7 @@ const GlyphCanvasInput = forwardRef<GlyphCanvasInputRef, GlyphCanvasInputProps>(
                 {/* Info notice when IPA fallback characters are present */}
                 {hasVirtualGlyphs && (
                     <div className={styles.virtualWarning} role="status">
-                        <i className="bi-info-circle" aria-hidden="true" />
+                        <i className="bi-info-circle" aria-hidden="true"/>
                         <span>
                             IPA characters (dashed borders) will be saved as part of the spelling.
                             You can optionally create graphemes for them later.
@@ -596,4 +610,4 @@ const GlyphCanvasInput = forwardRef<GlyphCanvasInputRef, GlyphCanvasInputProps>(
 
 GlyphCanvasInput.displayName = 'GlyphCanvasInput';
 export default GlyphCanvasInput;
-export { GlyphCanvasInput };
+export {GlyphCanvasInput};

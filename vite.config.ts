@@ -61,6 +61,18 @@ export default defineConfig(() => {
                     // Cache strategies for different asset types
                     runtimeCaching: [
                         {
+                            // Always fetch latest index.html from network
+                            urlPattern: /\/index\.html$/,
+                            handler: 'NetworkFirst',
+                            options: {
+                                cacheName: 'index-html-cache',
+                                expiration: {
+                                    maxEntries: 1,
+                                    maxAgeSeconds: 0 // No caching
+                                }
+                            }
+                        },
+                        {
                             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
                             handler: 'CacheFirst',
                             options: {
