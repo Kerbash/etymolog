@@ -1,8 +1,13 @@
 /**
- * Translation Controls Component
- * -------------------------------
- * Controls for selecting layout strategy and other display options.
+ * TranslationControls
+ * -------------------
+ * The layout-strategy picker. Wired in Phase 3 — before that `strategy="block"`
+ * was hardcoded in `TranslatorHome` and this component was exported but never
+ * rendered, which made six of the eight spelling strategies unreachable from the
+ * UI entirely.
  */
+
+import { useId } from 'react';
 
 import type { LayoutStrategyType } from '../../../display/spelling/types';
 import styles from '../translator.module.scss';
@@ -12,41 +17,46 @@ interface TranslationControlsProps {
     onStrategyChange: (strategy: LayoutStrategyType) => void;
 }
 
+const STRATEGIES: ReadonlyArray<{ value: LayoutStrategyType; label: string }> = [
+    { value: 'ltr', label: 'Left to right' },
+    { value: 'rtl', label: 'Right to left' },
+    { value: 'ttb', label: 'Top to bottom' },
+    { value: 'btt', label: 'Bottom to top' },
+    { value: 'block', label: 'Block (wrapping)' },
+    { value: 'circular', label: 'Circular' },
+    { value: 'spiral', label: 'Spiral' },
+    { value: 'boustrophedon', label: 'Boustrophedon' },
+];
+
 export default function TranslationControls({
     selectedStrategy,
-    onStrategyChange
+    onStrategyChange,
 }: TranslationControlsProps) {
-    const strategies: Array<{ value: LayoutStrategyType; label: string }> = [
-        { value: 'ltr', label: 'Left to Right' },
-        { value: 'rtl', label: 'Right to Left' },
-        { value: 'ttb', label: 'Top to Bottom' },
-        { value: 'btt', label: 'Bottom to Top' },
-        { value: 'block', label: 'Block (Wrapping)' },
-        { value: 'circular', label: 'Circular' },
-        { value: 'spiral', label: 'Spiral' },
-        { value: 'boustrophedon', label: 'Boustrophedon' },
-    ];
+    // `useId`, not a literal: a literal `id` is only unique while exactly one
+    // instance is mounted, and a duplicate id silently points every label at the
+    // first control.
+    const selectId = useId();
 
     return (
         <div className={styles.controls}>
-            <label htmlFor="strategy-select" className={styles.controlLabel}>
-                Layout Strategy
+            <label htmlFor={selectId} className={styles.controlLabel}>
+                Layout strategy
             </label>
             <select
-                id="strategy-select"
+                id={selectId}
                 value={selectedStrategy}
                 onChange={(e) => onStrategyChange(e.target.value as LayoutStrategyType)}
                 className={styles.select}
             >
-                {strategies.map(strategy => (
+                {STRATEGIES.map((strategy) => (
                     <option key={strategy.value} value={strategy.value}>
                         {strategy.label}
                     </option>
                 ))}
             </select>
             {selectedStrategy === 'block' && (
-                <span className={styles.controlLabel} style={{ fontSize: '0.85rem', opacity: 0.7 }}>
-                    Using writing system rules for text flow
+                <span className={styles.controlHint}>
+                    Using the writing-system rules for text flow
                 </span>
             )}
         </div>

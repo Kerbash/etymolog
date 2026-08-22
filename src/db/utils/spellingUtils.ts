@@ -14,6 +14,8 @@
  * @module db/utils/spellingUtils
  */
 
+import type { AutoSpellEntry } from '../types';
+
 // =============================================================================
 // CONSTANTS
 // =============================================================================
@@ -255,6 +257,58 @@ export function fromGlyphOrder(glyphOrder: SpellingEntry[]): (number | string)[]
         // IPA character - return as-is
         return parsed.ipaCharacter!;
     });
+}
+
+/**
+ * Convert an auto-spell result's entries into `glyph_order`.
+ *
+ * This is the bridge between the two halves of "spell this pronunciation for
+ * me": `previewAutoSpellingWithFallback` answers in `AutoSpellEntry[]` (a
+ * grapheme id, a position, and a `isVirtual` flag for the IPA fallbacks it
+ * invented), while `createLexicon` stores `glyph_order` — `"grapheme-<id>"` for
+ * a real grapheme, the bare IPA character for a fallback. Before Phase 5 the
+ * conversion existed only inside the spelling canvas, so a batch-create that
+ * wanted an auto-spelled word had nowhere to get one.
+ *
+ * Three things it is careful about, each of which produced a corrupt spelling
+ * when done by hand:
+ *
+ *  - **Order comes from `position`, not from the array order.** The entries are
+ *    sorted; the source is a DP walk whose output order is an implementation
+ *    detail, and `position` is the field that means "where in the word".
+ *  - **A virtual entry with no `ipaCharacter` is dropped.** It cannot be
+ *    represented in `glyph_order` at all, and its negative `grapheme_id` would
+ *    otherwise be written as the literal text `"grapheme--3"`, which parses back
+ *    as an IPA character and renders as that string in the word.
+ *  - **A real entry with a non-positive id is dropped** for the same reason:
+ *    `isGraphemeEntry('grapheme-0')` is false, so it would round-trip as text.
+ *
+ * @param entries - `AutoSpellResultExtended.spelling`
+ * @returns glyph_order format array, in word order
+ *
+ * @example
+ * ```ts
+ * autoSpellToGlyphOrder([
+ *     { grapheme_id: 7, position: 0, isVirtual: false },
+ *     { grapheme_id: -3, position: 1, isVirtual: true, ipaCharacter: 'ə' },
+ * ]);
+ * // → ['grapheme-7', 'ə']
+ * ```
+ */
+export function autoSpellToGlyphOrder(entries: AutoSpellEntry[]): SpellingEntry[] {
+    if (!Array.isArray(entries)) return [];
+
+    return [...entries]
+        .sort((a, b) => a.position - b.position)
+        .map((entry): SpellingEntry | null => {
+            if (entry.isVirtual) {
+                return entry.ipaCharacter && entry.ipaCharacter.length > 0
+                    ? entry.ipaCharacter
+                    : null;
+            }
+            return entry.grapheme_id > 0 ? createGraphemeEntry(entry.grapheme_id) : null;
+        })
+        .filter((entry): entry is SpellingEntry => entry !== null);
 }
 
 /**

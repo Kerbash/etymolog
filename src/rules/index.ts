@@ -15,15 +15,15 @@
 
 import type { TypographyRule } from './types';
 import { glyphDirectionRule, wordOrderRule, lineProgressionRule } from './directionality';
-import { glyphStackingRule, wordWrapRule, baselineAlignmentRule } from './layout';
+import { wordWrapRule, baselineAlignmentRule } from './layout';
 
 export type { TypographyRule, TypographyRuleOption } from './types';
+export { validateWritingSystem, type WritingSystemWarning } from './validateWritingSystem';
 
 const ALL_RULES: TypographyRule[] = [
     glyphDirectionRule,
     wordOrderRule,
     lineProgressionRule,
-    glyphStackingRule,
     wordWrapRule,
     baselineAlignmentRule,
 ];

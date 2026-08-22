@@ -1,0 +1,40 @@
+// AppNav — the tab strip lines up with the page content, and the panel is the
+// app's scroll model.
+//
+// The old shell put `height: 100dvh` on an inner box, which made the viewport
+// the only scroll container and forced every page to manage its own overflow
+// (hence the `marginBottom: 1rem` hacks in three tab mains). Nothing here sets a
+// height: the document scrolls, the header sticks, pages just grow.
+
+.nav {
+    width: 100%;
+    max-width: var(--max-content-width);
+    margin-inline: auto;
+
+    // Fill the shell column so the panel's background reaches the footer even on
+    // a short page.
+    flex-grow: 1;
+
+    // Breathing room so the content column is not flush against the sticky
+    // header above or the footer below — the page canvas shows through this
+    // gap on both edges.
+    padding-block: var(--content-padding);
+}
+
+.panel {
+    // BasicBody supplies the inner gutter and the max-width; the panel only
+    // needs to stop the tab-strip border from collapsing onto the content.
+    padding-top: var(--surface-padding);
+}
+
+// Doubled class on purpose: `body.module.scss` sets `overflow: auto` with the
+// same specificity, and which one wins would otherwise depend on stylesheet
+// insertion order. `.body.body` beats it deterministically.
+//
+// The shell scrolls the DOCUMENT, so a nested scroll container here buys
+// nothing and costs two things: a second scrollbar on tall pages, and clipping
+// of anything that draws outside the box (the Script Maker chart dropdown opens
+// past the bottom edge of the content area).
+.body.body {
+    overflow: visible;
+}

@@ -13,6 +13,8 @@ import { blockStrategy } from './blockStrategy';
 import { spiralStrategy } from './spiralStrategy';
 import { circularStrategy } from './circularStrategy';
 import { boustrophedonStrategy } from './boustrophedonStrategy';
+import { createComposedBlockStrategy } from './composedBlockStrategy';
+import { DEFAULT_WRITING_SYSTEM_SETTINGS } from '../../../../db/api/types';
 
 // Export individual strategies
 export { ltrStrategy, rtlStrategy, ttbStrategy, bttStrategy } from './linearStrategy';
@@ -34,7 +36,9 @@ const strategyMap: Record<LayoutStrategyType, LayoutStrategy> = {
     block: blockStrategy,
     circular: circularStrategy,
     boustrophedon: boustrophedonStrategy,
-    'composed-block': blockStrategy, // Fallback; real composed strategy is created via createComposedBlockStrategy
+    // Without explicit writing-system settings the composed strategy runs on the defaults
+    // (ltr words, ttb lines) — never silently degrades to the plain block strategy.
+    'composed-block': createComposedBlockStrategy(DEFAULT_WRITING_SYSTEM_SETTINGS),
 };
 
 /**

@@ -1,295 +1,195 @@
 /**
  * GlyphGallery
- * ----------------
- * Refactored to use the reusable DataGallery component from cyber-components.
+ * ------------
+ * The glyph binding of the shared {@link EntityGallery}.
  *
- * This component now focuses on:
- * - Data fetching and state management (via useEtymolog context)
- * - Delete modal logic
- * - Providing renderers for the DataGallery
+ * Two behaviours are preserved deliberately:
  *
- * The DataGallery handles:
- * - Grid/list layout with responsive columns
- * - Search and filtering
- * - Pagination
- * - Keyboard navigation
- * - Virtualization for large datasets
+ *  - deletion calls `api.glyph.cascadeDelete`, not `delete`: a glyph's
+ *    graphemes cannot outlive it, and the context wrapper refreshes the
+ *    affected slices — the original called the service directly and never
+ *    refreshed, so a deleted glyph stayed on screen until a reload;
+ *  - the "Auto-manage" switch stays in the toolbar, but it now has a real
+ *    accessible name. The `<label htmlFor="auto-manage-glyphs">` it replaces
+ *    pointed at an id `CyberSwitch` never renders, so the label was inert and
+ *    the control announced as an unnamed switch.
  */
 
-import {useState, useMemo, useCallback} from 'react';
-import {useEtymolog, type GlyphWithUsage, type GraphemeComplete} from '../../../../db';
-import CompactGraphemeDisplay from '../../../display/grapheme/compact/compact';
-import DataGallery, {type SortOption} from 'cyber-components/display/dataGallery';
+import { useCallback, useMemo } from 'react';
+import { Link } from 'react-router-dom';
+
+import CyberSwitch from 'cyber-components/interactable/switch/switch/switch.tsx';
+import IconButton from 'cyber-components/interactable/buttons/iconButton/iconButton.tsx';
+import { buttonStyles } from 'cyber-components/interactable/buttons/button';
+import type { SortOption } from 'cyber-components/display/dataGallery';
+
+import { useEtymolog, type GlyphWithUsage, type GraphemeComplete } from '../../../../db';
+import { ROUTES, resolveUrl } from '../../../../url_mapping';
 import GlyphCard from '../../../display/glyphs/glyphCard';
-import Modal from "cyber-components/container/modal/modal.tsx";
-import Button from "cyber-components/interactable/buttons/button/button.tsx";
-import CyberSwitch from "cyber-components/interactable/switch/switch/switch.tsx";
+import {
+    EntityGallery,
+    useGalleryState,
+    useApiAction,
+    useConfirm,
+    type GalleryAdapters,
+} from '../../../shared';
 
-/**
- * Simple glyph gallery: name on top, SVG in the middle.
- * Minimal styling so it matches the rest of the app's layout.
- */
+import styles from './galleryGlyphs.module.scss';
+
+const SORT_OPTIONS: SortOption[] = [
+    { value: 'name-asc', displayComponent: <span>Name (A-Z)</span> },
+    { value: 'name-desc', displayComponent: <span>Name (Z-A)</span> },
+    { value: 'usage-desc', displayComponent: <span>Most used</span> },
+    { value: 'usage-asc', displayComponent: <span>Least used</span> },
+];
+
+const ADAPTERS: GalleryAdapters<GlyphWithUsage> = {
+    search: (glyph, query) => glyph.name.toLowerCase().includes(query),
+    sort: (a, b, sortBy) => {
+        switch (sortBy) {
+            case 'name-asc':
+                return a.name.localeCompare(b.name);
+            case 'name-desc':
+                return b.name.localeCompare(a.name);
+            case 'usage-desc':
+                return (b.usageCount ?? 0) - (a.usageCount ?? 0);
+            case 'usage-asc':
+                return (a.usageCount ?? 0) - (b.usageCount ?? 0);
+            default:
+                return 0;
+        }
+    },
+};
+
 export default function GlyphGallery() {
-    // Use the unified context
-    const { api, data, settings, isLoading, error } = useEtymolog();
+    const { api, data, settings, isReady, error } = useEtymolog();
+    const confirm = useConfirm();
+    const runApiAction = useApiAction();
+
     const { glyphsWithUsage, graphemesComplete } = data;
 
-    // Gallery state
-    const [searchQuery, setSearchQuery] = useState('');
-    const [sortBy, setSortBy] = useState('name-asc');
-    const [curPage, setCurPage] = useState(1);
-    const [maxResultPerPage, setMaxResultPerPage] = useState(24);
+    const state = useGalleryState({ defaultSort: 'name-asc', defaultViewMode: 'compact' });
 
-    // Delete modal state
-    const [glyphToDelete, setGlyphToDelete] = useState<number | null>(null);
-    const [isDeleting, setIsDeleting] = useState(false);
-
-    // Map glyph id -> array of grapheme objects that reference it
+    /** glyph id → the graphemes that would be deleted with it. */
     const graphemesByGlyph = useMemo(() => {
         const map = new Map<number, GraphemeComplete[]>();
-        if (!graphemesComplete) return map;
-
-        for (const g of graphemesComplete) {
-            for (const glyphEntry of g.glyphs) {
-                const key = (glyphEntry as any).id as number;
-                const arr = map.get(key) || [];
-                arr.push(g as GraphemeComplete);
-                map.set(key, arr);
+        for (const grapheme of graphemesComplete ?? []) {
+            for (const glyph of grapheme.glyphs) {
+                const list = map.get(glyph.id) ?? [];
+                list.push(grapheme);
+                map.set(glyph.id, list);
             }
         }
-
         return map;
     }, [graphemesComplete]);
 
-    // Filter and sort glyphs based on search and sort state
-    const filteredAndSortedGlyphs = useMemo(() => {
-        if (!glyphsWithUsage) return [];
+    const handleAutoManageToggle = useCallback(
+        (value: boolean) => {
+            api.settings.update({ autoManageGlyphs: value });
+        },
+        [api],
+    );
 
-        // Filter by search query
-        let result = glyphsWithUsage;
-        if (searchQuery.trim()) {
-            const query = searchQuery.toLowerCase().trim();
-            result = result.filter(g =>
-                g.name.toLowerCase().includes(query)
-            );
-        }
+    const handleDelete = useCallback(
+        async (glyph: GlyphWithUsage) => {
+            const affected = graphemesByGlyph.get(glyph.id) ?? [];
 
-        // Sort
-        result = [...result].sort((a, b) => {
-            switch (sortBy) {
-                case 'name-asc':
-                    return a.name.localeCompare(b.name);
-                case 'name-desc':
-                    return b.name.localeCompare(a.name);
-                case 'usage-desc':
-                    return (b.usageCount ?? 0) - (a.usageCount ?? 0);
-                case 'usage-asc':
-                    return (a.usageCount ?? 0) - (b.usageCount ?? 0);
-                default:
-                    return 0;
-            }
-        });
+            const confirmed = await confirm({
+                title: `Delete glyph "${glyph.name}"?`,
+                message: affected.length
+                    ? `${affected.length} grapheme(s) reference this glyph and will be deleted with ` +
+                      `it: ${affected.map((g) => g.name).join(', ')}. Unlink the glyph from them ` +
+                      `first if you want to keep them. This cannot be undone.`
+                    : 'This cannot be undone.',
+                confirmLabel: 'Delete glyph',
+                tone: 'danger',
+            });
+            if (!confirmed) return;
 
-        return result;
-    }, [glyphsWithUsage, searchQuery, sortBy]);
+            await runApiAction(() => api.glyph.cascadeDelete(glyph.id), {
+                errorTitle: 'Could not delete glyph',
+                success: `Deleted "${glyph.name}".`,
+            });
+        },
+        [api, confirm, runApiAction, graphemesByGlyph],
+    );
 
-    // Calculate pagination
-    const maxPage = Math.max(1, Math.ceil(filteredAndSortedGlyphs.length / maxResultPerPage));
+    /**
+     * `interactionMode="none"` + `hideDelete`: the card chrome, the link and the
+     * delete control all belong to `EntityCard` now. Left as-is, `GlyphCard`'s
+     * default 'route' mode renders a `<Link>` with a delete `<button>` INSIDE
+     * it — an interactive element nested in an interactive element.
+     */
+    const renderItem = useCallback(
+        (glyph: GlyphWithUsage) => (
+            <GlyphCard glyph={glyph} interactionMode="none" hideDelete />
+        ),
+        [],
+    );
 
-    // Ensure current page is valid
-    const validCurPage = Math.min(curPage, maxPage);
-    if (validCurPage !== curPage) {
-        setCurPage(validCurPage);
-    }
-
-    // Get current page data
-    const paginatedGlyphs = useMemo(() => {
-        const startIndex = (validCurPage - 1) * maxResultPerPage;
-        return filteredAndSortedGlyphs.slice(startIndex, startIndex + maxResultPerPage);
-    }, [filteredAndSortedGlyphs, validCurPage, maxResultPerPage]);
-
-    // Handlers
-    const handleSearch = useCallback((query: string) => {
-        setSearchQuery(query);
-        setCurPage(1); // Reset to first page on search
-    }, []);
-
-    const handleDelete = useCallback((id: number) => {
-        setGlyphToDelete(id);
-    }, []);
-
-    // Toggle auto-manage glyphs setting
-    const handleAutoManageGlyphsToggle = useCallback((value: boolean) => {
-        api.settings.update({ autoManageGlyphs: value });
-    }, [api]);
-
-    const confirmDelete = useCallback(async (id: number) => {
-        setIsDeleting(true);
-        try {
-            const result = api.glyph.cascadeDelete(id);
-            if (!result.success) {
-                console.error('Failed to delete glyph:', result.error?.message);
-            }
-            setGlyphToDelete(null);
-        } catch (err) {
-            console.error('Failed to delete glyph', err);
-        } finally {
-            setIsDeleting(false);
-        }
-    }, [api]);
-
-    // Renderers for DataGallery
-    const renderGlyph = useCallback((glyph: GlyphWithUsage) => (
-        <GlyphCard glyph={glyph} onDelete={handleDelete}/>
-    ), [handleDelete]);
+    const renderActions = useCallback(
+        (glyph: GlyphWithUsage) => (
+            <IconButton
+                iconName="trash"
+                iconColor="var(--status-bad)"
+                onClick={() => void handleDelete(glyph)}
+                aria-label={`Delete glyph ${glyph.name}`}
+            />
+        ),
+        [handleDelete],
+    );
 
     return (
-        <>
-            <DataGallery
-                // Data
-                data={paginatedGlyphs}
-                keyExtractor={(glyph) => glyph.id}
-
-                // Renderers - use compact view for responsive multi-column grid
-                // minItemWidth/maxItemWidth creates fluid growth: cards are at least 160px
-                // and grow equally (1fr) to fill available space, shrinking when a new column fits
-                renderDetailed={renderGlyph}
-                renderCompact={renderGlyph}
-                viewMode="compact"
-                minItemWidth="160px"
-                maxItemWidth="1fr"
-                itemGap="1rem"
-
-                // Search
-                searchFn={handleSearch}
-                searchQuery={searchQuery}
-                onSearchQueryChange={setSearchQuery}
-                searchPlaceholder="Search glyphs..."
-
-                // Sorting
-                sortOptions={SORT_OPTIONS}
-                sortBy={sortBy}
-                setSortBy={setSortBy}
-
-                // Pagination
-                curPage={validCurPage}
-                setCurPage={setCurPage}
-                maxPage={maxPage}
-                maxResultPerPage={maxResultPerPage}
-                setMaxResultPerPage={setMaxResultPerPage}
-                maxResultOptions={RESULTS_PER_PAGE_OPTIONS}
-                totalCount={filteredAndSortedGlyphs.length}
-
-                // State
-                isLoading={isLoading}
-                error={error}
-                emptyMessage="No glyphs found. Create one to get started."
-                noResultsMessage="No glyphs match your search"
-
-                // Keyboard navigation
-                keyboardNavigation={{
-                    enabled: true,
-                    mode: 'roving',
-                    wrapAround: true,
-                }}
-
-                // Virtualization (auto-enables for 100+ items)
-                virtualization={{
-                    autoEnableThreshold: 100,
-                    estimatedItemHeight: 180,
-                }}
-
-                // Accessibility
-                ariaLabel="Glyph gallery"
-
-                // Toolbar settings slot
-                toolbarEndSlot={
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: '0.5rem' }}>
-                        <label
-                            htmlFor="auto-manage-glyphs"
-                            style={{ fontSize: '0.875rem', whiteSpace: 'nowrap', cursor: 'pointer' }}
-                            title="When enabled, automatically manages orphaned glyphs that are not used by any grapheme"
-                        >
-                            Auto-manage
-                        </label>
-                        <CyberSwitch
-                            value={settings.autoManageGlyphs}
-                            onChange={handleAutoManageGlyphsToggle}
-                            width="2.5em"
-                        />
-                    </div>
-                }
-
-                // ... other props
-                styling={{
-                    content: {
-                        style: {padding: '0.2rem'}       // inline style
-                    }
-                }}
-            />
-
-            {/* Delete Confirmation Modal */}
-            <Modal
-                isOpen={glyphToDelete !== null}
-                setIsOpen={(open) => {
-                    if (!open) setGlyphToDelete(null);
-                }}
-                onClose={() => setGlyphToDelete(null)}
-                allowClose={true}
-            >
-                <div style={{padding: '1rem', minWidth: 360}}>
-                    <h2 style={{marginTop: 0}}>Delete glyph</h2>
-
-                    <p>
-                        Are you sure you would like to delete this glyph?
-                        {graphemesByGlyph.get(glyphToDelete ?? -1)?.length ? (
-                            <>
-                                {' '}The following grapheme(s) reference this glyph and will also be deleted unless you
-                                unlink the glyph from those graphemes first:
-                            </>
-                        ) : null}
-                    </p>
-
-                    {/* List of affected graphemes */}
-                    {graphemesByGlyph.get(glyphToDelete ?? -1)?.length ? (
-                        <div style={{
-                            display: 'grid',
-                            gap: '0.5rem',
-                            marginTop: '0.5rem',
-                            maxHeight: '200px',
-                            overflowY: 'auto'
-                        }}>
-                            {graphemesByGlyph.get(glyphToDelete ?? -1)?.map((gp) => (
-                                <CompactGraphemeDisplay key={gp.id} graphemeData={gp}/>
-                            ))}
-                        </div>
-                    ) : null}
-
-                    <div style={{display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem'}}>
-                        <Button onClick={() => setGlyphToDelete(null)} disabled={isDeleting}>
-                            Cancel
-                        </Button>
-                        <Button
-                            onClick={() => glyphToDelete !== null && confirmDelete(glyphToDelete)}
-                            disabled={isDeleting}
-                            style={{background: 'var(--danger)', color: 'white'}}
-                        >
-                            {isDeleting ? 'Deleting...' : 'Delete glyph'}
-                        </Button>
-                    </div>
+        <EntityGallery<GlyphWithUsage>
+            items={glyphsWithUsage ?? []}
+            state={state}
+            adapters={ADAPTERS}
+            keyExtractor={(glyph) => glyph.id}
+            renderItem={renderItem}
+            itemLabel={(glyph) => glyph.name}
+            itemHref={(glyph) => resolveUrl(ROUTES.glyphEdit, { id: glyph.id })}
+            renderActions={renderActions}
+            ariaLabel="Glyph gallery"
+            isReady={isReady}
+            error={error}
+            searchPlaceholder="Search glyphs…"
+            sortOptions={SORT_OPTIONS}
+            showViewToggle={false}
+            minItemWidth="160px"
+            maxItemWidth="1fr"
+            toolbarEndSlot={
+                <div className={styles.autoManage}>
+                    {/* Visible text AND an aria-label: `CyberSwitch` renders a
+                        `role="switch"` button that takes `aria-label` but no
+                        `id`, so a `<label htmlFor>` can never reach it. */}
+                    <span>Auto-manage</span>
+                    <CyberSwitch
+                        value={settings.autoManageGlyphs}
+                        onChange={handleAutoManageToggle}
+                        width="2.5em"
+                        aria-label="Auto-manage orphaned glyphs"
+                    />
                 </div>
-            </Modal>
-        </>
+            }
+            empty={{
+                icon: 'pencil',
+                title: 'No glyphs yet',
+                description: 'A glyph is one drawn mark. Draw one to start building the script.',
+                action: (
+                    <IconButton
+                        as={Link}
+                        to={ROUTES.glyphCreate}
+                        iconName="plus-lg"
+                        className={buttonStyles.primary}
+                    >
+                        Draw your first glyph
+                    </IconButton>
+                ),
+            }}
+            noMatch={{
+                title: 'No glyphs match',
+                description: 'No glyph name matches the current search.',
+            }}
+        />
     );
 }
-
-// Sort options for the gallery
-const SORT_OPTIONS: SortOption[] = [
-    {value: 'name-asc', displayComponent: <span>Name (A-Z)</span>},
-    {value: 'name-desc', displayComponent: <span>Name (Z-A)</span>},
-    {value: 'usage-desc', displayComponent: <span>Most Used</span>},
-    {value: 'usage-asc', displayComponent: <span>Least Used</span>},
-];
-
-// Results per page options
-const RESULTS_PER_PAGE_OPTIONS = [12, 24, 48, 96];

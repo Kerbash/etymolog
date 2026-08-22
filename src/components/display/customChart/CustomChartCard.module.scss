@@ -2,7 +2,7 @@
 
 .card {
     border: 1px solid var(--border-primary);
-    border-radius: 8px;
+    border-radius: var(--radius-surface);
     background: var(--surface-base);
     overflow: hidden;
 }

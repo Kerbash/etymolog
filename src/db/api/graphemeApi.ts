@@ -17,8 +17,10 @@ import type {
     UpdatePhonemeRequest,
     GraphemeApi,
     PhonemeApi,
+    DeleteGraphemeOptions,
+    DeleteGraphemeResult,
 } from './types';
-import type { Grapheme, GraphemeComplete, Phoneme } from '../types';
+import type { Grapheme, GraphemeComplete, Phoneme, Lexicon } from '../types';
 import {
     createGrapheme as serviceCreateGrapheme,
     getGraphemeById as serviceGetGraphemeById,
@@ -38,10 +40,14 @@ import {
     getAutoSpellingPhonemes as serviceGetAutoSpellingPhonemes,
     getGraphemeByPhoneme as serviceGetGraphemeByPhoneme,
     getAllPhonemeGraphemeMappings as serviceGetAllPhonemeGraphemeMappings,
+    getGraphemeLexiconUsageCount,
 } from '../graphemeService';
+import { getLexiconEntriesUsingGrapheme, handleGraphemeDeletion } from '../lexiconService';
 import { cleanupOrphanedGlyphs } from '../glyphService';
-import { isDatabaseInitialized } from '../database';
+import { isDatabaseInitialized, getDatabase } from '../database';
+import { withTransaction } from '../utils/transaction';
 import { getCurrentSettings } from './settingsApi';
+import { serviceLog } from '../utils/logger';
 
 /**
  * Helper to create a standardized error response.
@@ -282,7 +288,7 @@ function updateGraphemeGlyphs(id: number, request: UpdateGraphemeGlyphsRequest):
         if (settings.autoManageGlyphs) {
             const deletedCount = cleanupOrphanedGlyphs();
             if (deletedCount > 0) {
-                console.log(`[Auto-manage] Cleaned up ${deletedCount} orphaned glyph(s)`);
+                serviceLog.info(`Auto-manage: Cleaned up ${deletedCount} orphaned glyph(s)`);
             }
         }
 
@@ -297,33 +303,70 @@ function updateGraphemeGlyphs(id: number, request: UpdateGraphemeGlyphsRequest):
 
 /**
  * Delete a grapheme.
- * If autoManageGlyphs setting is enabled, also cleans up orphaned glyphs.
+ *
+ * When words still spell with it the call fails with CONSTRAINT_VIOLATION
+ * (details.lexiconCount) unless `respellLexicon` is set — then the words are
+ * rewritten (auto-spelled ones with the grapheme's primary phoneme, manual
+ * ones flagged for review) and the grapheme removed, all in one transaction.
+ * With `autoManageGlyphs` on, glyphs orphaned by the delete are cleaned up.
  */
-function deleteGrapheme(id: number): ApiResponse<void> {
-    const dbError = checkDbInitialized<void>();
+function deleteGrapheme(id: number, options: DeleteGraphemeOptions = {}): ApiResponse<DeleteGraphemeResult> {
+    const dbError = checkDbInitialized<DeleteGraphemeResult>();
     if (dbError) return dbError;
 
     try {
-        const success = serviceDeleteGrapheme(id);
-        if (!success) {
+        const grapheme = serviceGetGraphemeComplete(id);
+        if (!grapheme) {
             return errorResponse('NOT_FOUND', `Grapheme with ID ${id} not found`);
         }
 
-        // Check if auto-manage is enabled and cleanup orphaned glyphs
-        const settings = getCurrentSettings();
-        if (settings.autoManageGlyphs) {
-            const deletedCount = cleanupOrphanedGlyphs();
-            if (deletedCount > 0) {
-                console.log(`[Auto-manage] Cleaned up ${deletedCount} orphaned glyph(s)`);
-            }
+        const lexiconCount = getGraphemeLexiconUsageCount(id);
+        if (lexiconCount > 0 && !options.respellLexicon) {
+            return errorResponse(
+                'CONSTRAINT_VIOLATION',
+                `Cannot delete grapheme "${grapheme.name}": it is used in ${lexiconCount} word${lexiconCount === 1 ? '' : 's'}`,
+                { lexiconCount },
+            );
         }
 
-        return successResponse(undefined);
+        const result = withTransaction(getDatabase(), () => {
+            let lexiconRespelled = 0;
+            let lexiconMarked = 0;
+            if (lexiconCount > 0) {
+                const primaryPhoneme = grapheme.phonemes.find(p => p.use_in_auto_spelling)?.phoneme
+                    ?? grapheme.phonemes[0]?.phoneme;
+                const report = handleGraphemeDeletion(id, primaryPhoneme);
+                lexiconRespelled = report.respelledCount;
+                lexiconMarked = report.markedForAttentionCount;
+            }
+            serviceDeleteGrapheme(id);
+            let orphanGlyphsRemoved = 0;
+            if (getCurrentSettings().autoManageGlyphs) {
+                orphanGlyphsRemoved = cleanupOrphanedGlyphs();
+                if (orphanGlyphsRemoved > 0) {
+                    serviceLog.info(`Auto-manage: Cleaned up ${orphanGlyphsRemoved} orphaned glyph(s)`);
+                }
+            }
+            return { lexiconRespelled, lexiconMarked, orphanGlyphsRemoved };
+        });
+
+        return successResponse(result);
     } catch (error) {
         return errorResponse(
             'OPERATION_FAILED',
             error instanceof Error ? error.message : 'Failed to delete grapheme'
         );
+    }
+}
+
+/** Words whose spelling uses a grapheme. */
+function getLexiconUsage(id: number): ApiResponse<Lexicon[]> {
+    const dbError = checkDbInitialized<Lexicon[]>();
+    if (dbError) return dbError;
+    try {
+        return successResponse(getLexiconEntriesUsingGrapheme(id));
+    } catch (error) {
+        return errorResponse('OPERATION_FAILED', error instanceof Error ? error.message : 'Failed to load grapheme usage');
     }
 }
 
@@ -376,6 +419,7 @@ export const graphemeApi: GraphemeApi = {
     update: updateGrapheme,
     updateGlyphs: updateGraphemeGlyphs,
     delete: deleteGrapheme,
+    getLexiconUsage,
     getByPhoneme: getGraphemeByPhoneme,
     getPhonemeMap: getPhonemeGraphemeMap,
 };

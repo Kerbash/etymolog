@@ -45,7 +45,10 @@ const GlyphItem = memo(function GlyphItem({
             svgEl.setAttribute('viewBox', '0 0 100 100');
         }
 
-        return new XMLSerializer().serializeToString(svgEl);
+        const serialized = new XMLSerializer().serializeToString(svgEl);
+        return DOMPurify.sanitize(serialized, {
+            USE_PROFILES: { svg: true, svgFilters: true },
+        });
     }, [glyph.svg_data, x, y, w, h]);
     const transform = rotation
         ? `rotate(${rotation} ${x + w / 2} ${y + h / 2})`

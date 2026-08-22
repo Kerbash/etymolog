@@ -1,422 +1,168 @@
 /**
  * GraphemeGallery
- * ----------------
- * Refactored to use the reusable DataGallery component from cyber-components.
+ * ---------------
+ * The grapheme binding of the shared {@link EntityGallery}.
  *
- * Features:
- * - Search by name, phoneme, or glyph name
- * - View mode toggle (expanded/compact)
- * - Pagination
- * - Keyboard navigation
- * - Virtualization for large datasets
+ * Behaviour preserved from the copy this replaces, because `PunctuationPage`
+ * depends on it: `selectionMode` turns every card into a single button that
+ * calls `onSelect` instead of navigating, and suppresses the delete action.
  */
 
-import {useState, useMemo, useCallback} from 'react';
-import {Link, useNavigate} from 'react-router-dom';
-import type {GraphemeComplete} from '@src/db';
+import { useCallback } from 'react';
+import { Link } from 'react-router-dom';
+
+import IconButton from 'cyber-components/interactable/buttons/iconButton/iconButton.tsx';
+import { buttonStyles } from 'cyber-components/interactable/buttons/button';
+import type { GalleryViewMode, SortOption } from 'cyber-components/display/dataGallery';
+
+import { useEtymolog, type GraphemeComplete } from '@src/db';
+import { ROUTES, resolveUrl } from '../../../../url_mapping';
 import DetailedGraphemeDisplay from '../../../display/grapheme/detailed/detailed.tsx';
 import CompactGraphemeDisplay from '../../../display/grapheme/compact/compact.tsx';
-import IconButton from 'cyber-components/interactable/buttons/iconButton/iconButton.tsx';
-import Modal from 'cyber-components/container/modal/modal.tsx';
-import Button from 'cyber-components/interactable/buttons/button/button.tsx';
-import {buttonStyles} from 'cyber-components/interactable/buttons/button/button.tsx';
-import {DataGallery, type GalleryViewMode, type SortOption} from 'cyber-components/display/dataGallery';
-import {useEtymolog} from '@src/db';
-
-// Map our legacy ViewMode to DataGallery's GalleryViewMode
-export type ViewMode = 'expanded' | 'compact';
+import { EntityGallery, useGalleryState, type GalleryAdapters } from '../../../shared';
+import { useGraphemeDelete } from '../useGraphemeDelete';
 
 interface GraphemeGalleryProps {
-    // Make graphemes optional so this component can act as a container when
-    // no prop is provided (it will source data from useEtymolog()).
+    /** Omit to source the list from the context. */
     graphemes?: GraphemeComplete[];
-    isLoading?: boolean;
+    /** `false` while the database is booting. */
+    isReady?: boolean;
     error?: Error | null;
-    /** Initial view mode */
-    defaultViewMode?: ViewMode;
-    /** Called when a grapheme is clicked (for compact view) */
+    defaultViewMode?: GalleryViewMode;
+    /** Called when a grapheme card is activated outside selection mode. */
     onGraphemeClick?: (grapheme: GraphemeComplete) => void;
     /**
-     * When true, operates in selection mode for modals/pickers.
-     * - Hides delete buttons
-     * - Hides "create" buttons in empty state
-     * - Uses `onSelect` callback instead of navigation
+     * Picker mode for modals: one `<button>` per card, no delete action, no
+     * "create the first one" CTA.
      */
     selectionMode?: boolean;
-    /** Called when a grapheme is selected (only used in selectionMode) */
     onSelect?: (grapheme: GraphemeComplete) => void;
 }
 
-// Sort options for the gallery
 const SORT_OPTIONS: SortOption[] = [
-    {value: 'name-asc', displayComponent: <span>Name (A-Z)</span>},
-    {value: 'name-desc', displayComponent: <span>Name (Z-A)</span>},
-    {value: 'glyphs-desc', displayComponent: <span>Most Glyphs</span>},
-    {value: 'glyphs-asc', displayComponent: <span>Fewest Glyphs</span>},
+    { value: 'name-asc', displayComponent: <span>Name (A-Z)</span> },
+    { value: 'name-desc', displayComponent: <span>Name (Z-A)</span> },
+    { value: 'glyphs-desc', displayComponent: <span>Most glyphs</span> },
+    { value: 'glyphs-asc', displayComponent: <span>Fewest glyphs</span> },
 ];
 
-// Results per page options
-const RESULTS_PER_PAGE_OPTIONS = [12, 24, 48, 96];
+const ADAPTERS: GalleryAdapters<GraphemeComplete> = {
+    search: (grapheme, query) =>
+        grapheme.name.toLowerCase().includes(query) ||
+        grapheme.phonemes.some((p) => p.phoneme.toLowerCase().includes(query)) ||
+        grapheme.glyphs.some((g) => g.name.toLowerCase().includes(query)),
 
-/**
- * Self-contained gallery component for displaying graphemes
- * Now uses DataGallery for consistent UI and features
- */
+    sort: (a, b, sortBy) => {
+        switch (sortBy) {
+            case 'name-asc':
+                return a.name.localeCompare(b.name);
+            case 'name-desc':
+                return b.name.localeCompare(a.name);
+            case 'glyphs-desc':
+                return b.glyphs.length - a.glyphs.length;
+            case 'glyphs-asc':
+                return a.glyphs.length - b.glyphs.length;
+            default:
+                return 0;
+        }
+    },
+};
+
 export default function GraphemeGallery({
-                                            graphemes,
-                                            isLoading: isLoadingProp,
-                                            error: errorProp,
-                                            defaultViewMode = 'expanded',
-                                            onGraphemeClick,
-                                            selectionMode = false,
-                                            onSelect,
-                                        }: GraphemeGalleryProps) {
-    // Use etymolog context for API + optionally data
-    const etymolog = useEtymolog();
-    const {
-        api,
-        refresh,
-        data: etymologData,
-        isLoading: etymologLoading,
-        error: etymologError
-    } = etymolog || ({} as any);
+    graphemes,
+    isReady: isReadyProp,
+    error: errorProp,
+    defaultViewMode,
+    onGraphemeClick,
+    selectionMode = false,
+    onSelect,
+}: GraphemeGalleryProps) {
+    const { data, isReady: contextReady, error: contextError } = useEtymolog();
+    // The SAME two-stage flow the edit page uses: the ordinary danger
+    // confirmation, and — only when words are spelled with this grapheme — a
+    // second dialog naming them and offering to respell. The card used to ask
+    // one question whose message described behaviour the service does not have,
+    // and then fail with a raw constraint error the user could not act on.
+    const deleteGrapheme = useGraphemeDelete();
 
-    // Provide default grapheme list / loading / error from context when props aren't passed
-    const graphemesToRender: GraphemeComplete[] = graphemes ?? (etymologData?.graphemesComplete ?? []);
-    const isLoading = isLoadingProp ?? Boolean(etymologLoading);
-    const error = errorProp ?? (etymologError as Error | null | undefined) ?? null;
+    const items = graphemes ?? data.graphemesComplete ?? [];
+    const isReady = isReadyProp ?? contextReady;
+    const error = errorProp ?? contextError ?? null;
 
-    // Local delete modal state
-    const [graphemeToDelete, setGraphemeToDelete] = useState<number | null>(null);
-    const [isDeleting, setIsDeleting] = useState(false);
+    const state = useGalleryState({ defaultSort: 'name-asc', defaultViewMode });
 
-    // Map legacy view mode to DataGallery view mode
-    const mapViewMode = (mode: ViewMode): GalleryViewMode =>
-        mode === 'expanded' ? 'detailed' : 'compact';
+    const handleDelete = useCallback(
+        (grapheme: GraphemeComplete) => deleteGrapheme({ id: grapheme.id, name: grapheme.name }),
+        [deleteGrapheme],
+    );
 
-    // Gallery state
-    const [viewMode, setViewMode] = useState<GalleryViewMode>(mapViewMode(defaultViewMode));
-    const [searchQuery, setSearchQuery] = useState('');
-    const [sortBy, setSortBy] = useState('name-asc');
-    const [curPage, setCurPage] = useState(1);
-    const [maxResultPerPage, setMaxResultPerPage] = useState(24);
+    const renderItem = useCallback(
+        (grapheme: GraphemeComplete, viewMode: GalleryViewMode) =>
+            viewMode === 'compact' ? (
+                <CompactGraphemeDisplay graphemeData={grapheme} />
+            ) : (
+                <DetailedGraphemeDisplay graphemeData={grapheme} />
+            ),
+        [],
+    );
 
-    // Navigation / default click handler
-    const navigate = useNavigate();
-    const defaultOnGraphemeClick = useCallback((g: GraphemeComplete) => {
-        // In selection mode, call onSelect instead of navigating
-        if (selectionMode && onSelect) {
-            onSelect(g);
-            return;
-        }
-        navigate(`/script-maker/grapheme/db/${g.id}`);
-    }, [navigate, selectionMode, onSelect]);
-
-    const internalOnGraphemeClick = onGraphemeClick ?? defaultOnGraphemeClick;
-
-    // Filter and sort graphemes
-    const filteredAndSortedGraphemes = useMemo(() => {
-        let result = graphemesToRender;
-
-        // Filter by search query
-        if (searchQuery.trim()) {
-            const query = searchQuery.toLowerCase().trim();
-            result = result.filter(grapheme => {
-                // Search by name
-                if (grapheme.name.toLowerCase().includes(query)) {
-                    return true;
-                }
-                // Search by phoneme
-                if (grapheme.phonemes.some(p => p.phoneme.toLowerCase().includes(query))) {
-                    return true;
-                }
-                // Search by glyph name
-                if (grapheme.glyphs.some(g => g.name.toLowerCase().includes(query))) {
-                    return true;
-                }
-                return false;
-            });
-        }
-
-        // Sort
-        result = [...result].sort((a, b) => {
-            switch (sortBy) {
-                case 'name-asc':
-                    return a.name.localeCompare(b.name);
-                case 'name-desc':
-                    return b.name.localeCompare(a.name);
-                case 'glyphs-desc':
-                    return b.glyphs.length - a.glyphs.length;
-                case 'glyphs-asc':
-                    return a.glyphs.length - b.glyphs.length;
-                default:
-                    return 0;
-            }
-        });
-
-        return result;
-    }, [graphemesToRender, searchQuery, sortBy]);
-
-    // Calculate pagination
-    const maxPage = Math.max(1, Math.ceil(filteredAndSortedGraphemes.length / maxResultPerPage));
-
-    // Ensure current page is valid
-    const validCurPage = Math.min(curPage, maxPage);
-    if (validCurPage !== curPage) {
-        setCurPage(validCurPage);
-    }
-
-    // Get current page data
-    const paginatedGraphemes = useMemo(() => {
-        const startIndex = (validCurPage - 1) * maxResultPerPage;
-        return filteredAndSortedGraphemes.slice(startIndex, startIndex + maxResultPerPage);
-    }, [filteredAndSortedGraphemes, validCurPage, maxResultPerPage]);
-
-    // Handlers
-    const handleSearch = useCallback((query: string) => {
-        setSearchQuery(query);
-        setCurPage(1); // Reset to first page on search
-    }, []);
-
-    const handleItemActivate = useCallback((grapheme: GraphemeComplete) => {
-        if (internalOnGraphemeClick) {
-            internalOnGraphemeClick(grapheme);
-        }
-    }, [internalOnGraphemeClick]);
-
-    // New: open delete modal for a grapheme
-    const handleDelete = useCallback((id: number, e?: React.MouseEvent) => {
-        e?.stopPropagation();
-        setGraphemeToDelete(id);
-    }, []);
-
-    const confirmDelete = useCallback(async (id: number | null) => {
-        if (id === null) return;
-        setIsDeleting(true);
-        try {
-            const result = api.grapheme.delete(id);
-            if (!result.success) {
-                console.error('Failed to delete grapheme:', result.error?.message);
-            } else {
-                // Refresh context so UI updates immediately
-                try {
-                    refresh?.();
-                } catch (e) { /* ignore refresh errors */
-                }
-            }
-            // Close modal
-            setGraphemeToDelete(null);
-        } catch (err) {
-            console.error('Failed to delete grapheme', err);
-        } finally {
-            setIsDeleting(false);
-        }
-    }, [api, refresh]);
-
-    // Renderers
-    const renderDetailed = useCallback((grapheme: GraphemeComplete) => (
-        <div
-            onClick={() => internalOnGraphemeClick?.(grapheme)}
-            style={{
-                cursor: 'pointer',
-                transition: 'transform 0.2s ease, box-shadow 0.2s ease',
-                borderRadius: '8px',
-                position: 'relative', // for top-right button
-            }}
-            className={'grapheme-clickable'}
-            role={'button'}
-            tabIndex={0}
-            onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    internalOnGraphemeClick(grapheme);
-                }
-            }}
-            onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-2px)';
-                e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-            }}
-            onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = 'none';
-            }}
-        >
-            {/* Top-right delete button - hidden in selection mode */}
-            {!selectionMode && (
-                <div style={{position: 'absolute', top: 8, right: 8, zIndex: 10}}>
-                    <IconButton
-                        iconName="trash"
-                        iconColor={'var(--status-bad)'}
-                        onClick={(e: React.MouseEvent) => handleDelete(grapheme.id, e)}
-                        aria-label={`Delete grapheme ${grapheme.name}`}
-                    />
-                </div>
-            )}
-
-            <DetailedGraphemeDisplay graphemeData={grapheme}/>
-        </div>
-    ), [internalOnGraphemeClick, handleDelete, selectionMode]);
-
-    const renderCompact = useCallback((grapheme: GraphemeComplete) => (
-        <div style={{position: 'relative'}}>
-            {/* Delete button - hidden in selection mode */}
-            {!selectionMode && (
-                <div style={{position: 'absolute', top: 6, right: 6, zIndex: 10}}>
-                    <IconButton
-                        iconName="trash"
-                        iconColor={'var(--status-bad)'}
-                        onClick={(e: React.MouseEvent) => handleDelete(grapheme.id, e)}
-                        aria-label={`Delete grapheme ${grapheme.name}`}
-                    />
-                </div>
-            )}
-            <CompactGraphemeDisplay
-                graphemeData={grapheme}
-                onClick={() => internalOnGraphemeClick(grapheme)}
+    const renderActions = useCallback(
+        (grapheme: GraphemeComplete) => (
+            <IconButton
+                iconName="trash"
+                iconColor="var(--status-bad)"
+                onClick={() => void handleDelete(grapheme)}
+                aria-label={`Delete grapheme ${grapheme.name}`}
             />
-        </div>
-    ), [internalOnGraphemeClick, handleDelete, selectionMode]);
-
-    // Custom empty slot with create button
-    const emptySlot = useCallback(({searchQuery, hasActiveFilters}: {
-        searchQuery?: string;
-        hasActiveFilters?: boolean
-    }) => {
-        if (searchQuery || hasActiveFilters) {
-            return (
-                <div style={{textAlign: 'center', padding: '2rem'}}>
-                    <p>No graphemes match your search "{searchQuery}"</p>
-                    <p style={{fontSize: '0.875rem', color: 'var(--text-secondary)'}}>
-                        Try adjusting your search terms
-                    </p>
-                </div>
-            );
-        }
-        // In selection mode, show simpler message without create button
-        if (selectionMode) {
-            return (
-                <div style={{textAlign: 'center', padding: '2rem'}}>
-                    <p>No graphemes available for selection.</p>
-                    <p style={{fontSize: '0.875rem', color: 'var(--text-secondary)'}}>
-                        Create some graphemes first in the Script Maker.
-                    </p>
-                </div>
-            );
-        }
-        return (
-            <div style={{textAlign: 'center', padding: '2rem'}}>
-                <p>No graphemes found. Create one to get started!</p>
-                <IconButton
-                    as={Link}
-                    to="/script-maker/create"
-                    iconName="plus-lg"
-                    className={buttonStyles.primary}
-                    style={{marginTop: '1rem'}}
-                >
-                    Add Your First Glyph
-                </IconButton>
-            </div>
-        );
-    }, [selectionMode]);
+        ),
+        [handleDelete],
+    );
 
     return (
-        <>
-            <DataGallery
-                // Data
-                data={paginatedGraphemes}
-                keyExtractor={(grapheme) => grapheme.id}
-
-                // Renderers
-                renderDetailed={renderDetailed}
-                renderCompact={renderCompact}
-                minItemWidth="200px"
-                itemGap="1rem"
-
-                // Search
-                searchFn={handleSearch}
-                searchQuery={searchQuery}
-                onSearchQueryChange={setSearchQuery}
-                searchPlaceholder="Search by name, pronunciation..."
-
-                // Sorting
-                sortOptions={SORT_OPTIONS}
-                sortBy={sortBy}
-                setSortBy={setSortBy}
-
-                // View mode
-                viewMode={viewMode}
-                setViewMode={setViewMode}
-                showDisplaySwitch={true}
-
-                // Pagination
-                curPage={validCurPage}
-                setCurPage={setCurPage}
-                maxPage={maxPage}
-                maxResultPerPage={maxResultPerPage}
-                setMaxResultPerPage={setMaxResultPerPage}
-                maxResultOptions={RESULTS_PER_PAGE_OPTIONS}
-                totalCount={filteredAndSortedGraphemes.length}
-
-                // State
-                isLoading={isLoading}
-                error={error}
-                emptySlot={emptySlot}
-
-                // Interaction
-                onItemActivate={handleItemActivate}
-
-                // Keyboard navigation
-                keyboardNavigation={{
-                    enabled: true,
-                    mode: 'roving',
-                    wrapAround: true,
-                }}
-
-                // Virtualization (auto-enables for 100+ items)
-                virtualization={{
-                    autoEnableThreshold: 100,
-                    estimatedItemHeight: viewMode === 'detailed' ? 150 : 200,
-                }}
-
-                // Accessibility
-                ariaLabel="Grapheme gallery"
-
-                // ... other props
-                styling={{
-                    content: {
-                        style: {padding: '1rem 0.2rem'}       // inline style
-                    }
-                }}
-            />
-
-            {/* Delete Confirmation Modal */}
-            <Modal
-                isOpen={graphemeToDelete !== null}
-                setIsOpen={(open) => {
-                    if (!open) setGraphemeToDelete(null);
-                }}
-                onClose={() => setGraphemeToDelete(null)}
-                allowClose={true}
-            >
-                <div style={{padding: '1rem', minWidth: 320}}>
-                    <h2 style={{marginTop: 0}}>Delete grapheme</h2>
-
-                    <p>Are you sure you would like to delete this grapheme?</p>
-
-                    <div style={{display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem'}}>
-                        <Button onClick={() => setGraphemeToDelete(null)} disabled={isDeleting}>
-                            Cancel
-                        </Button>
-                        <Button
-                            onClick={() => confirmDelete(graphemeToDelete)}
-                            disabled={isDeleting}
-                            style={{background: 'var(--danger)', color: 'white'}}
-                        >
-                            {isDeleting ? 'Deleting...' : 'Delete grapheme'}
-                        </Button>
-                    </div>
-                </div>
-            </Modal>
-        </>
+        <EntityGallery<GraphemeComplete>
+            items={items}
+            state={state}
+            adapters={ADAPTERS}
+            keyExtractor={(grapheme) => grapheme.id}
+            renderItem={renderItem}
+            itemLabel={(grapheme) => grapheme.name}
+            itemHref={
+                selectionMode || onGraphemeClick
+                    ? undefined
+                    : (grapheme) => resolveUrl(ROUTES.graphemeEdit, { id: grapheme.id })
+            }
+            onItemActivate={onGraphemeClick}
+            renderActions={renderActions}
+            selectionMode={selectionMode}
+            // `PunctuationPage` passes its picker callback as `onGraphemeClick`,
+            // which is the selection callback in selection mode.
+            onSelect={selectionMode ? (onSelect ?? onGraphemeClick) : undefined}
+            ariaLabel="Grapheme gallery"
+            isReady={isReady}
+            error={error}
+            searchPlaceholder="Search by name, phoneme or glyph…"
+            sortOptions={SORT_OPTIONS}
+            empty={{
+                icon: 'type',
+                title: selectionMode ? 'No graphemes to choose from' : 'No graphemes yet',
+                description: selectionMode
+                    ? 'Create some graphemes in the Script Maker first.'
+                    : 'A grapheme is one or more glyphs standing for a sound. Add one to start the script.',
+                action: (
+                    <IconButton
+                        as={Link}
+                        to={ROUTES.scriptMakerCreate}
+                        iconName="plus-lg"
+                        className={buttonStyles.primary}
+                    >
+                        Create your first grapheme
+                    </IconButton>
+                ),
+            }}
+            noMatch={{
+                title: 'No graphemes match',
+                description: 'Nothing in the script matches the current search.',
+            }}
+        />
     );
 }

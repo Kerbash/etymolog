@@ -17,6 +17,7 @@ import HoverToolTip from 'cyber-components/interactable/information/hoverToolTip
 import IconButton from 'cyber-components/interactable/buttons/iconButton/iconButton';
 import GlyphSpellingDisplay from '../spelling/GlyphSpellingDisplay';
 import type { PunctuationCellProps } from './types';
+import { LoadingState } from '../../shared';
 import styles from './PunctuationCell.module.scss';
 
 /**
@@ -105,14 +106,19 @@ export default function PunctuationCell({
                 </div>
             </td>
 
-            {/* Display column */}
+            {/* Display column — how the mark is WRITTEN. The word for the
+                state ("Hidden", "Virtual") belongs to the status column next
+                door and used to be printed in both, so every unassigned row
+                said VIRTUAL twice and every hidden row said Hidden twice. */}
             <td className={styles.displayColumn}>
                 {isLoading ? (
-                    <div className={styles.loading}>Loading...</div>
+                    // The last bare "Loading..." string in the app. A plain
+                    // <div> that is later replaced is never announced; the
+                    // shared component is a role="status" region.
+                    <LoadingState variant="inline" label="Loading mark" />
                 ) : displayState === 'hidden' ? (
                     <div className={styles.hiddenIndicator}>
-                        <span className={styles.hiddenIcon}>✕</span>
-                        <span className={styles.hiddenText}>Hidden</span>
+                        <span className={styles.hiddenIcon} aria-hidden="true">✕</span>
                     </div>
                 ) : hasGrapheme ? (
                     <div className={styles.glyphDisplay}>
@@ -125,7 +131,6 @@ export default function PunctuationCell({
                 ) : (
                     <div className={styles.virtualIndicator}>
                         <span className={styles.virtualSymbol}>{mark.symbol}</span>
-                        <span className={styles.virtualText}>Virtual</span>
                     </div>
                 )}
             </td>

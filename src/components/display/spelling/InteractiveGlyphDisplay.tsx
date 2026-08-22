@@ -6,8 +6,9 @@
  *
  * @module display/spelling/InteractiveGlyphDisplay
  */
-import { forwardRef, useImperativeHandle, useRef } from 'react';
+import { forwardRef, useImperativeHandle } from 'react';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
+import type { ReactZoomPanPinchContentRef } from 'react-zoom-pan-pinch';
 import classNames from 'classnames';
 import type { 
     PositionedGlyph, 
@@ -48,19 +49,15 @@ export const InteractiveGlyphDisplay = forwardRef<GlyphSpellingDisplayRef, Inter
     ) {
         const {
             transformRef,
+            svgRef,
             resolvedConfig,
             refMethods,
             handleTransformChange,
         } = useViewport(bounds, viewport, onTransformChange);
 
-        // Ref to the SVG element for export
-        const svgRef = useRef<SVGSVGElement>(null);
-
-        // Expose imperative methods including SVG element access
-        useImperativeHandle(ref, () => ({
-            ...refMethods,
-            getSvgElement: () => svgRef.current,
-        }), [refMethods]);
+        // `refMethods` is the COMPLETE ref contract, `getSvgElement` included:
+        // the hook owns `svgRef`, which is forwarded to the SVG below.
+        useImperativeHandle(ref, () => refMethods, [refMethods]);
         // Calculate canvas dimensions
         const canvasWidth = canvas?.width ?? bounds.width;
         const canvasHeight = canvas?.height ?? bounds.height;
@@ -89,12 +86,24 @@ export const InteractiveGlyphDisplay = forwardRef<GlyphSpellingDisplayRef, Inter
                        interaction handlers below so the viewer remains static but the
                        transform initialization still runs. */
                     doubleClick={{ disabled: disableInteraction, mode: 'reset' }}
-                    wheel={{ disabled: disableInteraction, step: 0.1 }}
+                    /* Wheel-zoom is OFF on purpose. react-zoom-pan-pinch binds a
+                       NON-passive wheel listener that calls preventDefault() on
+                       every wheel over the viewport, so with it on, a user
+                       scrolling the page down through a spelled word (or the IPA
+                       chart, which is one big pan/zoom viewport) stalled the
+                       moment the pointer crossed the glyph area and had to grab
+                       the scrollbar instead. `activationKeys` (Ctrl-to-zoom) does
+                       NOT fix this in v3.7 — the library still preventDefaults the
+                       plain wheel. Disabling wheel-zoom lets the wheel fall
+                       through to the document; zoom stays reachable via pinch,
+                       double-click-reset, and the +/−/⟲ controls below. This is
+                       the same path static displays already use to scroll cleanly. */
+                    wheel={{ disabled: true }}
                     panning={{ disabled: disableInteraction, velocityDisabled: false }}
                     pinch={{ disabled: disableInteraction }}
                     onTransformed={handleTransformChange}
                 >
-                    {({ zoomIn, zoomOut, resetTransform }) => (
+                    {({ zoomIn, zoomOut, resetTransform }: ReactZoomPanPinchContentRef) => (
                         <>
                             <TransformComponent
                                 wrapperStyle={{

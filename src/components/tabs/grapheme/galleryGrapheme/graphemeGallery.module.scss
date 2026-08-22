@@ -22,7 +22,7 @@
     display: flex;
     gap: 0.25rem;
     border: 1px solid var(--border-primary);
-    border-radius: 6px;
+    border-radius: var(--radius-control);
     padding: 0.25rem;
     background: var(--surface-base);
 }
@@ -31,7 +31,7 @@
     padding: 0.5rem;
     border: none;
     background: transparent;
-    border-radius: 4px;
+    border-radius: var(--radius-chip);
     cursor: pointer;
     color: var(--text-secondary);
     transition: all 0.2s ease;
@@ -46,8 +46,8 @@
 }
 
 .viewButton.active {
-    background: var(--color-primary);
-    color: var(--color-primary-text, white);
+    background: var(--interactive-base);
+    color: var(--bg-tertiary);
 }
 
 .resultCount {

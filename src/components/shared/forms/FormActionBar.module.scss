@@ -1,0 +1,28 @@
+// FormActionBar — tokens only.
+
+.bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    // space-between is what puts real distance between the destructive control
+    // and the one the user presses every time.
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.dangerSlot {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+// `margin-left: auto` keeps the pair right-aligned even when the danger slot is
+// empty (an empty flex child contributes no width, so space-between alone would
+// left-align them).
+.mainSlot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: auto;
+}

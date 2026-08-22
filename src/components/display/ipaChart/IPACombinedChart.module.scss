@@ -45,3 +45,9 @@
         height: 600px;
     }
 }
+
+/* The extras strip stretches to the consonant table's width so the three charts
+   share a left edge inside the pannable content box. */
+.extraChart {
+    width: 100%;
+}

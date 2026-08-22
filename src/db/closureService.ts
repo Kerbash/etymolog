@@ -1,140 +1,109 @@
 /**
  * Closure Table Service
  *
- * Manages the Transitive Closure Table (lexicon_ancestry_closure)
- * which facilitates O(1) ancestry lookups and cycle detection.
+ * Manages the transitive closure table (`lexicon_ancestry_closure`), which
+ * gives O(1) ancestry lookups and cycle detection over the adjacency list in
+ * `lexicon_ancestry`.
  *
- * Algorithm references:
- * - https://vadimtropanko.com/closure-table-pattern/
+ * The closure is DERIVED data. It is never persisted independently: callers
+ * run these functions inside their own transaction (see
+ * `utils/transaction.ts`), which schedules the single persist on commit.
+ * Export ignores it on import and rebuilds it from `lexicon_ancestry`.
+ *
+ * Algorithm reference: https://vadimtropanko.com/closure-table-pattern/
  */
 
-import { getDatabase, persistDatabase } from './database';
+import type { Database } from 'sql.js';
+import { getDatabase } from './database';
+
+/** Cap on path length when rebuilding — a real cycle would otherwise recurse forever. */
+export const CLOSURE_MAX_DEPTH = 50;
 
 /**
- * Rebuilds the entries in the closure table for a specific relationship.
- * Should be called when a new ancestor edge (child -> parent) is added.
+ * Add the closure paths created by a new ancestor edge (child → parent).
  *
- * @param childId The ID of the lexicon entry (descendant)
+ * Four insertions cover every new path:
+ *   1. parent → child                       (depth 1)
+ *   2. A → child      for every A → parent   (depth + 1)
+ *   3. parent → D     for every child → D    (depth + 1)
+ *   4. A → D          for every A → parent and child → D (depth_A + 1 + depth_D)
+ *
+ * Upserts keep the SHORTEST depth, so a diamond (a path that already exists
+ * through another route) ends up exactly as `rebuildClosureTable` would build
+ * it. (The `AND TRUE` after each WHERE is SQLite's documented way to keep the
+ * parser from reading `ON CONFLICT` as a join clause after a SELECT.)
+ *
+ * @param childId  The ID of the lexicon entry (descendant)
  * @param parentId The ID of the ancestor entry (parent)
  */
-export function addClosurePaths(childId: number, parentId: number): void {
-    const db = getDatabase();
+export function addClosurePaths(childId: number, parentId: number, database: Database = getDatabase()): void {
+    database.run(`
+        INSERT INTO lexicon_ancestry_closure (ancestor_id, descendant_id, depth)
+        VALUES (?, ?, 1)
+        ON CONFLICT(ancestor_id, descendant_id) DO UPDATE SET depth = MIN(depth, excluded.depth)
+    `, [parentId, childId]);
 
-    // 1. Add direct path
-    try {
-        db.run(`
-            INSERT OR IGNORE INTO lexicon_ancestry_closure (ancestor_id, descendant_id, depth)
-            VALUES (?, ?, 1)
-        `, [parentId, childId]);
-    } catch (e) {
-        // Ignore duplicate key error if path exists (shouldn't happen with proper unique keys)
-    }
-
-    // 2. Add transitive paths:
-    //    For every ancestor of parent (A -> Parent), create A -> Child
-    //    Depth = (A -> Parent).depth + 1
-    db.run(`
-        INSERT OR IGNORE INTO lexicon_ancestry_closure (ancestor_id, descendant_id, depth)
-        SELECT 
-            closure.ancestor_id,
-            ? as descendant_id,
-            closure.depth + 1
+    database.run(`
+        INSERT INTO lexicon_ancestry_closure (ancestor_id, descendant_id, depth)
+        SELECT closure.ancestor_id, ? AS descendant_id, closure.depth + 1
         FROM lexicon_ancestry_closure closure
-        WHERE closure.descendant_id = ?
+        WHERE closure.descendant_id = ? AND TRUE
+        ON CONFLICT(ancestor_id, descendant_id) DO UPDATE SET depth = MIN(depth, excluded.depth)
     `, [childId, parentId]);
 
-    // 3. Add paths for descendants of child (if any exist - unlikely during creation usually, but possible):
-    //    For every descendant of child (Child -> D), create Parent -> D
-    //    And (A -> Parent) -> (Child -> D)
-
-    // We handle the case where the 'child' is already an ancestor of others (sub-tree attachment)
-    // 3a. Parent -> Child -> D
-    db.run(`
-        INSERT OR IGNORE INTO lexicon_ancestry_closure (ancestor_id, descendant_id, depth)
-        SELECT 
-            ? as ancestor_id,
-            closure.descendant_id,
-            closure.depth + 1
+    database.run(`
+        INSERT INTO lexicon_ancestry_closure (ancestor_id, descendant_id, depth)
+        SELECT ? AS ancestor_id, closure.descendant_id, closure.depth + 1
         FROM lexicon_ancestry_closure closure
-        WHERE closure.ancestor_id = ?
+        WHERE closure.ancestor_id = ? AND TRUE
+        ON CONFLICT(ancestor_id, descendant_id) DO UPDATE SET depth = MIN(depth, excluded.depth)
     `, [parentId, childId]);
 
-    // 3b. (Ancestors of Parent) -> Parent -> Child -> D
-    // Cross join: All super-ancestors (A) of parent (P) AND all descendants (D) of child (C)
-    // New Path: A -> D with depth = (A->P) + 1 + (C->D)
-    // Actually the logic is: For each A where A->P, and each D where C->D, insert A->D.
-    // Distance(A, D) = Distance(A, P) + 1 + Distance(C, D)
-    db.run(`
-        INSERT OR IGNORE INTO lexicon_ancestry_closure (ancestor_id, descendant_id, depth)
-        SELECT 
-            super.ancestor_id,
-            sub.descendant_id,
-            super.depth + 1 + sub.depth
+    database.run(`
+        INSERT INTO lexicon_ancestry_closure (ancestor_id, descendant_id, depth)
+        SELECT super.ancestor_id, sub.descendant_id, super.depth + 1 + sub.depth
         FROM lexicon_ancestry_closure super
         CROSS JOIN lexicon_ancestry_closure sub
-        WHERE super.descendant_id = ? AND sub.ancestor_id = ?
+        WHERE super.descendant_id = ? AND sub.ancestor_id = ? AND TRUE
+        ON CONFLICT(ancestor_id, descendant_id) DO UPDATE SET depth = MIN(depth, excluded.depth)
     `, [parentId, childId]);
-
-    persistDatabase();
 }
 
 /**
- * Removes closure paths when a direct relationship is removed.
+ * Recompute the closure after an edge is removed.
  *
- * @param childId The ID of the lexicon entry
- * @param parentId The ID of the ancestor entry being removed
+ * Removing an edge cannot be done incrementally without path counts (a
+ * diamond may keep A → D alive through another route), so the table is
+ * rebuilt from the adjacency list. One recursive CTE — fast for thousands of
+ * words, and it runs inside the caller's transaction.
  */
-export function removeClosurePaths(_childId: number, _parentId: number): void {
-    // We only remove paths that strictly rely on the edge Parent->Child.
-    // However, in a DAG, there might be alternate paths from A to D not involving P->C.
-    // Closure table maintenance normally deletes ALL paths involving the edge,
-    // and then re-inserts ones that are still valid.
-    // But since this is a simple "Lexicon" case, alternate paths are rare (but possible with Diamond inheritance).
-
-    // Simple approach:
-    // Delete paths where the path goes through P->C.
-    // This is hard to identify without storing the "path" itself.
-    // Standard approach: Delete everything and rebuild for the affected subgraph,
-    // OR track path counts.
-
-    // Given we are using SQLite and want simplicity:
-    // We will just fully rebuild the closure table because it's safer and our dataset is small (<100k words likely).
-    // Or we can rebuild just for the descendants of C.
-
-    // BUT, since user asked for "improvement", maybe we should try to be smart.
-    // Let's do a full rebuild of the closure table to be safe. It's fast enough for thousands of words.
-    rebuildClosureTable();
+export function rebuildClosureAfterEdgeChange(database: Database = getDatabase()): void {
+    rebuildClosureTable(database);
 }
 
 /**
- * Full rebuild of the closure table from the adjacency list (lexicon_ancestry).
- * Uses Recursive CTE to find all paths.
+ * Full rebuild of the closure table from the adjacency list (`lexicon_ancestry`).
  */
-export function rebuildClosureTable(): void {
-    const db = getDatabase();
+export function rebuildClosureTable(database: Database = getDatabase()): void {
+    database.run('DELETE FROM lexicon_ancestry_closure');
 
-    db.run('DELETE FROM lexicon_ancestry_closure');
-
-    // Use Recursive CTE to generate all paths
-    db.run(`
+    database.run(`
         INSERT INTO lexicon_ancestry_closure (ancestor_id, descendant_id, depth)
         WITH RECURSIVE paths(ancestor_id, descendant_id, depth) AS (
-            -- Base case: direct parents
             SELECT ancestor_id, lexicon_id, 1
             FROM lexicon_ancestry
-            
+
             UNION ALL
-            
-            -- Recursive case: path -> child
+
             SELECT p.ancestor_id, la.lexicon_id, p.depth + 1
             FROM paths p
             JOIN lexicon_ancestry la ON p.descendant_id = la.ancestor_id
-            WHERE p.depth < 50 -- fail-safe against cycles
+            WHERE p.depth < ${CLOSURE_MAX_DEPTH}
         )
-        SELECT DISTINCT ancestor_id, descendant_id, depth FROM paths
+        SELECT ancestor_id, descendant_id, MIN(depth)
+        FROM paths
+        GROUP BY ancestor_id, descendant_id
     `);
-
-    persistDatabase();
 }
 
 /**
@@ -148,7 +117,7 @@ export function wouldCreateCycleClosure(childId: number, parentId: number): bool
 
     // Cycle exists if childId is already an ancestor of parentId
     const result = db.exec(`
-        SELECT 1 FROM lexicon_ancestry_closure 
+        SELECT 1 FROM lexicon_ancestry_closure
         WHERE ancestor_id = ? AND descendant_id = ?
         LIMIT 1
     `, [childId, parentId]);
@@ -160,13 +129,13 @@ export function wouldCreateCycleClosure(childId: number, parentId: number): bool
  * Get all descendant IDs for a given ancestor.
  * O(1) lookup.
  */
-export function getAllDescendantIdsClosure(ancestorId: number): number[] {
+export function getAllDescendantIdsClosure(ancestorId: number, maxDepth: number = CLOSURE_MAX_DEPTH): number[] {
     const db = getDatabase();
 
     const result = db.exec(`
         SELECT descendant_id FROM lexicon_ancestry_closure
-        WHERE ancestor_id = ?
-    `, [ancestorId]);
+        WHERE ancestor_id = ? AND depth <= ?
+    `, [ancestorId, maxDepth]);
 
     if (result.length === 0) return [];
 
@@ -177,13 +146,13 @@ export function getAllDescendantIdsClosure(ancestorId: number): number[] {
  * Get all ancestor IDs for a given descendant.
  * O(1) lookup.
  */
-export function getAllAncestorIdsClosure(descendantId: number): number[] {
+export function getAllAncestorIdsClosure(descendantId: number, maxDepth: number = CLOSURE_MAX_DEPTH): number[] {
     const db = getDatabase();
 
     const result = db.exec(`
         SELECT ancestor_id FROM lexicon_ancestry_closure
-        WHERE descendant_id = ?
-    `, [descendantId]);
+        WHERE descendant_id = ? AND depth <= ?
+    `, [descendantId, maxDepth]);
 
     if (result.length === 0) return [];
 

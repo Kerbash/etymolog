@@ -10,63 +10,10 @@
 
 import type { VirtualGlyph } from '../types';
 
-/**
- * Maximum range for virtual glyph IDs.
- * IDs are negative to distinguish from real database IDs.
- */
-const VIRTUAL_ID_RANGE = 1_000_000;
-
-/**
- * Simple string hash function for generating deterministic IDs.
- * Uses djb2 algorithm for reasonable distribution.
- *
- * @param str - String to hash
- * @returns Positive integer hash
- */
-function hashString(str: string): number {
-    let hash = 5381;
-    for (let i = 0; i < str.length; i++) {
-        hash = ((hash << 5) + hash) ^ str.charCodeAt(i);
-    }
-    return Math.abs(hash);
-}
-
-/**
- * Generate a deterministic negative ID for a virtual glyph.
- * Same IPA character always produces the same ID.
- *
- * @param ipaCharacter - The IPA character to generate an ID for
- * @returns Negative integer ID
- *
- * @example
- * ```ts
- * generateVirtualGlyphId('ə') // Returns consistent negative number, e.g., -259831
- * generateVirtualGlyphId('ʃ') // Returns different consistent negative number
- * ```
- */
-export function generateVirtualGlyphId(ipaCharacter: string): number {
-    const hash = hashString(ipaCharacter);
-    // Ensure ID is negative and within range
-    return -(1 + (hash % VIRTUAL_ID_RANGE));
-}
-
-/**
- * Check if a glyph ID represents a virtual glyph.
- * Virtual glyphs always have negative IDs.
- *
- * @param id - Glyph ID to check
- * @returns true if the ID is for a virtual glyph
- *
- * @example
- * ```ts
- * isVirtualGlyphId(-12345) // true
- * isVirtualGlyphId(123)    // false
- * isVirtualGlyphId(0)      // false
- * ```
- */
-export function isVirtualGlyphId(id: number): boolean {
-    return id < 0;
-}
+// The id hash is shared with the display normaliser and the auto-speller —
+// one function, one id per character everywhere.
+import { generateVirtualGlyphId, isVirtualGlyphId } from '../../../../../db/utils/virtualGlyph';
+export { generateVirtualGlyphId, isVirtualGlyphId };
 
 /**
  * Escape special XML characters for safe SVG embedding.

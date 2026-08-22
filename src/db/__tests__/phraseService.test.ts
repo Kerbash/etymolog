@@ -4,7 +4,7 @@
  * Unit tests for phrase translation functionality.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import {
     tokenizePhrase,
     lookupWord,
@@ -12,6 +12,7 @@ import {
     translatePhrase,
     createSpaceSeparator,
 } from '../phraseService';
+import { initDatabase, clearDatabase } from '../index';
 import type { LexiconComplete, PhraseWord } from '../types';
 
 // Mock lexicon entry helper
@@ -31,6 +32,7 @@ function createMockLexiconEntry(lemma: string): LexiconComplete {
         updated_at: '2024-01-01T00:00:00Z',
         spellingDisplay: [],
         spelling: [],
+        meanings: [],
         ancestors: [],
         descendants: [],
         hasIpaFallbacks: false,
@@ -38,6 +40,14 @@ function createMockLexiconEntry(lemma: string): LexiconComplete {
 }
 
 describe('phraseService', () => {
+    beforeAll(async () => {
+        await initDatabase();
+    });
+
+    beforeEach(() => {
+        clearDatabase();
+    });
+
     describe('tokenizePhrase', () => {
         it('should tokenize a simple phrase', () => {
             const result = tokenizePhrase('hello world');
@@ -47,11 +57,13 @@ describe('phraseService', () => {
                 originalWord: 'hello',
                 normalizedWord: 'hello',
                 position: 0,
+                kind: 'word',
             });
             expect(result[1]).toEqual({
                 originalWord: 'world',
                 normalizedWord: 'world',
                 position: 1,
+                kind: 'word',
             });
         });
 

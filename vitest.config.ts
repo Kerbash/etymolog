@@ -4,6 +4,20 @@ import path from 'path';
 
 export default defineConfig({
     plugins: [react()],
+    resolve: {
+        alias: {
+            '@src': path.resolve(__dirname, 'src'),
+            '@styles': path.resolve(__dirname, 'src/styles'),
+            // Mirrors vite.config.ts — in a worktree, node_modules/<pkg> is a
+            // junction to the MAIN repo's copy, so without these the tests
+            // exercise a different checkout of the package than the one under
+            // edit. See the long comment in vite.config.ts.
+            'cyber-components': path.resolve(__dirname, '../../packages/cyber-components'),
+            'smart-form': path.resolve(__dirname, '../../packages/smart-form'),
+            'utils-styles': path.resolve(__dirname, '../../packages/utils-styles'),
+            'utils-func': path.resolve(__dirname, '../../packages/utils-func'),
+        },
+    },
     test: {
         globals: true,
         environment: 'node', // Use Node environment for SQL.js WASM loading

@@ -9,7 +9,7 @@
     width: 100%;
     background: var(--surface-base);
     border: 2px solid var(--border-primary);
-    border-radius: 8px;
+    border-radius: var(--radius-surface);
     overflow: hidden;
 
     /* Prevent container from expanding with content - critical for infinite canvas */
@@ -65,8 +65,8 @@
 
 /* Virtual glyph background - dashed border, muted background */
 .virtualBackground {
-    fill: var(--surface-base, #f5f5f5);
-    stroke: var(--status-warning, #f59e0b);
+    fill: var(--surface-base);
+    stroke: var(--status-warning);
     stroke-width: 1.5;
     stroke-dasharray: 3, 3;
 }

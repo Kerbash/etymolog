@@ -1,70 +1,48 @@
 /**
  * Import Service — High-Level Import Orchestrators
  *
- * Provides two top-level import functions that coordinate the full pipeline
- * from a user-provided file through to a fully restored database:
+ * - `importFromJson()`  — validates a JSON string and atomically replaces the
+ *   database + settings with its contents.
+ * - `importFromImage()` — extracts the pixel payload from a decorated PNG,
+ *   decodes/decompresses it to JSON, then does the same.
  *
- * - `importFromJson()` — Validates a JSON string, wipes the database, and restores
- *   all tables and settings from the parsed data.
+ * Both are destructive (replace-all) — the caller prompts for confirmation —
+ * but both are ATOMIC: a file that fails validation or insertion leaves the
+ * current conlang untouched. Both resolve after the result is durably saved
+ * and return an `ImportReport` the UI can summarise ("312 words imported, 2
+ * orphaned spelling rows dropped").
  *
- * - `importFromImage()` — Extracts pixel data from a decorated PNG, decodes and
- *   decompresses back to JSON, validates, then restores the database.
- *
- * Both are destructive operations — they completely replace the current database
- * and settings. The caller should prompt for user confirmation before invoking.
- *
- * Both accept an optional `ProgressCallback` for driving progress bar UI.
+ * After either resolves, the caller should refresh the React context so
+ * components reload with the imported data.
  */
 
 import { parseAndValidateJson, importExportData } from './jsonCodec';
 import { extractDataFromPngFrame } from './pngFrame';
 import { pixelDataToJson } from './imageCodec';
-import type { ProgressCallback } from './types';
+import type { ImportReport, ProgressCallback } from './types';
 
 /**
  * Import conlang data from a JSON string, replacing all current data.
  *
- * Pipeline:
- *   1. Parse and validate the JSON against the `EtymologExportData` schema
- *   2. Wipe the database and re-import all rows in FK-safe order
- *   3. Fix autoincrement sequences and persist to localStorage
- *   4. Restore settings to localStorage
- *
- * After this function returns, the caller should trigger a React state refresh
- * (e.g. `refresh()` from `useEtymolog()`) to reload all components with the
- * newly imported data.
- *
- * @param json       — the raw JSON string from a `.etymolog.json` file
- * @param onProgress — optional callback for progress reporting
- * @throws Error if validation fails (invalid JSON, wrong magic/version, missing tables)
+ * @throws Error if validation fails (invalid JSON, wrong magic/version,
+ *         missing tables, malformed rows) — the current data is intact
  */
-export function importFromJson(json: string, onProgress?: ProgressCallback): void {
+export async function importFromJson(json: string, onProgress?: ProgressCallback): Promise<ImportReport> {
     onProgress?.('validate', 0, 'Validating...');
     const data = parseAndValidateJson(json);
-    onProgress?.('import', 0.2, 'Importing data...');
-    importExportData(data, onProgress);
+    onProgress?.('import', 0.1, 'Importing data...');
+    const report = await importExportData(data, onProgress);
     onProgress?.('done', 1.0, 'Import complete');
+    return report;
 }
 
 /**
  * Import conlang data from a decorated PNG image, replacing all current data.
  *
- * Pipeline:
- *   1. Extract the data pixel region from the PNG frame (reads metadata header
- *      at pixel (0,0) to locate the data rectangle)
- *   2. Decode pixels back to compressed bytes, decompress, verify CRC-32
- *   3. Parse and validate the resulting JSON
- *   4. Wipe the database and re-import all rows
- *   5. Fix autoincrement sequences, persist, and restore settings
- *
- * After this function returns, the caller should trigger a React state refresh.
- *
- * @param file       — the PNG file (Blob or File) from a `.etymolog.png` export
- * @param onProgress — optional callback for progress reporting
  * @throws Error if the PNG is not a valid Etymolog image, CRC check fails,
- *         or the decoded JSON fails validation
+ *         or the decoded JSON fails validation — the current data is intact
  */
-export async function importFromImage(file: Blob, onProgress?: ProgressCallback): Promise<void> {
+export async function importFromImage(file: Blob, onProgress?: ProgressCallback): Promise<ImportReport> {
     onProgress?.('extract', 0, 'Extracting image data...');
     const { pixels, width, height } = await extractDataFromPngFrame(file);
     onProgress?.('decode', 0.15, 'Decoding image data...');
@@ -72,6 +50,7 @@ export async function importFromImage(file: Blob, onProgress?: ProgressCallback)
     onProgress?.('validate', 0.6, 'Validating...');
     const data = parseAndValidateJson(json);
     onProgress?.('import', 0.7, 'Importing data...');
-    importExportData(data, onProgress);
+    const report = await importExportData(data, onProgress);
     onProgress?.('done', 1.0, 'Import complete');
+    return report;
 }

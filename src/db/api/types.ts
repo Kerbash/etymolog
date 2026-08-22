@@ -5,6 +5,15 @@
  * All API operations return ApiResponse<T> for consistent error handling.
  */
 
+// The word generator's persisted shape. The dependency runs THIS WAY ONLY: the
+// db layer knows about `src/generator/`, and nothing under `src/generator/` may
+// import the db (a ratchet test enforces it). The type is `import type` so the
+// settings module carries no runtime weight for it; the DEFAULT is a value
+// import, which is exactly what this file is for — it is where every default
+// settings value lives.
+import type { WordGeneratorSettings } from '../../generator/profile/types';
+import { DEFAULT_WORD_GENERATOR_SETTINGS } from '../../generator/profile/defaults';
+
 // =============================================================================
 // API RESPONSE TYPES
 // =============================================================================
@@ -112,6 +121,25 @@ export interface PunctuationSettings {
 }
 
 /**
+ * Which punctuation setting governs each character the tokenizer recognises.
+ * `…` is what the tokenizer folds `...` into.
+ */
+export const PUNCTUATION_KEY_BY_CHARACTER: Readonly<Record<string, keyof PunctuationSettings>> = {
+    '.': 'sentenceSeparator',
+    ',': 'comma',
+    '?': 'questionMark',
+    '!': 'exclamationMark',
+    ':': 'colon',
+    ';': 'semicolon',
+    '…': 'ellipsis',
+    '"': 'quotationOpen',
+    '“': 'quotationOpen',
+    '”': 'quotationClose',
+    '«': 'quotationOpen',
+    '»': 'quotationClose',
+};
+
+/**
  * Default punctuation configuration (virtual glyph, not hidden).
  */
 export const DEFAULT_PUNCTUATION_CONFIG: PunctuationConfig = {
@@ -166,11 +194,6 @@ export interface EtymologSettings {
     defaultGalleryView: 'compact' | 'detailed' | 'expanded';
 
     /**
-     * Auto-save interval in milliseconds (0 = disabled).
-     */
-    autoSaveInterval: number;
-
-    /**
      * When true, automatically manages orphaned glyphs.
      * Orphaned glyphs (not used by any grapheme) may be cleaned up automatically.
      * This is a conlang-specific setting.
@@ -195,6 +218,16 @@ export interface EtymologSettings {
      * User-defined custom charts for organizing phoneme-grapheme mappings.
      */
     customCharts: CustomChartDefinition[];
+
+    /**
+     * The word generator's profile and the flavour the IPA chart paints.
+     *
+     * Lives in settings rather than in SQLite for the same reason
+     * `customCharts` does: it is configuration, not conlang data, and adding it
+     * needed no migration. It therefore travels with a JSON/PNG export and NOT
+     * with a raw `.sqlite` export — the same documented limitation.
+     */
+    wordGenerator: WordGeneratorSettings;
 }
 
 // =============================================================================
@@ -204,7 +237,7 @@ export interface EtymologSettings {
 /**
  * Directional flow value for writing system rules.
  */
-export type DirectionValue = 'ltr' | 'rtl' | 'ttb' | 'btu';
+export type DirectionValue = 'ltr' | 'rtl' | 'ttb' | 'btt';
 
 /**
  * Writing system settings that define how the script flows directionally.
@@ -217,8 +250,6 @@ export interface WritingSystemSettings {
     wordOrder: DirectionValue;
     /** Where new lines go when wrapping */
     lineProgression: DirectionValue;
-    /** Multi-glyph grapheme layout */
-    glyphStacking: 'horizontal' | 'vertical' | 'none';
     /** Wrapping behavior */
     wordWrap: 'word' | 'glyph' | 'none';
     /** Glyph alignment within a line */
@@ -232,7 +263,6 @@ export const DEFAULT_WRITING_SYSTEM_SETTINGS: WritingSystemSettings = {
     glyphDirection: 'ltr',
     wordOrder: 'ltr',
     lineProgression: 'ttb',
-    glyphStacking: 'horizontal',
     wordWrap: 'word',
     baselineAlignment: 'bottom',
 };
@@ -244,11 +274,14 @@ export const DEFAULT_SETTINGS: EtymologSettings = {
     conlangName: '',
     simpleScriptSystem: false,
     defaultGalleryView: 'compact',
-    autoSaveInterval: 0,
     autoManageGlyphs: false,
     punctuation: { ...DEFAULT_PUNCTUATION_SETTINGS },
     writingSystem: { ...DEFAULT_WRITING_SYSTEM_SETTINGS },
     customCharts: [],
+    // Deep-cloned: the generator default is nested (a profile with an array of
+    // templates), and a shallow copy would let one conlang's edit reach back
+    // into the module constant.
+    wordGenerator: structuredClone(DEFAULT_WORD_GENERATOR_SETTINGS),
 };
 
 /**
@@ -389,6 +422,8 @@ export interface DatabaseStatus {
     initialized: boolean;
     glyphCount: number;
     graphemeCount: number;
+    /** `PRAGMA user_version` of the live database (0 until initialized). */
+    schemaVersion: number;
     lastPersisted?: string;
 }
 
@@ -429,11 +464,33 @@ export interface GraphemeApi {
     search(query: string): ApiResponse<GraphemeListResponse>;
     update(id: number, request: UpdateGraphemeRequest): ApiResponse<import('../types').Grapheme>;
     updateGlyphs(id: number, request: UpdateGraphemeGlyphsRequest): ApiResponse<void>;
-    delete(id: number): ApiResponse<void>;
+    /**
+     * Delete a grapheme. Fails with CONSTRAINT_VIOLATION when words spell
+     * with it unless `respellLexicon` is set, in which case those words are
+     * rewritten first (auto-spelled words get the grapheme's primary phoneme,
+     * manual ones are flagged for review).
+     */
+    delete(id: number, options?: DeleteGraphemeOptions): ApiResponse<DeleteGraphemeResult>;
+    /** Words whose spelling uses this grapheme. */
+    getLexiconUsage(id: number): ApiResponse<import('../types').Lexicon[]>;
     /** Get a grapheme by its associated phoneme (IPA character) */
     getByPhoneme(phoneme: string): ApiResponse<import('../types').GraphemeComplete | null>;
     /** Get a mapping of all phonemes to their associated graphemes */
     getPhonemeMap(): ApiResponse<Map<string, import('../types').GraphemeComplete>>;
+}
+
+export interface DeleteGraphemeOptions {
+    /** Rewrite words that use the grapheme instead of refusing. */
+    respellLexicon?: boolean;
+}
+
+export interface DeleteGraphemeResult {
+    /** Auto-spelled words rewritten with the fallback phoneme. */
+    lexiconRespelled: number;
+    /** Manually spelled words flagged `needs_attention`. */
+    lexiconMarked: number;
+    /** Glyphs removed by `autoManageGlyphs` after the delete. */
+    orphanGlyphsRemoved: number;
 }
 
 /**
@@ -452,10 +509,19 @@ export interface PhonemeApi {
 /**
  * Settings API interface - application settings management.
  */
+export interface SettingsImportResult {
+    settings: EtymologSettings;
+    /** Corrections applied to malformed values (empty when the input was clean). */
+    warnings: string[];
+}
+
 export interface SettingsApi {
     get(): ApiResponse<EtymologSettings>;
+    /** Partial update; rejects with VALIDATION_ERROR when any value is invalid. */
     update(settings: UpdateSettingsInput): ApiResponse<EtymologSettings>;
     reset(): ApiResponse<EtymologSettings>;
+    /** Replace all settings from an untrusted source (import); malformed values are corrected. */
+    import(raw: unknown): ApiResponse<SettingsImportResult>;
 }
 
 /**
@@ -467,6 +533,12 @@ export interface DatabaseApi {
     import(file: File): Promise<ApiResponse<void>>;
     clear(): ApiResponse<void>;
     reset(): ApiResponse<void>;
+    /**
+     * Prune orphaned rows, rewrite dangling `glyph_order` references and
+     * rebuild the closure table (see `migrations/repair.ts`). Runs in one
+     * transaction; the report's `total` is 0 when nothing needed fixing.
+     */
+    repair(): ApiResponse<import('../migrations/repair').RepairReport>;
 }
 
 /**

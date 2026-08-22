@@ -1,0 +1,107 @@
+/**
+ * EntityCard — the one card chrome for every gallery in the app.
+ *
+ * Everything the three galleries did in JavaScript is a CSS rule here:
+ * `onMouseEnter`/`onMouseLeave` handlers that wrote `style.transform` and
+ * `style.boxShadow` directly onto the node. Those never fired for keyboard
+ * users, left the transform stuck when a card unmounted mid-hover, and forced a
+ * style recalculation on every pointer move across the grid.
+ */
+
+.card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+
+    background: var(--surface-base);
+    border: var(--border-width) solid var(--border-secondary);
+    border-radius: var(--radius-surface);
+    box-shadow: var(--shadow-surface);
+    color: var(--text-primary);
+
+    overflow: hidden;
+    transition:
+        transform 0.2s ease,
+        box-shadow 0.2s ease,
+        border-color 0.2s ease;
+}
+
+/* Hover AND focus-within lift, so the affordance exists for the keyboard too. */
+.card:hover,
+.card:focus-within {
+    border-color: var(--border-hover);
+    box-shadow: var(--shadow-raised);
+    transform: translateY(-2px);
+}
+
+/* A card whose clickable region is inert (no `to`, no `onActivate`). */
+.card.static:hover,
+.card.static:focus-within {
+    transform: none;
+    box-shadow: var(--shadow-surface);
+    border-color: var(--border-secondary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .card {
+        transition: none;
+    }
+
+    .card:hover,
+    .card:focus-within {
+        transform: none;
+    }
+}
+
+/**
+ * The clickable region. Rendered as a `<Link>` or a `<button>`, so all the
+ * button chrome has to be reset — the card's own surface is the visual.
+ */
+.hit {
+    display: block;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+
+    font: inherit;
+    color: inherit;
+    text-align: inherit;
+    text-decoration: none;
+
+    background: none;
+    border: none;
+    cursor: pointer;
+}
+
+.hit:focus-visible {
+    outline: var(--border-width-strong) solid var(--focus-ring);
+    outline-offset: -2px;
+    border-radius: var(--radius-surface);
+}
+
+/* No pointer affordance when there is nowhere to go. */
+.hitStatic {
+    cursor: default;
+}
+
+/**
+ * The actions row — a SIBLING of the clickable region, never a child of it.
+ *
+ * The galleries this replaces absolutely-positioned a delete `<button>` inside
+ * a `<div role="button">`, which is an interactive element nested inside an
+ * interactive element: invalid HTML, an ambiguous accessibility tree, and a
+ * click target whose outcome depended on which pixel was hit.
+ */
+.actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.25rem;
+
+    padding: 0.25rem 0.5rem;
+    border-top: var(--border-width) var(--divider-style) var(--border-secondary);
+}
+
+.compact .actions {
+    padding: 0.125rem 0.25rem;
+}

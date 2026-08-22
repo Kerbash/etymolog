@@ -1,10 +1,10 @@
 /* pronunciationTableInput.module.scss */
 .pronunciationTableInput {
-    --table-border: var(--border-secondary, #ccc);
-    --table-background: var(--surface-base, #fff);
-    --button-add: var(--green, #28a745);
-    --button-remove: var(--red, #dc3545);
-    --button-disabled: var(--text-primary-muted, #999);
+    --border-primary: var(--border-secondary);
+    --surface-base: var(--surface-base);
+    --button-add: var(--green);
+    --status-bad: var(--red);
+    --status-disabled: var(--text-primary-muted);
 
     width: 100%;
 }
@@ -17,13 +17,13 @@
 .pronunciationTable {
     width: 100%;
     border-collapse: collapse;
-    background-color: var(--table-background);
-    border: 1px solid var(--table-border);
-    border-radius: 4px;
+    background-color: var(--surface-base);
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-chip);
     overflow: hidden;
 
     thead {
-        background-color: rgba(0, 0, 0, 0.03);
+        background-color: var(--surface-base);
 
         th {
             text-align: left;
@@ -31,7 +31,7 @@
             font-weight: 600;
             font-size: 0.9rem;
             color: var(--text-primary);
-            border-bottom: 2px solid var(--table-border);
+            border-bottom: 2px solid var(--border-primary);
 
             &:last-child {
                 width: 60px;
@@ -43,14 +43,14 @@
 
     tbody {
         tr {
-            border-bottom: 1px solid var(--table-border);
+            border-bottom: 1px solid var(--border-primary);
 
             &:last-child {
                 border-bottom: none;
             }
 
             &:hover {
-                background-color: rgba(0, 0, 0, 0.02);
+                background-color: var(--surface-base);
             }
 
             td {
@@ -78,21 +78,21 @@
 .textInput {
     width: 100%;
     padding: 0.5rem 0.75rem;
-    border: 1px solid var(--table-border);
-    border-radius: 4px;
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-chip);
     font-size: 0.9rem;
-    background-color: var(--table-background);
-    color: var(--text-primary, inherit);
+    background-color: var(--surface-base);
+    color: var(--text-primary);
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
 
     &:focus {
         outline: none;
-        border-color: var(--border-primary, #007bff);
-        box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.1);
+        border-color: var(--border-primary);
+        box-shadow: 0 0 0 2px var(--focus-ring);
     }
 
     &::placeholder {
-        color: var(--text-primary-muted, #999);
+        color: var(--text-primary-muted);
         opacity: 0.7;
     }
 }
@@ -101,7 +101,7 @@
     width: 2rem;
     height: 2rem;
     cursor: pointer;
-    accent-color: var(--border-primary, #007bff);
+    accent-color: var(--border-primary);
 }
 
 .removeButton {
@@ -112,14 +112,14 @@
     height: 2rem;
     padding: 0;
     background-color: transparent;
-    color: var(--button-remove);
+    color: var(--status-bad);
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-chip);
     cursor: pointer;
     transition: background-color 0.2s ease, transform 0.1s ease;
 
     &:hover:not(:disabled) {
-        background-color: var(--button-remove);
+        background-color: var(--status-bad);
         color: white;
     }
 
@@ -128,7 +128,7 @@
     }
 
     &:disabled {
-        color: var(--button-disabled);
+        color: var(--status-disabled);
         cursor: not-allowed;
         opacity: 0.4;
 
@@ -138,7 +138,7 @@
     }
 
     &:focus-visible {
-        outline: 2px solid var(--button-remove);
+        outline: 2px solid var(--status-bad);
         outline-offset: 2px;
     }
 }
@@ -178,4 +178,17 @@
         width: 1.75rem;
         height: 1.75rem;
     }
+}
+
+/** Visible to a screen reader only — names the actions column. */
+.srOnly {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
 }

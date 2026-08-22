@@ -1025,13 +1025,12 @@ describe('Grapheme Service', () => {
         it('should handle very long names', () => {
             const glyph = createTestGlyph();
             const longName = 'A'.repeat(1000);
-            const grapheme = createGrapheme({
+            // Input validation rejects names exceeding 200 characters
+            expect(() => createGrapheme({
                 name: longName,
                 glyphs: [{ glyph_id: glyph.id, position: 0 }],
                 phonemes: []
-            });
-
-            expect(grapheme.name).toBe(longName);
+            })).toThrow('exceeds maximum length');
         });
 
         it('should handle special SQL characters in data', () => {

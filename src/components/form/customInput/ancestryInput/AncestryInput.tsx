@@ -7,7 +7,10 @@ import type { registerFieldReturnType } from "smart-form/types";
 import type { Lexicon, AncestryType, LexiconAncestorFormRow, LexiconAncestryNode } from "../../../../db/types";
 import IconButton from "cyber-components/interactable/buttons/iconButton/iconButton.tsx";
 import HoverToolTip from "cyber-components/interactable/information/hoverToolTip/hoverToolTip.tsx";
+import ReorderableList from "cyber-components/interactable/reorderableList";
+import SvgIcon from "cyber-components/graphics/decor/svgIcon/svgIcon";
 import AncestryPreviewTree from "./AncestryPreviewTree";
+import { useEditedSinceMount } from "../useEditedSinceMount";
 
 /** Types -------------------------------------- */
 
@@ -71,10 +74,16 @@ export const AncestryInput = forwardRef((
         maxRows,
         className,
     }: AncestryInputProps,
-    _
+    // The forwarded ref is unused — the value is exposed through
+    // `registerSmartFieldProps.ref` (see the `useImperativeHandle` below).
+    //
+    // The parameter is DECLARED anyway: React warns at runtime when a
+    // `forwardRef` render function has fewer than two parameters ("Did you
+    // forget to use the ref parameter?"), so dropping it trades a lint error
+    // for a console warning on every mount.
+    _ref,
 ) => {
     const idPrefix = useId();
-    const isInitialRender = useRef(true);
     const fieldStateRef = useRef(fieldState);
     fieldStateRef.current = fieldState;
 
@@ -129,12 +138,13 @@ export const AncestryInput = forwardRef((
         }
     }), [rows]);
 
-    // Update parent field state when rows change
+    // Announce a REAL edit to the form. The guard is an identity comparison
+    // against the rows this input mounted with, NOT a "first effect run" latch:
+    // StrictMode runs every mount effect twice while keeping refs, so a latch
+    // marked the untouched form changed. See `useEditedSinceMount`.
+    const rowsEdited = useEditedSinceMount(rows);
     useEffect(() => {
-        if (isInitialRender.current) {
-            isInitialRender.current = false;
-            return;
-        }
+        if (!rowsEdited) return;
 
         fieldStateRef.current.isTouched.setIsTouched(true);
         fieldStateRef.current.isChanged.setIsChanged(true);
@@ -143,14 +153,14 @@ export const AncestryInput = forwardRef((
         fieldStateRef.current.isEmpty.setIsEmpty(validRows.length === 0);
 
         const hasErrors = rows.some(r => r.error);
-        fieldStateRef.current.isInputValid.setIsInputValid(!hasErrors);
+        fieldStateRef.current._setValidation(!hasErrors ? null : { type: 'error', message: 'Invalid ancestry data' });
 
         // Notify parent of changes
         onChange?.(validRows.map(row => ({
             ancestorId: row.ancestorId!,
             ancestryType: row.ancestryType,
         })));
-    }, [rows, onChange]);
+    }, [rows, rowsEdited, onChange]);
 
     // Add row
     const handleAddRow = useCallback(() => {
@@ -210,6 +220,25 @@ export const AncestryInput = forwardRef((
         setRows(prev => prev.map(row =>
             row.id === rowId ? { ...row, ancestorId: null, error: undefined } : row
         ));
+    }, []);
+
+    /**
+     * Reorder ancestors.
+     *
+     * The order is not cosmetic: `position` is written to the ancestry table and
+     * is what "first element of the compound" means. It was already persisted —
+     * `LexiconEditor` sends the row INDEX as `position` — but there was no way
+     * to change it short of deleting every row and re-adding them in order.
+     */
+    const handleReorder = useCallback((newOrderIds: string[]) => {
+        setRows(prev => {
+            const byId = new Map(prev.map(row => [row.id, row] as const));
+            const next = newOrderIds
+                .map(id => byId.get(id))
+                .filter((row): row is RowState => row !== undefined);
+            // Defensive: never drop a row because an id went missing.
+            return next.length === prev.length ? next : prev;
+        });
     }, []);
 
     // Get lexicon by ID
@@ -275,13 +304,29 @@ export const AncestryInput = forwardRef((
                     No ancestors defined. Click "Add Ancestor" to link this word's etymology.
                 </div>
             ) : (
-                <div className={styles.rowsContainer}>
-                    {rows.map((row, index) => {
+                <ReorderableList<RowState>
+                    items={rows}
+                    getId={(row) => row.id}
+                    onReorder={handleReorder}
+                    className={styles.rowsContainer}
+                    aria-label="Ancestor order"
+                    renderItem={({ item: row, index, dragHandleProps }) => {
                         const selectedLexicon = row.ancestorId ? getLexicon(row.ancestorId) : null;
                         const filteredOptions = getFilteredLexicon(row.id);
 
                         return (
-                            <div key={row.id} className={classNames(styles.row, { [styles.hasError]: row.error })}>
+                            <div className={classNames(styles.row, { [styles.hasError]: row.error })}>
+                                {/* Drag handle. `dragHandleProps` carries dnd-kit's
+                                    activator listeners AND its keyboard/ARIA wiring,
+                                    so the list reorders from the keyboard too. */}
+                                <span
+                                    {...dragHandleProps}
+                                    className={styles.dragHandle}
+                                    aria-label={`Reorder ancestor ${index + 1}`}
+                                >
+                                    <SvgIcon iconName="grip-vertical" aria-hidden="true" />
+                                </span>
+
                                 <span className={styles.rowNumber}>{index + 1}.</span>
 
                                 {/* Ancestor selector */}
@@ -373,8 +418,8 @@ export const AncestryInput = forwardRef((
                                 )}
                             </div>
                         );
-                    })}
-                </div>
+                    }}
+                />
             )}
 
             {/* Ancestry Tree Preview - Always show when enabled */}

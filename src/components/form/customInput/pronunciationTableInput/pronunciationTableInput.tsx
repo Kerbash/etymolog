@@ -2,26 +2,20 @@
 
 import styles from "./pronunciationTableInput.module.scss";
 import classNames from "classnames";
-import { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useMemo, useRef, useState } from "react";
 import type { registerFieldReturnType } from "smart-form/types";
 import { translationMapHelper } from "utils-func/localization";
 import IconButton from "cyber-components/interactable/buttons/iconButton/iconButton.tsx";
 import HoverToolTip from "cyber-components/interactable/information/hoverToolTip/hoverToolTip.tsx";
 import LabelShiftTextCustomKeyboardInput from "smart-form/input/fancy/redditStyle/labelShiftTextCustomKeyboardInput";
+import TextInputValidatorFactory from "smart-form/commonValidatorFactory/textValidatorFactory/textValidatorFactory.ts";
 import { SmartForm, useSmartForm } from "smart-form/smartForm";
 import type { useSmartFormRef } from "smart-form/types";
 import { IPA_CHARACTERS } from "cyber-components/interactable/customKeyboard/ipaCharacters";
 
-/** Translation keys -------------------------------------- */
-
-export const defaultTranslationMap = {
-    addPronunciation: "Add Pronunciation",
-    removePronunciation: "Remove",
-    pronunciationLabel: "Pronunciation",
-    useInAutoSpellingLabel: "Use in auto-spelling",
-};
-
-export const translationMapKeys = Object.keys(defaultTranslationMap);
+/** Translation keys live in a sibling module — see `translationMap.ts`. */
+import { defaultTranslationMap } from "./translationMap";
+import { useEditedSinceMount } from "../useEditedSinceMount";
 
 /** Types -------------------------------------- */
 
@@ -58,19 +52,25 @@ export const PronunciationTableInput = forwardRef((
         requirePronunciation = false,
         className,
     }: PronunciationTableInputProps,
-    _
+    // A forwardRef render function must declare TWO parameters even when the
+    // ref is unused — deleting it makes React warn "forwardRef render functions
+    // accept exactly two parameters" on every mount.
+    _ref,
 ) => {
     const t = translationMapHelper(TranslationMaps, defaultTranslationMap);
 
     // Get hydration-safe ID prefix
     const idPrefix = useId();
 
-    // Track initial render to avoid setting touched on mount
-    const isInitialRender = useRef(true);
-
-    // Use ref to hold fieldState to avoid infinite loops in useEffect
+    // `fieldState` is held in a ref so the effects below can read the LATEST
+    // value without listing it as a dependency (it is a new object every
+    // render, which would loop). The write is an effect and not a render-phase
+    // assignment: a ref must not be touched while rendering, and this effect is
+    // declared FIRST so it lands before the effects that read it.
     const fieldStateRef = useRef(fieldState);
-    fieldStateRef.current = fieldState;
+    useEffect(() => {
+        fieldStateRef.current = fieldState;
+    });
 
     // Row state management - tracks row IDs and checkbox states
     const [rows, setRows] = useState<RowState[]>(() => {
@@ -85,17 +85,17 @@ export const PronunciationTableInput = forwardRef((
         }));
     });
 
-    // Update parent field state when rows change
+    // Announce a REAL edit to the form. The guard is an identity comparison
+    // against the rows this input mounted with, NOT a "first effect run" latch:
+    // StrictMode runs every mount effect twice while keeping refs, so a latch
+    // marked the untouched form changed. See `useEditedSinceMount`.
+    const rowsEdited = useEditedSinceMount(rows);
     useEffect(() => {
-        // Skip initial render
-        if (isInitialRender.current) {
-            isInitialRender.current = false;
-            return;
-        }
+        if (!rowsEdited) return;
 
         fieldStateRef.current.isTouched.setIsTouched(true);
         fieldStateRef.current.isChanged.setIsChanged(true);
-    }, [rows]);
+    }, [rows, rowsEdited]);
 
     return (
         <PronunciationTableInputInner
@@ -137,7 +137,32 @@ const PronunciationTableInputInner = ({
     idPrefix,
 }: PronunciationTableInputInnerProps) => {
     // Create internal SmartForm for managing pronunciation rows
-    const { registerField, registerForm, unregisterField, isFormValid } = useSmartForm({});
+    const { registerField, registerForm, unregisterField } = useSmartForm({});
+
+    /**
+     * The per-ROW required rule, when the caller asks for one.
+     *
+     * It is not decoration. The validation effect below re-derives the OUTER
+     * field's validity from the inner form, and its only reactive trigger is
+     * `selfFormProps.formState.isValid` — with no validator on the inner field
+     * that boolean never changes, so the effect never re-ran after the very
+     * first render and the outer field stayed permanently "Invalid entries".
+     * The grapheme form's submit button was therefore disabled no matter what
+     * the user typed, and only unstuck itself if they added or removed a row
+     * (which changes `rows`, the other dependency). The sibling
+     * `MeaningTableInput` never hit this because its inner field HAS a required
+     * validator — the difference was invisible and the symptom was not.
+     */
+    const rowValidation = useMemo(
+        () =>
+            TextInputValidatorFactory({
+                required: {
+                    value: true,
+                    message: "Enter a pronunciation, or remove this row",
+                },
+            }),
+        [],
+    );
 
     // Create ref for the SmartForm imperative handle
     const smartFormRef = useRef<useSmartFormRef>(null);
@@ -158,6 +183,22 @@ const PronunciationTableInputInner = ({
         }
     }), [rows]);
 
+    /**
+     * Mirror the INNER form's dirty flag onto the outer field.
+     *
+     * The outer effect fires on `rows`, i.e. only when a row is ADDED or
+     * REMOVED. Text typed into an existing row changes this field's value
+     * without touching `rows`, so on its own the host form stayed "unchanged"
+     * while holding a typed-but-unsaved pronunciation. Same reasoning as the
+     * sibling `MeaningTableInput`.
+     */
+    const innerChanged = selfFormProps.formState.isChanged;
+    useEffect(() => {
+        if (!innerChanged) return;
+        fieldStateRef.current.isTouched.setIsTouched(true);
+        fieldStateRef.current.isChanged.setIsChanged(true);
+    }, [innerChanged, fieldStateRef]);
+
     // Validate and update isEmpty/isInputValid states
     useEffect(() => {
         const formValues = smartFormRef.current?.value || {};
@@ -175,11 +216,11 @@ const PronunciationTableInputInner = ({
                 const value = formValues[`pronunciation-${row.id}`];
                 return value && value.trim() !== "";
             });
-            fieldStateRef.current.isInputValid.setIsInputValid(allValid);
+            fieldStateRef.current._setValidation(allValid ? null : { type: 'error', message: 'Invalid entries' });
         } else {
-            fieldStateRef.current.isInputValid.setIsInputValid(true);
+            fieldStateRef.current._setValidation(null);
         }
-    }, [rows, requirePronunciation, isFormValid, fieldStateRef]);
+    }, [rows, requirePronunciation, selfFormProps.formState.isValid, fieldStateRef]);
 
     // Row operations
     const handleAddRow = useCallback(() => {
@@ -219,40 +260,48 @@ const PronunciationTableInputInner = ({
             {...selfFormProps}
             registerField={registerField}
             unregisterField={unregisterField}
-            isFormValid={isFormValid}
             className={classNames(styles.pronunciationTableInput, className)}
         >
             <div className={styles.tableContainer}>
                 <table className={styles.pronunciationTable}>
                     <thead>
+                        {/* `scope="col"` on every header, and the actions column
+                            is NAMED rather than being an empty cell holding a
+                            button — a header with no text leaves the controls
+                            under it in an unnamed column. */}
                         <tr>
-                            <th>{t("pronunciationLabel")}</th>
-                            <th>{t("useInAutoSpellingLabel")}</th>
-                            <th>
+                            <th scope="col">{t("pronunciationLabel")}</th>
+                            <th scope="col">{t("useInAutoSpellingLabel")}</th>
+                            <th scope="col">
+                                <span className={styles.srOnly}>Actions</span>
                                 <HoverToolTip content={"Add a new pronunciation entry"}>
                                     <IconButton
                                         iconName={'plus-circle'}
                                         onClick={handleAddRow}
                                         title={t("addPronunciation")}
-                                        className={styles.addButton}
                                         iconSize={'1.5em'}
                                         iconColor={'var(--green)'}
                                         themeType={'basic'}
+                                        aria-label={t("addPronunciation")}
                                     />
                                 </HoverToolTip>
                             </th>
                         </tr>
                     </thead>
                     <tbody>
-                        {rows.map((row) => (
+                        {rows.map((row, rowIndex) => (
                             <tr key={row.id}>
                                 <td>
+                                    {/* Every row repeats the same three controls,
+                                        so the column name alone does not identify
+                                        them — each carries the ROW as well. */}
                                     <LabelShiftTextCustomKeyboardInput
                                         {...registerField(`pronunciation-${row.id}`, {
-                                            defaultValue: row.pronunciation
+                                            defaultValue: row.pronunciation,
+                                            validation: requirePronunciation ? rowValidation : undefined,
                                         })}
                                         characters={IPA_CHARACTERS}
-                                        displayName={t("pronunciationLabel")}
+                                        displayName={`${t("pronunciationLabel")} ${rowIndex + 1}`}
                                         className={styles.textInput}
                                         showBackspaceButton={true}
                                     />
@@ -263,6 +312,7 @@ const PronunciationTableInputInner = ({
                                         checked={row.useInAutoSpelling}
                                         onChange={(e) => handleCheckboxChange(row.id, e.target.checked)}
                                         className={styles.checkbox}
+                                        aria-label={`${t("useInAutoSpellingLabel")} for pronunciation ${rowIndex + 1}`}
                                     />
                                 </td>
                                 <td>
@@ -273,7 +323,8 @@ const PronunciationTableInputInner = ({
                                             disabled={rows.length === 1}
                                             iconName={"trash3"}
                                             iconSize={'1.5em'}
-                                            iconColor={'red'}
+                                            iconColor={'var(--status-bad)'}
+                                            aria-label={`${t("removePronunciation")} pronunciation ${rowIndex + 1}`}
                                         />
                                     </HoverToolTip>
                                 </td>

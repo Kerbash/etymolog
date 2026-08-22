@@ -109,6 +109,19 @@ export interface LexiconAncestryRow {
 }
 
 /**
+ * Raw row from the `lexicon_meanings` table.
+ * Stores multiple meanings for each lexicon entry.
+ */
+export interface LexiconMeaningRow {
+    id: number;
+    lexicon_id: number;
+    meaning: string;
+    part_of_speech: string | null;
+    usage_notes: string | null;
+    definition_order: number;
+}
+
+/**
  * Raw row from the `lexicon_ancestry_closure` table.
  * Pre-computed transitive closure of the ancestry graph for efficient tree queries.
  * `depth` 0 = self, 1 = direct parent, 2 = grandparent, etc.
@@ -120,7 +133,7 @@ export interface LexiconAncestryClosureRow {
 }
 
 /**
- * Object containing arrays of raw rows for all 8 database tables.
+ * Object containing arrays of raw rows for all database tables.
  * Used as the `tables` field inside `EtymologExportData`.
  */
 export interface ExportTables {
@@ -130,6 +143,7 @@ export interface ExportTables {
     phonemes: PhonemeRow[];
     lexicon: LexiconRow[];
     lexicon_spelling: LexiconSpellingRow[];
+    lexicon_meanings: LexiconMeaningRow[];
     lexicon_ancestry: LexiconAncestryRow[];
     lexicon_ancestry_closure: LexiconAncestryClosureRow[];
 }
@@ -139,7 +153,11 @@ export interface ExportTables {
  * files and also the intermediate representation before image encoding.
  *
  * - `magic` — fixed string `"ETYMOLOG_EXPORT"` for file-type identification.
- * - `version` — schema version (currently `1`); used for future migration support.
+ * - `version` — export schema version (see `EXPORT_SCHEMA_VERSION` in
+ *   `config/version.ts`); used for migration support on import.
+ * - `appVersion` — informational semver of the app that produced the file
+ *   (see `APP_VERSION`). Optional for backward compatibility with older
+ *   exports that pre-date this field — never used for validation.
  * - `exportedAt` — ISO 8601 timestamp of when the export was created.
  * - `conlangName` — human-readable name of the conlang, from settings.
  * - `settings` — full `EtymologSettings` snapshot (persisted in localStorage).
@@ -147,7 +165,8 @@ export interface ExportTables {
  */
 export interface EtymologExportData {
     magic: 'ETYMOLOG_EXPORT';
-    version: 1;
+    version: number;
+    appVersion?: string;
     exportedAt: string;
     conlangName: string;
     settings: EtymologSettings;
@@ -155,10 +174,10 @@ export interface EtymologExportData {
 }
 
 /**
- * Foreign-key-safe insertion order for the 8 tables.
+ * Foreign-key-safe insertion order for the database tables.
  *
- * Parent tables (glyphs, graphemes) come first so that child tables
- * (grapheme_glyphs, phonemes, lexicon_spelling, etc.) can safely reference them
+ * Parent tables (glyphs, graphemes, lexicon) come first so that child tables
+ * (grapheme_glyphs, phonemes, lexicon_spelling, lexicon_meanings, etc.) can safely reference them
  * via foreign keys during import. Inserting in this order avoids FK constraint
  * violations when restoring a database from an export.
  */
@@ -169,6 +188,7 @@ export const TABLE_INSERTION_ORDER: (keyof ExportTables)[] = [
     'phonemes',
     'lexicon',
     'lexicon_spelling',
+    'lexicon_meanings',
     'lexicon_ancestry',
     'lexicon_ancestry_closure',
 ];
@@ -185,8 +205,24 @@ export const AUTOINCREMENT_TABLES: (keyof ExportTables)[] = [
     'phonemes',
     'lexicon',
     'lexicon_spelling',
+    'lexicon_meanings',
     'lexicon_ancestry',
 ];
+
+/**
+ * What an import did. Counts are per table; `lexicon_ancestry_closure` is
+ * always 0 because the closure is rebuilt from `lexicon_ancestry`, never
+ * inserted from the file.
+ */
+export interface ImportReport {
+    inserted: Record<keyof ExportTables, number>;
+    /** Rows dropped because they referenced a parent row absent from the file. */
+    pruned: Record<keyof ExportTables, number>;
+    /** `lexicon_meanings` rows synthesised from the legacy `lexicon.meaning` column. */
+    legacyMeaningsCreated: number;
+    /** Human-readable notes (pruned rows, corrected settings, empty graphemes). */
+    warnings: string[];
+}
 
 /**
  * Callback for reporting progress during long-running export/import operations.

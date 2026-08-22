@@ -1,0 +1,38 @@
+// The skip link. Off-screen until focused, then pinned over the header so it is
+// visible where the eye already is.
+//
+// `clip-path: inset(50%)` rather than `display: none` or `visibility: hidden`:
+// those remove the element from the accessibility tree AND from the tab order,
+// which is the whole point of the control.
+.skipLink {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+
+    // Above the sticky header, so the focused state is not painted behind it.
+    z-index: 20;
+
+    padding: 0.5em 1em;
+
+    color: var(--text-primary);
+    background: var(--bg-primary);
+    border: var(--border-width-strong) solid var(--interactive-base);
+    border-radius: var(--radius-control);
+    text-decoration: none;
+
+    &:focus,
+    &:focus-visible {
+        position: fixed;
+        top: 0.5rem;
+        left: 0.5rem;
+        width: auto;
+        height: auto;
+        overflow: visible;
+        clip-path: none;
+    }
+}

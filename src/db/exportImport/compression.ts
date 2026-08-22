@@ -23,7 +23,7 @@
  * @param data — the raw bytes to compress
  * @returns a Promise resolving to the gzip-compressed bytes
  */
-export async function compressData(data: Uint8Array): Promise<Uint8Array> {
+export async function compressData(data: Uint8Array<ArrayBuffer>): Promise<Uint8Array> {
     const cs = new CompressionStream('gzip');
     const writer = cs.writable.getWriter();
     writer.write(data);
@@ -49,7 +49,7 @@ export async function compressData(data: Uint8Array): Promise<Uint8Array> {
  * @param data — the gzip-compressed bytes to decompress
  * @returns a Promise resolving to the decompressed bytes
  */
-export async function decompressData(data: Uint8Array): Promise<Uint8Array> {
+export async function decompressData(data: Uint8Array<ArrayBuffer>): Promise<Uint8Array> {
     const ds = new DecompressionStream('gzip');
     const writer = ds.writable.getWriter();
     writer.write(data);

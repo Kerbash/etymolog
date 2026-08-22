@@ -15,7 +15,16 @@ import classNames from 'classnames';
 import HoverToolTip from 'cyber-components/interactable/information/hoverToolTip/hoverToolTip';
 import GlyphSpellingDisplay from '../spelling/GlyphSpellingDisplay';
 import type { IPAChartCellProps } from './types';
+import { guideTooltipLine } from './guideTiers';
+import type { GuideTier } from '../../../generator';
 import styles from './IPAChartCell.module.scss';
+
+/** Tier to the class that paints it. A lookup, so an unknown tier paints nothing. */
+const GUIDE_CLASS: Record<GuideTier, string> = {
+    core: styles.guideCore,
+    flavour: styles.guideFlavour,
+    avoid: styles.guideAvoid,
+};
 
 /**
  * IPAChartCell - Displays an IPA character with its associated grapheme (if any).
@@ -39,6 +48,11 @@ import styles from './IPAChartCell.module.scss';
  *   onClick={(ipa) => navigate(`/create?phoneme=${ipa}`)}
  *   description="Voiceless retroflex plosive"
  * />
+ *
+ * @example
+ * // With the flavour guide on. The chart does the lookup; the cell is told
+ * // one tier and one name, and paints them.
+ * <IPAChartCell ipa="θ" guide="core" guideLabel="Elvish / flowing" />
  */
 export default function IPAChartCell({
     ipa,
@@ -48,8 +62,13 @@ export default function IPAChartCell({
     className,
     size = 'medium',
     description,
+    guide = null,
+    guideLabel,
 }: IPAChartCellProps) {
     const isAssigned = Boolean(grapheme && grapheme.glyphs.length > 0);
+
+    /** "Elvish / flowing: core sound", or nothing when no guide is on. */
+    const guideLine = guide ? guideTooltipLine(guideLabel, guide) : null;
 
     const handleClick = () => {
         if (onClick && !isLoading) {
@@ -73,8 +92,26 @@ export default function IPAChartCell({
         } else {
             parts.push('Click to create grapheme');
         }
+        // The guide line goes LAST: it is advice about a flavour, and it must
+        // not push the two facts about the user's own script down the tooltip.
+        if (guideLine) parts.push(guideLine);
         return parts.join('\n');
-    }, [description, isAssigned, grapheme]);
+    }, [description, isAssigned, grapheme, guideLine]);
+
+    /**
+     * The accessible name carries the guide too.
+     *
+     * `HoverToolTip` portals its content and renders it only while open, so a
+     * screen-reader user who never hovers would otherwise have no way to learn
+     * that the cell is lit — and the overlay's whole purpose is to say which
+     * sounds belong to the flavour.
+     */
+    const ariaLabel = [
+        `${ipa}${description ? `: ${description}` : ''}`,
+        guideLine,
+    ]
+        .filter(Boolean)
+        .join(' — ');
 
     const cellContent = (
         <div
@@ -87,13 +124,19 @@ export default function IPAChartCell({
                     [styles.loading]: isLoading,
                     [styles.clickable]: Boolean(onClick),
                 },
+                guide ? GUIDE_CLASS[guide] : undefined,
                 className
             )}
+            /* The tier as data, not only as a hashed CSS-module class: it is
+               what a debugger, a test and a future "show me only the core
+               sounds" filter all need, and none of them can read a class name
+               that changes with every build. */
+            data-guide={guide ?? undefined}
             onClick={handleClick}
             onKeyDown={handleKeyDown}
             role="button"
             tabIndex={onClick ? 0 : -1}
-            aria-label={`${ipa}${description ? `: ${description}` : ''}`}
+            aria-label={ariaLabel}
         >
             {isLoading ? (
                 <div className={styles.loadingIndicator}>...</div>

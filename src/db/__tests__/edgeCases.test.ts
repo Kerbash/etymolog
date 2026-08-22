@@ -96,28 +96,24 @@ describe('Edge Cases and Integration Tests', () => {
             expect(getGlyphById(glyph.id)).not.toBeNull();
         });
 
-        it('should allow force deletion of glyph even when used', () => {
+        it('should force-delete a glyph that graphemes still use, as long as each keeps another glyph', () => {
             const glyph = createGlyph({ name: 'ForceDeleteMe', svg_data: '<svg/>' });
+            const keeper = createGlyph({ name: 'Keeper', svg_data: '<svg/>' });
 
             const grapheme = createGrapheme({
                 name: 'UsingGrapheme',
-                glyphs: [{ glyph_id: glyph.id, position: 0 }],
+                glyphs: [{ glyph_id: glyph.id, position: 0 }, { glyph_id: keeper.id, position: 1 }],
                 phonemes: [{ phoneme: 'a' }]
             });
 
-            // Force delete - should succeed
-            const result = forceDeleteGlyph(glyph.id);
-            expect(result).toBe(true);
-
-            // Glyph should be gone
+            expect(forceDeleteGlyph(glyph.id)).toBe(true);
             expect(getGlyphById(glyph.id)).toBeNull();
 
-            // Grapheme should still exist but have no glyphs
-            const glyphs = getGlyphsByGraphemeId(grapheme.id);
-            expect(glyphs).toHaveLength(0);
+            // Grapheme survives with its remaining glyph — never emptied
+            expect(getGlyphsByGraphemeId(grapheme.id).map(g => g.id)).toEqual([keeper.id]);
         });
 
-        it('should handle glyph deletion when used in multiple graphemes', () => {
+        it('should refuse to force-delete the only glyph of any grapheme that uses it', () => {
             const glyph = createGlyph({ name: 'MultiUse', svg_data: '<svg/>' });
 
             const g1 = createGrapheme({
@@ -131,12 +127,12 @@ describe('Edge Cases and Integration Tests', () => {
                 phonemes: [{ phoneme: 'b' }]
             });
 
-            // Force delete
-            forceDeleteGlyph(glyph.id);
+            expect(() => forceDeleteGlyph(glyph.id)).toThrow(/"G1", "G2"/);
 
-            // Both graphemes should have no glyphs now
-            expect(getGlyphsByGraphemeId(g1.id)).toHaveLength(0);
-            expect(getGlyphsByGraphemeId(g2.id)).toHaveLength(0);
+            // Nothing changed
+            expect(getGlyphById(glyph.id)).not.toBeNull();
+            expect(getGlyphsByGraphemeId(g1.id)).toHaveLength(1);
+            expect(getGlyphsByGraphemeId(g2.id)).toHaveLength(1);
         });
     });
 
@@ -368,14 +364,12 @@ describe('Edge Cases and Integration Tests', () => {
         it('should handle extremely long strings', () => {
             const longString = 'X'.repeat(10000);
 
-            const glyph = createGlyph({
+            // Input validation rejects strings exceeding limits
+            expect(() => createGlyph({
                 name: longString,
                 svg_data: `<svg>${longString}</svg>`,
                 notes: longString
-            });
-
-            expect(glyph.name.length).toBe(10000);
-            expect(glyph.svg_data.length).toBe(10011); // '<svg>' + 10000 + '</svg>'
+            })).toThrow('exceeds maximum length');
         });
 
         it('should handle unicode and emoji', () => {

@@ -65,7 +65,7 @@ const META_MARKER = [0x45, 0x58, 0x50] as const;
  * @returns a Promise resolving to a PNG Blob ready for download
  */
 export async function wrapInPngFrame(
-    pixels: Uint8ClampedArray,
+    pixels: Uint8ClampedArray<ArrayBuffer>,
     imgW: number,
     imgH: number,
     conlangName: string

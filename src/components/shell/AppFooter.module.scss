@@ -1,0 +1,36 @@
+// AppFooter — same rationale as the header: BasicFooter's fixed 30px becomes a
+// floor so the row can wrap on narrow viewports instead of clipping.
+
+.footer {
+    height: auto;
+    min-height: 30px;
+}
+
+.inner {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.25rem 1rem;
+
+    width: 100%;
+    max-width: var(--max-content-width);
+    margin-inline: auto;
+}
+
+.build {
+    color: var(--text-secondary);
+}
+
+.meta {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.author {
+    color: var(--text-secondary);
+    white-space: nowrap;
+}

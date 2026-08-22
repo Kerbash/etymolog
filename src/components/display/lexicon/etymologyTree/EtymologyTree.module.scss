@@ -11,12 +11,8 @@
     padding: 1rem;
 }
 
-.emptyTree {
-    padding: 1rem;
-    text-align: center;
-    color: var(--text-secondary);
-    font-style: italic;
-}
+/* No `.emptyTree`: the caller renders an `EmptyState` with an "Add ancestors"
+   action instead of a sentence the user cannot act on. */
 
 /* Node Container */
 .nodeContainer {
@@ -54,7 +50,7 @@
     gap: 0.5rem;
     padding: 0.5rem 0.75rem;
     border: 2px solid var(--border-primary);
-    border-radius: 6px;
+    border-radius: var(--radius-control);
     background: var(--surface-base);
     transition: all 0.2s ease;
     position: relative;
@@ -62,13 +58,13 @@
 
 .node.root {
     border-width: 3px;
-    border-color: var(--color-primary);
+    border-color: var(--interactive-base);
     background: var(--surface-raised);
 }
 
 .node.current {
-    border-color: var(--color-primary);
-    background: var(--color-primary-bg, rgba(var(--color-primary-rgb), 0.1));
+    border-color: var(--interactive-base);
+    background: var(--status-info-bg);
 }
 
 .node.clickable {
@@ -76,9 +72,9 @@
 }
 
 .node.clickable:hover {
-    border-color: var(--color-primary);
+    border-color: var(--interactive-base);
     transform: translateY(-2px);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-raised);
 }
 
 .node.clickable:focus {
@@ -94,8 +90,8 @@
 .ancestryBadge {
     font-size: 0.625rem;
     padding: 0.125rem 0.375rem;
-    border-radius: 8px;
-    color: white;
+    border-radius: var(--radius-surface);
+    color: var(--white);
     text-transform: uppercase;
     font-weight: 600;
 }
@@ -106,7 +102,7 @@
 }
 
 .pronunciation {
-    font-family: var(--font-mono, monospace);
+    font-family: var(--font-mono);
     font-size: 0.8125rem;
     color: var(--text-secondary);
 }
@@ -115,7 +111,7 @@
     font-size: 0.75rem;
     padding: 0.125rem 0.375rem;
     background: var(--bg-tertiary);
-    border-radius: 4px;
+    border-radius: var(--radius-chip);
     color: var(--text-secondary);
 }
 
@@ -126,30 +122,111 @@
     gap: 0.5rem;
     padding: 0.75rem;
     background: var(--bg-tertiary);
-    border-radius: 6px;
+    border-radius: var(--radius-control);
     font-size: 0.8125rem;
 }
 
 .legendTitle {
+    margin: 0;
+    font-size: 0.8125rem;
     font-weight: 500;
     color: var(--text-secondary);
 }
 
 .legendItems {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
     gap: 0.75rem;
+
+    margin: 0;
+    padding: 0;
+    list-style: none;
 }
 
-.legendItem {
-    display: flex;
-    align-items: center;
-    gap: 0.375rem;
-    color: var(--text-primary);
+/* =============================================================================
+   ANCESTRY-TYPE MODIFIERS
+   -----------------------------------------------------------------------------
+   One mapping for the whole tree. `.connector` reads it as a border colour and
+   `.ancestryBadge` as a background — the same class does both, so a badge and
+   the line under it cannot end up different colours (which is exactly what the
+   two duplicated inline-style maps allowed).
+   ============================================================================= */
+
+.typeDerived {
+    --ancestry-color: var(--status-info);
 }
 
-.legendColor {
-    width: 12px;
-    height: 12px;
-    border-radius: 2px;
+.typeBorrowed {
+    --ancestry-color: var(--status-warning);
+}
+
+.typeCompound {
+    --ancestry-color: var(--status-good);
+}
+
+.typeBlend {
+    --ancestry-color: var(--interactive-base);
+}
+
+.typeCalque {
+    --ancestry-color: var(--status-neutral);
+}
+
+.typeOther {
+    --ancestry-color: var(--text-secondary);
+}
+
+.typeNone {
+    --ancestry-color: var(--border-primary);
+}
+
+.connector.typeDerived,
+.connector.typeBorrowed,
+.connector.typeCompound,
+.connector.typeBlend,
+.connector.typeCalque,
+.connector.typeOther,
+.connector.typeNone {
+    border-left-color: var(--ancestry-color);
+    background: var(--ancestry-color);
+}
+
+.ancestryBadge.typeDerived,
+.ancestryBadge.typeBorrowed,
+.ancestryBadge.typeCompound,
+.ancestryBadge.typeBlend,
+.ancestryBadge.typeCalque,
+.ancestryBadge.typeOther,
+.ancestryBadge.typeNone {
+    background: var(--ancestry-color);
+}
+
+/* A subtree the query CUT (depth limit or cycle guard) — not a real root. */
+.truncatedBadge {
+    padding: 0 0.375rem;
+
+    font-size: 0.75rem;
+    line-height: 1;
+    color: var(--text-secondary);
+
+    background: var(--bg-tertiary);
+    border: var(--border-width) var(--divider-style) var(--border-secondary);
+    border-radius: var(--radius-pill);
+}
+
+.srOnly {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* The legend is a list of MiniIconCards now, not six hand-built swatch rows. */
+.legendCard {
+    align-items: flex-start;
 }

@@ -26,6 +26,7 @@ import {
     getAvailablePhonemeMap,
     buildVirtualGlyphMap,
 } from '../autoSpellService';
+import { generateVirtualGlyphId } from '../utils/virtualGlyph';
 
 // =============================================================================
 // HELPER FUNCTIONS
@@ -465,6 +466,190 @@ describe('Auto-Spell Service', () => {
             expect(result.spelling).toHaveLength(2);
             expect(result.spelling[0].grapheme_id).toBe(gAB.id);
             expect(result.spelling[1].grapheme_id).toBe(gCD.id);
+        });
+    });
+
+    // =========================================================================
+    // FALLBACK GRANULARITY: ONE VIRTUAL GLYPH PER SOUND, NOT PER CODE POINT
+    // =========================================================================
+
+    describe('Virtual Glyph Fallback — token granularity', () => {
+        /** The IPA text of every entry, real ones read off `segments`. */
+        const shape = (result: { spelling: { isVirtual?: boolean }[]; segments: string[] }) =>
+            result.spelling.map((entry, i) => [result.segments[i], entry.isVirtual === true]);
+
+        it('makes ONE virtual glyph for a tie-barred affricate', () => {
+            // 't͡s' is THREE code points (t, U+0361, s) and ONE sound. The old
+            // per-code-point skip produced three placeholders, the middle one
+            // being a bare tie bar — a glyph of a diacritic, which is nonsense.
+            const result = generateSpellingWithFallback('t͡sa');
+
+            expect(result.success).toBe(true);
+            expect(result.hasVirtualGlyphs).toBe(true);
+            expect(shape(result)).toEqual([['t͡s', true], ['a', true]]);
+            expect(result.spelling[0].ipaCharacter).toBe('t͡s');
+        });
+
+        it('makes ONE virtual glyph for a long vowel', () => {
+            const result = generateSpellingWithFallback('aː');
+
+            expect(result.spelling).toHaveLength(1);
+            expect(result.spelling[0].ipaCharacter).toBe('aː');
+            expect(result.segments).toEqual(['aː']);
+        });
+
+        it('keeps a modifier letter on its base', () => {
+            const result = generateSpellingWithFallback('pʰa');
+
+            expect(shape(result)).toEqual([['pʰ', true], ['a', true]]);
+        });
+
+        it('keeps a combining diacritic on its base', () => {
+            // Nasalised 'ã' written with the combining tilde (U+0303).
+            const result = generateSpellingWithFallback('ka\u0303t');
+
+            expect(result.segments).toEqual(['k', 'a\u0303', 't']);
+        });
+
+        it('splits an untied "tʃ" into two tokens (the documented ambiguity)', () => {
+            // Without a tie bar the string is genuinely ambiguous — affricate in
+            // 'katʃa', cluster across a syllable boundary in 'hotʃop' — and the
+            // tokenizer takes the conservative reading. Tie-barred 't͡ʃ' is one.
+            const untied = generateSpellingWithFallback('tʃ');
+            expect(untied.segments).toEqual(['t', 'ʃ']);
+            expect(untied.spelling).toHaveLength(2);
+
+            const tied = generateSpellingWithFallback('t͡ʃ');
+            expect(tied.segments).toEqual(['t͡ʃ']);
+            expect(tied.spelling).toHaveLength(1);
+        });
+
+        it('lets a real grapheme whose phoneme is an affricate beat the fallback', () => {
+            const gTS = createGraphemeWithPhoneme('TS', 't͡s');
+            const gA = createGraphemeWithPhoneme('A', 'a');
+
+            const result = generateSpellingWithFallback('t͡sa');
+
+            expect(result.hasVirtualGlyphs).toBe(false);
+            expect(result.spelling.map(s => s.grapheme_id)).toEqual([gTS.id, gA.id]);
+            expect(result.segments).toEqual(['t͡s', 'a']);
+        });
+
+        it('mixes real graphemes and whole-token virtual glyphs', () => {
+            // 'a' HAS a grapheme, but the 'a' in 'aː' is only half a token and
+            // half a sound cannot be spelled — the length mark would be left
+            // standing on its own as a glyph, which is the bug being fixed.
+            const gK = createGraphemeWithPhoneme('K', 'k');
+            void createGraphemeWithPhoneme('A', 'a');
+
+            const result = generateSpellingWithFallback('kaː t͡su');
+
+            expect(result.spelling.map(s => s.grapheme_id)).toEqual([
+                gK.id,
+                generateVirtualGlyphId('aː'),
+                generateVirtualGlyphId(' '),
+                generateVirtualGlyphId('t͡s'),
+                generateVirtualGlyphId('u'),
+            ]);
+            expect(result.segments).toEqual(['k', 'aː', ' ', 't͡s', 'u']);
+            expect(result.spelling.map(s => s.isVirtual)).toEqual([false, true, true, true, true]);
+        });
+
+        it('does not let a partial match inside a token strand the rest of it', () => {
+            // 'p' matches the head of 'pʰ', but there is no way to spell the
+            // aspiration on its own, so the whole token becomes one placeholder
+            // and the following 'a' still resolves to its real grapheme.
+            void createGraphemeWithPhoneme('P', 'p');
+            const gA = createGraphemeWithPhoneme('A', 'a');
+
+            const result = generateSpellingWithFallback('pʰa');
+
+            expect(result.spelling).toHaveLength(2);
+            expect(result.spelling[0].isVirtual).toBe(true);
+            expect(result.spelling[0].ipaCharacter).toBe('pʰ');
+            expect(result.spelling[1].grapheme_id).toBe(gA.id);
+        });
+
+        it('keeps stress marks and syllable dots as their own single entries', () => {
+            // DECISION: separators are KEPT, exactly as before this change —
+            // they already were one token each, and dropping them would merge
+            // the halves of a two-word pronunciation with no way to tell.
+            const gK = createGraphemeWithPhoneme('K', 'k');
+            const gA = createGraphemeWithPhoneme('A', 'a');
+            const gT = createGraphemeWithPhoneme('T', 't');
+
+            const result = generateSpellingWithFallback('ˈka.ta');
+
+            expect(result.segments).toEqual(['ˈ', 'k', 'a', '.', 't', 'a']);
+            expect(result.spelling.map(s => s.grapheme_id)).toEqual([
+                generateVirtualGlyphId('ˈ'),
+                gK.id,
+                gA.id,
+                generateVirtualGlyphId('.'),
+                gT.id,
+                gA.id,
+            ]);
+            expect(result.spelling.map(s => s.isVirtual)).toEqual([true, false, false, true, false, false]);
+        });
+
+        it('never merges a separator into the sound beside it', () => {
+            const result = generateSpellingWithFallback('aːˈaː');
+
+            expect(result.segments).toEqual(['aː', 'ˈ', 'aː']);
+        });
+
+        it('gives one id per SOUND, so two long vowels share a glyph', () => {
+            const result = generateSpellingWithFallback('aːaː');
+
+            expect(result.spelling).toHaveLength(2);
+            expect(result.spelling[0].grapheme_id).toBe(result.spelling[1].grapheme_id);
+            expect(result.spelling[0].grapheme_id).not.toBe(generateVirtualGlyphId('a'));
+        });
+
+        it('builds a virtual glyph map keyed by the multi-code-point token', () => {
+            const result = generateSpellingWithFallback('t͡saː');
+            const map = buildVirtualGlyphMap(result);
+
+            expect(map.size).toBe(2);
+            expect(map.get(generateVirtualGlyphId('t͡s'))?.ipaCharacter).toBe('t͡s');
+            expect(map.get(generateVirtualGlyphId('aː'))?.ipaCharacter).toBe('aː');
+            for (const glyph of map.values()) {
+                expect(glyph.svg_data).toContain('<svg');
+                expect(glyph.id).toBeLessThan(0);
+            }
+        });
+
+        it('stays deterministic across calls', () => {
+            const a = generateSpellingWithFallback('t͡ʃaːpʰ');
+            const b = generateSpellingWithFallback('t͡ʃaːpʰ');
+
+            expect(a.segments).toEqual(b.segments);
+            expect(a.spelling.map(s => s.grapheme_id)).toEqual(b.spelling.map(s => s.grapheme_id));
+            expect(a.segments).toEqual(['t͡ʃ', 'aː', 'pʰ']);
+        });
+
+        it('keeps segments aligned with spelling entry-for-entry', () => {
+            // `translateWord` reads `segments[index]` for `spelling[index]`; a
+            // drift between the two arrays renders the wrong character.
+            const gK = createGraphemeWithPhoneme('K', 'k');
+
+            const result = generateSpellingWithFallback('kt͡sk');
+
+            expect(result.segments).toHaveLength(result.spelling.length);
+            expect(result.spelling.map(s => s.grapheme_id)).toEqual([
+                gK.id,
+                generateVirtualGlyphId('t͡s'),
+                gK.id,
+            ]);
+        });
+
+        it('still spells a plain ASCII string one character at a time', () => {
+            // The tokenizer only glues marks and tie bars; ordinary letters are
+            // one token each, so nothing about the old behaviour changes here.
+            const result = generateSpellingWithFallback('xyz');
+
+            expect(result.spelling).toHaveLength(3);
+            expect(result.segments).toEqual(['x', 'y', 'z']);
         });
     });
 

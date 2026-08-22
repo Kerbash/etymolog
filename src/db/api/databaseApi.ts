@@ -15,12 +15,16 @@ import type {
 import {
     initDatabase,
     isDatabaseInitialized,
+    getDatabase,
     exportDatabaseFile,
     importDatabaseFile as serviceImportDatabaseFile,
     clearDatabase as serviceClearDatabase,
     resetDatabase as serviceResetDatabase,
+    repairDatabase as serviceRepairDatabase,
 } from '../database';
+import { readUserVersion, type RepairReport } from '../migrations';
 import { getGlyphCount } from '../glyphService';
+import { exportAsJson } from '../exportImport/exportService';
 import { getGraphemeCount } from '../graphemeService';
 
 function errorResponse<T>(
@@ -40,15 +44,17 @@ function getStatus(): ApiResponse<DatabaseStatus> {
         const initialized = isDatabaseInitialized();
         let glyphCount = 0;
         let graphemeCount = 0;
+        let schemaVersion = 0;
 
         if (initialized) {
             try {
                 glyphCount = getGlyphCount();
                 graphemeCount = getGraphemeCount();
+                schemaVersion = readUserVersion(getDatabase());
             } catch { /* counts remain 0 */ }
         }
 
-        return successResponse({ initialized, glyphCount, graphemeCount });
+        return successResponse({ initialized, glyphCount, graphemeCount, schemaVersion });
     } catch (error) {
         return errorResponse('OPERATION_FAILED', error instanceof Error ? error.message : 'Failed to get database status');
     }
@@ -60,7 +66,7 @@ function exportDatabase(format: ExportFormat = 'sqlite'): ApiResponse<Blob> {
     }
     try {
         if (format === 'json') {
-            return errorResponse('OPERATION_FAILED', 'JSON export not yet implemented');
+            return successResponse(new Blob([exportAsJson()], { type: 'application/json' }));
         }
         const blob = exportDatabaseFile();
         return successResponse(blob);
@@ -102,12 +108,24 @@ function resetDatabase(): ApiResponse<void> {
     }
 }
 
+function repairDatabase(): ApiResponse<RepairReport> {
+    if (!isDatabaseInitialized()) {
+        return errorResponse('DB_NOT_INITIALIZED', 'Database not initialized');
+    }
+    try {
+        return successResponse(serviceRepairDatabase());
+    } catch (error) {
+        return errorResponse('OPERATION_FAILED', error instanceof Error ? error.message : 'Failed to repair database');
+    }
+}
+
 export const databaseApi: DatabaseApi = {
     getStatus,
     export: exportDatabase,
     import: importDatabase,
     clear: clearDatabase,
     reset: resetDatabase,
+    repair: repairDatabase,
 };
 
 export { initDatabase };

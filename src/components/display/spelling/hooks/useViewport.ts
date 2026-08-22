@@ -48,6 +48,13 @@ export function useViewport(
     onTransformChange?: (transform: ViewportTransform) => void
 ) {
     const transformRef = useRef<ReactZoomPanPinchRef>(null);
+    /**
+     * The rendered SVG surface. The hook owns it so `refMethods` can satisfy
+     * the WHOLE `GlyphSpellingDisplayRef` contract (the export paths need the
+     * element); consumers forward this ref to their SVG rather than assembling
+     * a second, partial ref object of their own.
+     */
+    const svgRef = useRef<SVGSVGElement>(null);
     const resolvedConfig = useMemo(() => resolveViewportConfig(config), [config]);
 
     /**
@@ -113,6 +120,11 @@ export function useViewport(
     }, [contentBounds]);
 
     /**
+     * Get the rendered SVG element (used by the PNG/SVG export paths).
+     */
+    const getSvgElement = useCallback((): SVGSVGElement | null => svgRef.current, []);
+
+    /**
      * Handle transform change from react-zoom-pan-pinch.
      */
     const handleTransformChange = useCallback((ref: ReactZoomPanPinchRef) => {
@@ -135,10 +147,12 @@ export function useViewport(
         panTo,
         getTransform,
         getContentBounds,
-    }), [resetView, fitToView, setZoom, panTo, getTransform, getContentBounds]);
+        getSvgElement,
+    }), [resetView, fitToView, setZoom, panTo, getTransform, getContentBounds, getSvgElement]);
 
     return {
         transformRef,
+        svgRef,
         resolvedConfig,
         refMethods,
         handleTransformChange,

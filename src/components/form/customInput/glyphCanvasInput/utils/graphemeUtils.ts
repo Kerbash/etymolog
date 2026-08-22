@@ -21,18 +21,50 @@ export interface RenderableGlyph {
     notes: string | null;
     /** For GlyphWithUsage compatibility */
     usageCount?: number;
+    created_at?: string;
+    updated_at?: string;
+}
+
+/** The `viewBox` of an SVG string, or a 0 0 100 100 default when absent/malformed. */
+export function parseSvgViewBox(svg: string): { x: number; y: number; width: number; height: number } {
+    const match = svg.match(/<svg\b[^>]*\bviewBox\s*=\s*["']\s*([-\d.eE+]+)[\s,]+([-\d.eE+]+)[\s,]+([-\d.eE+]+)[\s,]+([-\d.eE+]+)\s*["']/i);
+    if (!match) return { x: 0, y: 0, width: 100, height: 100 };
+    const [x, y, width, height] = match.slice(1).map(Number);
+    if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) {
+        return { x: 0, y: 0, width: 100, height: 100 };
+    }
+    return { x, y, width, height };
+}
+
+/**
+ * Inner markup of an SVG document: everything between the first `>` after the
+ * opening `<svg` and the LAST `</svg>`. Tolerates nested `<svg>` elements,
+ * which a non-greedy regex does not.
+ */
+export function extractSvgInner(svg: string): string {
+    const openStart = svg.search(/<svg\b/i);
+    if (openStart === -1) return svg;
+    const openEnd = svg.indexOf('>', openStart);
+    let closeStart = -1;
+    for (const match of svg.matchAll(/<\/svg\s*>/gi)) {
+        closeStart = match.index ?? -1;
+    }
+    if (openEnd === -1 || closeStart === -1 || closeStart < openEnd) return svg;
+    return svg.slice(openEnd + 1, closeStart);
 }
 
 /**
  * Combine multiple SVG strings into a single horizontal SVG.
  *
- * This creates a new SVG that renders all input SVGs side-by-side.
- * Each input SVG is wrapped in a `<g>` element with a transform.
+ * Each source is nested as its own `<svg>` with its ORIGINAL `viewBox`, placed
+ * in a fixed-size cell, so the browser rescales it — a glyph authored in a
+ * 0 0 100 100 space and one in 0 0 48 48 come out the same size. (Splicing the
+ * raw markup into a shared coordinate space, as this used to, rendered
+ * multi-glyph graphemes several times too large.)
  *
  * @param svgStrings - Array of SVG strings to combine
- * @param spacing - Horizontal spacing between SVGs (in viewBox units)
- * @param glyphSize - Size of each glyph square (width/height)
- * @returns Combined SVG string
+ * @param spacing - Horizontal spacing between cells (in output units)
+ * @param glyphSize - Size of each square cell (width/height)
  */
 export function combineSvgStrings(
     svgStrings: string[],
@@ -42,26 +74,18 @@ export function combineSvgStrings(
     if (svgStrings.length === 0) {
         return '';
     }
-
     if (svgStrings.length === 1) {
         return svgStrings[0];
     }
 
     const totalWidth = svgStrings.length * glyphSize + (svgStrings.length - 1) * spacing;
-    const height = glyphSize;
-
-    // Extract just the inner content of each SVG
-    const innerContents = svgStrings.map((svg, index) => {
-        // Remove outer <svg> tags and extract content
-        const innerMatch = svg.match(/<svg[^>]*>([\s\S]*?)<\/svg>/i);
-        const innerContent = innerMatch ? innerMatch[1] : svg;
-
-        // Wrap in a group with translation
-        const xOffset = index * (glyphSize + spacing);
-        return `<g transform="translate(${xOffset}, 0)">${innerContent}</g>`;
+    const cells = svgStrings.map((svg, index) => {
+        const vb = parseSvgViewBox(svg);
+        const x = index * (glyphSize + spacing);
+        return `<svg x="${x}" y="0" width="${glyphSize}" height="${glyphSize}" viewBox="${vb.x} ${vb.y} ${vb.width} ${vb.height}" preserveAspectRatio="xMidYMid meet">${extractSvgInner(svg)}</svg>`;
     });
 
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalWidth} ${height}" width="${totalWidth}" height="${height}">${innerContents.join('')}</svg>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalWidth} ${glyphSize}" width="${totalWidth}" height="${glyphSize}">${cells.join('')}</svg>`;
 }
 
 /**
@@ -128,8 +152,8 @@ export function renderableToGlyphWithUsage(renderable: RenderableGlyph): GlyphWi
         category: renderable.category,
         notes: renderable.notes,
         usageCount: renderable.usageCount ?? 0,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        created_at: renderable.created_at ?? '',
+        updated_at: renderable.updated_at ?? '',
     };
 }
 
@@ -178,7 +202,7 @@ export function normalizeToRenderable(
     item: Glyph | GlyphWithUsage | GraphemeComplete
 ): RenderableGlyph {
     if (isGraphemeComplete(item)) {
-        return graphemeToRenderableGlyph(item);
+        return { ...graphemeToRenderableGlyph(item), created_at: item.created_at, updated_at: item.updated_at };
     }
 
     // It's a Glyph or GlyphWithUsage
@@ -189,6 +213,8 @@ export function normalizeToRenderable(
         category: item.category,
         notes: item.notes,
         usageCount: (item as GlyphWithUsage).usageCount,
+        created_at: item.created_at,
+        updated_at: item.updated_at,
     };
 }
 

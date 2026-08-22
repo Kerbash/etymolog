@@ -7,7 +7,7 @@ export const lineProgressionRule: TypographyRule = {
     category: 'Directionality',
     options: [
         { value: 'ttb', label: 'Top to Bottom', description: 'New lines appear below (standard for horizontal scripts)' },
-        { value: 'btu', label: 'Bottom to Up', description: 'New lines appear above' },
+        { value: 'btt', label: 'Bottom to Top', description: 'New lines appear above' },
         { value: 'ltr', label: 'Left to Right', description: 'New columns to the right (traditional CJK column style)' },
         { value: 'rtl', label: 'Right to Left', description: 'New columns to the left' },
     ],

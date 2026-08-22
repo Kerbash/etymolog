@@ -1,23 +1,39 @@
-import { useState, useRef } from "react";
-import classNames from "classnames";
-import { SmartForm, useSmartForm } from "smart-form/smartForm";
-import IconButton from "cyber-components/interactable/buttons/iconButton/iconButton.tsx";
-import { buttonStyles } from "cyber-components/interactable/buttons/button/button.tsx";
-import { flex } from "utils-styles";
-import { useEtymologApi, type Glyph } from "../../../db";
-import GlyphFormFields, { type GlyphFormData } from "./GlyphFormFields";
-import styles from "./editGlyphModal.module.scss";
+/**
+ * GlyphForm
+ * ---------
+ * A SELF-CONTAINED glyph form: it owns its `<SmartForm>`, its fields and its
+ * action bar.
+ *
+ * This is the shape the nested "new glyph while composing a grapheme" modal
+ * needs — a modal has no page around it to own the form state, and the whole
+ * point of that modal is that the grapheme form behind it stays untouched. The
+ * two glyph PAGES do not use it: they own their SmartForm directly so their
+ * `EntityEditLayout` can render the shared action bar (with the separated
+ * delete) and read `isSubmittable` from the same place every other page does.
+ *
+ * Submission itself is shared with those pages through {@link useGlyphSubmit},
+ * so "what saving a glyph means" is defined once.
+ */
 
-interface GlyphFormProps {
+import classNames from "classnames";
+
+import { SmartForm, useSmartForm } from "smart-form/smartForm";
+
+import type { Glyph } from "../../../db";
+import { FormActionBar } from "../../shared";
+import GlyphFormFields from "./GlyphFormFields";
+import { useGlyphSubmit } from "./useGlyphSubmit";
+
+import styles from "./glyphForm.module.scss";
+
+export interface GlyphFormProps {
     mode: "create" | "edit";
+    /** The glyph being edited. Required in `edit` mode. */
     initialData?: Glyph | null;
-    onSuccess?: (glyph: Glyph) => void;
-    onCancel?: () => void;
-    onError?: (msg: string) => void;
-    onSubmittingChange?: (isSubmitting: boolean) => void;
+    /** Called with the saved glyph. */
+    onSuccess: (glyph: Glyph) => void;
+    onCancel: () => void;
     className?: string;
-    /** Optional function to render extra action buttons inside the button row (receives isSubmitting) */
-    extraActions?: (isSubmitting: boolean) => React.ReactNode;
 }
 
 export default function GlyphForm({
@@ -25,128 +41,32 @@ export default function GlyphForm({
     initialData,
     onSuccess,
     onCancel,
-    onError,
-    onSubmittingChange,
     className,
-    extraActions,
 }: GlyphFormProps) {
-    const { registerField, unregisterField, registerForm, isFormValid } = useSmartForm({ mode: "onChange" });
-    const [error, setError] = useState<string | null>(null);
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const isSubmittingRef = useRef(false);
-    const api = useEtymologApi();
+    const { registerField, unregisterField, registerForm } = useSmartForm({ mode: "onChange" });
+    const submitFunc = useGlyphSubmit({ mode, initialData, onSuccess });
 
-    const formProps = registerForm("glyphForm", {
-        submitFunc: async (formData) => {
-            if (isSubmittingRef.current) {
-                return { success: false, error: 'Already submitting' };
-            }
-            isSubmittingRef.current = true;
-            setIsSubmitting(true);
-            onSubmittingChange && onSubmittingChange(true);
-
-            try {
-                setError(null);
-
-                const data = formData as unknown as GlyphFormData;
-
-                // Validate required fields
-                if (!data.glyphSvg || data.glyphSvg.trim() === '') {
-                    throw new Error('Please draw a glyph');
-                }
-                if (!data.glyphName || data.glyphName.trim() === '') {
-                    throw new Error('Glyph name is required');
-                }
-
-                let result;
-                if (mode === 'create') {
-                    result = api.glyph.create({
-                        name: data.glyphName.trim(),
-                        svg_data: data.glyphSvg,
-                        category: data.category?.trim() || undefined,
-                        notes: data.notes?.trim() || undefined
-                    });
-                } else {
-                    if (!initialData) {
-                        throw new Error('No glyph to edit');
-                    }
-                    result = api.glyph.update(initialData.id, {
-                        name: data.glyphName.trim(),
-                        svg_data: data.glyphSvg,
-                        category: data.category?.trim() || undefined,
-                        notes: data.notes?.trim() || undefined
-                    });
-                }
-
-                if (!result.success) {
-                    throw new Error(result.error?.message || (mode === 'create' ? 'Failed to create glyph' : 'Failed to update glyph'));
-                }
-
-                const glyph = result.data!;
-
-                // Notify parent
-                setError(null);
-                isSubmittingRef.current = false;
-                setIsSubmitting(false);
-                onSubmittingChange && onSubmittingChange(false);
-                onSuccess && onSuccess(glyph);
-
-                return { success: true, data: glyph };
-            } catch (err) {
-                isSubmittingRef.current = false;
-                setIsSubmitting(false);
-                onSubmittingChange && onSubmittingChange(false);
-                const errorMessage = err instanceof Error ? err.message : (mode === 'create' ? 'Failed to create glyph' : 'Failed to update glyph');
-                setError(errorMessage);
-                onError && onError(errorMessage);
-                console.error("[GlyphForm] Error:", err);
-
-                return { success: false, error: errorMessage };
-            }
-        }
+    // `lockFormOnSubmit` off: every SQLite call here is synchronous and
+    // in-memory, so the lock modal would flash for a single frame.
+    const formProps = registerForm(mode === "create" ? "createGlyphForm" : "editGlyphForm", {
+        submitFunc,
+        lockFormOnSubmit: false,
     });
 
     return (
-        <div className={classNames(className)}>
-            {error && (
-                <div className={styles.errorMessage}>
-                    {error}
-                </div>
-            )}
+        <SmartForm
+            {...formProps}
+            registerField={registerField}
+            unregisterField={unregisterField}
+            className={classNames(styles.form, className)}
+        >
+            <GlyphFormFields registerField={registerField} mode={mode} initialData={initialData} />
 
-            <SmartForm
-                {...formProps}
-                registerField={registerField}
-                unregisterField={unregisterField}
-                isFormValid={isFormValid}
-                className={classNames(flex.flexCol, flex.flexGapM)}
-            >
-                <GlyphFormFields
-                    registerField={registerField}
-                    mode={mode}
-                    initialData={initialData}
-                />
-
-                <div className={classNames(flex.flex, flex.flexGapM, styles.modalButtons)}>
-                    <IconButton
-                        className={classNames(buttonStyles.primary)}
-                        type="submit"
-                        disabled={isSubmitting}
-                    >
-                        {isSubmitting ? (mode === 'create' ? 'Saving...' : 'Saving...') : (mode === 'create' ? 'Save Glyph' : 'Save Changes')}
-                    </IconButton>
-                    <IconButton
-                        className={classNames(buttonStyles.secondary)}
-                        onClick={() => onCancel && onCancel()}
-                        type="button"
-                        disabled={isSubmitting}
-                    >
-                        Cancel
-                    </IconButton>
-
-                    {extraActions && extraActions(isSubmitting)}
-                </div>
-            </SmartForm>
-        </div>
+            <FormActionBar
+                onCancel={onCancel}
+                submitLabel={mode === "create" ? "Create glyph" : "Save changes"}
+                disabled={!formProps.formState.isSubmittable}
+            />
+        </SmartForm>
     );
 }

@@ -1,0 +1,16 @@
+// The footer's save indicator. It has to read at BasicFooter's 0.8em against
+// --bg-primary, so it uses the primary text colour rather than a muted one — a
+// "Not saved" that is easy to miss defeats the point of showing it.
+.status {
+    color: var(--text-primary);
+    white-space: nowrap;
+
+    &[data-persistence-status='error'] {
+        color: var(--status-error);
+    }
+
+    &[data-persistence-status='saving'],
+    &[data-persistence-status='pending'] {
+        color: var(--text-primary-muted);
+    }
+}

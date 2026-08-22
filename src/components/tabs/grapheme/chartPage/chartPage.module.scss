@@ -1,0 +1,69 @@
+/**
+ * The ONE chart-page stylesheet.
+ *
+ * Replaces the skeleton half of `IPAChartPage.module.scss`,
+ * `SyllabaryChartPage.module.scss`, `PunctuationPage.module.scss` and
+ * `CustomChartsPage.module.scss` — four copies of `.nav` / `.pageTitle` /
+ * `.description` / `.statsBar` / `.stat` / `.infoSection` / `.loading` /
+ * `.error`. Only the chart-SPECIFIC rules stay with their pages.
+ */
+
+.page {
+    display: flex;
+    flex-direction: column;
+    gap: var(--section-gap);
+    width: 100%;
+    min-width: 0;
+}
+
+/**
+ * The chart's own scroll container.
+ *
+ * `min-width: 0` is the load-bearing half: without it a flex item refuses to
+ * shrink below its content's intrinsic width, `overflow-x` never engages, and
+ * the wide table pushes the PAGE sideways instead — which is exactly what a
+ * chart page did at 400 px.
+ */
+.chartArea {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    border: var(--border-width) solid var(--border-primary);
+    border-radius: var(--radius-surface);
+    background: var(--surface-base);
+}
+
+.aboutToggle {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.aboutBody {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+
+    h4 {
+        margin: 0 0 0.5rem;
+        color: var(--text-primary);
+        font-size: 1rem;
+    }
+
+    ul {
+        margin: 0;
+        padding-left: 1.25rem;
+    }
+
+    li {
+        margin-bottom: 0.5rem;
+        line-height: 1.4;
+
+        &:last-child {
+            margin-bottom: 0;
+        }
+    }
+
+    strong {
+        color: var(--text-primary);
+    }
+}

@@ -428,12 +428,13 @@ describe('Glyph Service', () => {
     });
 
     describe('forceDeleteGlyph', () => {
-        it('should delete glyph even if in use', () => {
+        it('should delete a glyph that is in use when the grapheme keeps another glyph', () => {
             const glyph = createGlyph({ name: 'ForceDelete', svg_data: '<svg/>' });
+            const other = createGlyph({ name: 'Other', svg_data: '<svg/>' });
 
             createGrapheme({
                 name: 'UsingGlyph',
-                glyphs: [{ glyph_id: glyph.id, position: 0 }],
+                glyphs: [{ glyph_id: glyph.id, position: 0 }, { glyph_id: other.id, position: 1 }],
                 phonemes: [{ phoneme: 'a' }]
             });
 
@@ -441,6 +442,17 @@ describe('Glyph Service', () => {
 
             expect(result).toBe(true);
             expect(getGlyphById(glyph.id)).toBeNull();
+        });
+
+        it('should refuse when the glyph is the only glyph of a grapheme', () => {
+            const glyph = createGlyph({ name: 'OnlyGlyph', svg_data: '<svg/>' });
+            createGrapheme({
+                name: 'Solo',
+                glyphs: [{ glyph_id: glyph.id, position: 0 }],
+            });
+
+            expect(() => forceDeleteGlyph(glyph.id)).toThrow(/only glyph in "Solo"/);
+            expect(getGlyphById(glyph.id)).not.toBeNull();
         });
     });
 
@@ -488,10 +500,9 @@ describe('Glyph Service', () => {
     describe('Edge Cases', () => {
         it('should handle very long names', () => {
             const longName = 'A'.repeat(1000);
-            const glyph = createGlyph({ name: longName, svg_data: '<svg/>' });
-
-            expect(glyph.name).toBe(longName);
-            expect(getGlyphById(glyph.id)!.name).toBe(longName);
+            // Input validation rejects names exceeding 200 characters
+            expect(() => createGlyph({ name: longName, svg_data: '<svg/>' }))
+                .toThrow('exceeds maximum length');
         });
 
         it('should handle very long SVG data', () => {

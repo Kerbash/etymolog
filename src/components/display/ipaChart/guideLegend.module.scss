@@ -1,0 +1,125 @@
+/**
+ * GuideLegend — the key to the three tiers, under the chart.
+ *
+ * The swatches are the ONLY place the guide colours appear as text-adjacent
+ * colour, and they are fills rather than `color:` on purpose: `--status-good`
+ * is 2.74:1 on the light page and fails AA as text (see
+ * `src/styles/__tests__/tokens.test.ts`, which is why it is absent from that
+ * ratchet's TEXT_TOKENS). Every string in here is painted with a text token.
+ */
+
+.legend {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    padding: var(--surface-padding);
+    border: var(--border-width) solid var(--border-primary);
+    border-radius: var(--radius-surface);
+    background: var(--surface-base);
+}
+
+.tagline {
+    margin: 0;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.presetName {
+    color: var(--text-primary);
+}
+
+.taglineText {
+    color: var(--text-secondary);
+}
+
+.tiers {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+/* Grid rather than flex so the three descriptions line up in one column at any
+   width — a ragged left edge on three parallel sentences is harder to scan
+   than the same three sentences in a column. Wraps to two rows below 40rem. */
+.tier {
+    display: grid;
+    grid-template-columns: auto minmax(9rem, auto) 1fr;
+    align-items: baseline;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+
+    @media (max-width: 40rem) {
+        grid-template-columns: auto 1fr;
+
+        .tierDescription {
+            grid-column: 2;
+        }
+    }
+}
+
+.swatch {
+    width: 0.9rem;
+    height: 0.9rem;
+    border-radius: var(--radius-chip);
+    align-self: center;
+}
+
+/* The same three tokens the chart cells paint with, in the same roles: a ring
+   plus a wash, so a swatch and a lit cell are recognisably the same thing. */
+.swatchCore {
+    background: var(--status-good-bg);
+    box-shadow: inset 0 0 0 2px var(--status-good);
+}
+
+.swatchFlavour {
+    background: var(--status-info-bg);
+    box-shadow: inset 0 0 0 2px var(--status-info);
+}
+
+.swatchAvoid {
+    background: var(--status-disabled-bg);
+    box-shadow: inset 0 0 0 2px var(--status-disabled);
+}
+
+.tierLabel {
+    color: var(--text-primary);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.tierDescription {
+    color: var(--text-secondary);
+}
+
+.actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1rem;
+    margin: 0;
+    font-size: 0.85rem;
+}
+
+/* The "why" control is a real `<button>` (it toggles a disclosure on the same
+   page, which is not a navigation), the generator control is a real link. They
+   look the same because to a reader they do the same kind of thing. */
+.action {
+    padding: 0;
+    border: none;
+    background: none;
+    font: inherit;
+    color: var(--interactive-base);
+    text-decoration: underline;
+    cursor: pointer;
+
+    &:hover {
+        color: var(--interactive-hover);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--interactive-base);
+        outline-offset: 2px;
+    }
+}

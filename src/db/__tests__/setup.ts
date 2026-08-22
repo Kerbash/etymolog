@@ -24,7 +24,12 @@ const localStorageMock = {
 };
 
 // Set up global localStorage
-(global as any).localStorage = localStorageMock;
+(globalThis as typeof globalThis & { localStorage: Storage }).localStorage =
+    localStorageMock as unknown as Storage;
+
+// Node has no DOM, so DOMPurify cannot sanitise; service tests store SVG as-is.
+// Production never sets this flag — see src/db/utils/sanitize.ts.
+(globalThis as Record<string, unknown>).__ETYMOLOG_ALLOW_UNSANITIZED_SVG__ = true;
 
 // Don't set window - this will make the database use Node.js mode
 // which allows sql.js to find the WASM file automatically

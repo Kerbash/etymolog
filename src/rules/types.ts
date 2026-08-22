@@ -14,8 +14,8 @@ export interface TypographyRuleOption {
 }
 
 export interface TypographyRule {
-    /** Must match WritingSystemSettings field name */
-    key: string;
+    /** The WritingSystemSettings field this rule edits — typed so the catalog cannot drift from the settings shape */
+    key: keyof import('../db/api/types').WritingSystemSettings;
     /** Display name */
     label: string;
     /** What this rule controls */

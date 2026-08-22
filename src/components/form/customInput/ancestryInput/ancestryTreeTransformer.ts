@@ -25,8 +25,8 @@ export const ANCESTRY_TYPE_COLORS: Record<AncestryType, string> = {
     derived: 'var(--status-info)',
     borrowed: 'var(--status-warning)',
     compound: 'var(--status-good)',
-    blend: 'var(--color-primary)',
-    calque: 'var(--status-neutral, #888)',
+    blend: 'var(--interactive-base)',
+    calque: 'var(--status-neutral)',
     other: 'var(--text-secondary)',
 };
 

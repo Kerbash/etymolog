@@ -1,14 +1,101 @@
-.container {
-    width: 100%;
-    max-width: 900px;
-    margin: 0 auto;
+/**
+ * WritingSystemPage — one table per rule category.
+ *
+ * Replaces `WritingSystemTable.module.scss` + `WritingSystemRow.module.scss`,
+ * whose `.categoryHeader` / `.categoryGroup` rules styled a `<tr><td colSpan>`
+ * to LOOK like a section heading inside a multi-`<tbody>` table. Each category
+ * is a real table with a real `<caption>` now, so the styling and the structure
+ * finally say the same thing.
+ */
+
+.tables {
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
+    gap: var(--section-gap);
+    width: 100%;
+    min-width: 0;
+    /* A rule table is two columns wide; on a narrow phone it scrolls inside
+       itself rather than pushing the page sideways. */
+    overflow-x: auto;
 }
 
-.description {
-    color: var(--color-text-secondary, #666);
-    margin: 0;
-    line-height: 1.6;
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    background-color: var(--surface-base);
+    border-radius: var(--radius-surface);
+    overflow: hidden;
+    box-shadow: var(--shadow-surface);
+
+    caption {
+        caption-side: top;
+        padding: 0.75rem 1rem;
+        text-align: left;
+        font-weight: 700;
+        font-size: 0.9rem;
+        text-transform: uppercase;
+        letter-spacing: 0.75px;
+        color: var(--interactive-base);
+        background-color: color-mix(in srgb, var(--interactive-base) 8%, transparent);
+    }
+
+    th {
+        padding: 0.75rem 1rem;
+        text-align: left;
+        font-weight: 600;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--text-primary);
+        border-bottom: var(--border-width-strong) solid
+            color-mix(in srgb, var(--interactive-base) 20%, transparent);
+    }
+
+    td {
+        padding: 0.625rem 1rem;
+        vertical-align: middle;
+    }
+}
+
+.ruleLabel {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+}
+
+.ruleName {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 0.95rem;
+}
+
+.ruleDescription {
+    font-size: 0.8rem;
+    color: var(--text-primary-muted);
+}
+
+.select {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.9rem;
+    font-family: inherit;
+    color: var(--text-primary);
+    /* A token, not `white`: the UA paints an undeclared control with its own
+       chrome, which does not follow `[data-theme]`. */
+    background: var(--surface-raised);
+    border: var(--border-width) solid var(--border-primary);
+    border-radius: var(--radius-control);
+    cursor: pointer;
+    min-width: 10rem;
+    max-width: 100%;
+
+    &:focus-visible {
+        outline: 2px solid var(--interactive-base);
+        outline-offset: 2px;
+    }
+}
+
+/** A value the user has moved away from the default. */
+.modified {
+    border-color: var(--interactive-base);
+    background-color: color-mix(in srgb, var(--interactive-base) 8%, transparent);
 }

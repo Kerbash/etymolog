@@ -1,364 +1,242 @@
 /**
  * LexiconViewPage
- * ----------------
- * Page for viewing and editing a lexicon entry.
- * Includes etymology tree display.
- * Supports Two-List Architecture for IPA fallback characters.
+ * ---------------
+ * VIEW ONLY. Editing lives at `ROUTES.lexiconEdit` (`EditLexiconPage`), on its
+ * own URL, like every other entity in the app.
+ *
+ * What the in-page edit mode this replaces cost: the Edit and Delete buttons
+ * disappeared when it opened (so the header jumped), the edit had no URL to
+ * link, bookmark or come back to, and a reload discarded it without asking.
  */
 
-import { useState, useCallback, useRef, useMemo } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useCallback, useMemo } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+
+import EmptyState from 'cyber-components/display/emptyState';
+import Button, { buttonStyles } from 'cyber-components/interactable/buttons/button';
+import IconButton from 'cyber-components/interactable/buttons/iconButton/iconButton.tsx';
+
 import { useEtymolog } from '../../../../db';
-import type { UpdateLexiconInput, LexiconAncestorFormRow, LexiconComplete } from '../../../../db/types';
-import type { SpellingEntry } from '../../../../db/utils/spellingUtils';
-import { SmartForm, useSmartForm } from 'smart-form/smartForm';
-import type { useSmartFormRef } from 'smart-form/types';
-import { LexiconFormFields } from '../../../form/lexiconForm';
+import type { LexiconComplete } from '../../../../db/types';
+import { ROUTES, resolveUrl } from '../../../../url_mapping';
 import { DetailedLexiconDisplay } from '../../../display/lexicon/detailed';
 import { EtymologyTree } from '../../../display/lexicon/etymologyTree';
-import IconButton from 'cyber-components/interactable/buttons/iconButton/iconButton.tsx';
-import Button from 'cyber-components/interactable/buttons/button/button.tsx';
-import { buttonStyles } from 'cyber-components/interactable/buttons/button/button.tsx';
-import Modal from 'cyber-components/container/modal/modal.tsx';
-import classNames from 'classnames';
-import { flex, sizing } from "utils-styles";
+import { LoadingState, PageHeader, useApiAction, useConfirm } from '../../../shared';
+import { lexiconDisplayName } from '../lexiconIdentity';
+
 import styles from './LexiconViewPage.module.scss';
 
 export default function LexiconViewPage() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
-    const { api, data, refresh, isLoading, error } = useEtymolog();
+    const { api, data, refresh, isReady, error } = useEtymolog();
+    const confirm = useConfirm();
+    const runApiAction = useApiAction();
 
-    const [isEditing, setIsEditing] = useState(false);
-    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-    const [isDeleting, setIsDeleting] = useState(false);
-    const [deleteWarning, setDeleteWarning] = useState<string | null>(null);
+    const lexiconId = id ? Number.parseInt(id, 10) : Number.NaN;
+    const validId = Number.isInteger(lexiconId);
 
-    const { registerField, registerForm, isFormValid } = useSmartForm({ mode: 'onChange' });
-    const smartFormRef = useRef<useSmartFormRef>(null);
+    const graphemeMap = useMemo(
+        () => new Map((data.graphemesComplete ?? []).map((g) => [g.id, g] as const)),
+        [data.graphemesComplete],
+    );
 
-    // Track complex field values for edit mode - using glyph_order format
-    const [glyphOrder, setGlyphOrder] = useState<SpellingEntry[]>([]);
-    const [ancestors, setAncestors] = useState<LexiconAncestorFormRow[]>([]);
-
-    // Parse ID
-    const lexiconId = id ? parseInt(id, 10) : null;
-
-    // Build grapheme map for display
-    const graphemeMap = useMemo(() => {
-        return new Map((data.graphemesComplete ?? []).map(g => [g.id, g]));
-    }, [data.graphemesComplete]);
-
-    // Get lexicon data
-    const lexiconResult = lexiconId && !isNaN(lexiconId)
-        ? api.lexicon.getByIdComplete(lexiconId)
+    const lexiconResult = validId && isReady ? api.lexicon.getByIdComplete(lexiconId) : null;
+    const lexicon: LexiconComplete | null = lexiconResult?.success
+        ? (lexiconResult.data ?? null)
         : null;
 
-    const lexicon: LexiconComplete | null = lexiconResult?.success ? lexiconResult.data ?? null : null;
+    const ancestryTreeResult = validId && isReady ? api.lexicon.getAncestryTree(lexiconId, 3) : null;
+    const ancestryTree = ancestryTreeResult?.success ? (ancestryTreeResult.data ?? null) : null;
 
-    // Get ancestry tree
-    const ancestryTreeResult = lexiconId && !isNaN(lexiconId)
-        ? api.lexicon.getAncestryTree(lexiconId, 3)
-        : null;
+    /**
+     * The confirmation names the word EXACTLY as the page title does — one rule,
+     * `lexiconDisplayName`. The dialog this replaces asked about `lemma` while
+     * the heading showed `pronunciation`, so the two disagreed on every word
+     * where they differ.
+     */
+    const handleDelete = useCallback(async () => {
+        if (!lexicon || !validId) return;
 
-    const ancestryTree = ancestryTreeResult?.success ? ancestryTreeResult.data ?? null : null;
+        const name = lexiconDisplayName(lexicon);
+        const descendantCount = lexicon.descendants?.length ?? 0;
 
-    // Initialize edit state when entering edit mode
-    const handleStartEdit = useCallback(() => {
-        if (lexicon) {
-            // Let LexiconFormFields handle glyph_order initialization from initialData
-            setAncestors(lexicon.ancestors.map(a => ({
-                ancestorId: a.ancestor.id,
-                ancestryType: a.ancestry_type,
-            })));
+        let message = 'This cannot be undone.';
+        if (descendantCount > 0) {
+            const names = lexicon.descendants
+                .slice(0, 3)
+                .map((d) => lexiconDisplayName(d.descendant))
+                .join(', ');
+            const more = descendantCount > 3 ? ` and ${descendantCount - 3} more` : '';
+            message =
+                `This word has ${descendantCount} descendant${descendantCount !== 1 ? 's' : ''}: ` +
+                `${names}${more}. Deleting it removes the etymology links from those words. ` +
+                `This cannot be undone.`;
         }
-        setIsEditing(true);
-    }, [lexicon]);
 
-    const handleCancelEdit = useCallback(() => {
-        setIsEditing(false);
-    }, []);
+        const confirmed = await confirm({
+            title: `Delete word "${name}"?`,
+            message,
+            confirmLabel: 'Delete word',
+            tone: 'danger',
+        });
+        if (!confirmed) return;
 
-    // Form submission handler for edit
-    const handleSubmit = useCallback(async (formData: Record<string, unknown>) => {
-        if (!lexiconId) return { success: false, error: 'No lexicon ID' };
-
-        try {
-            // Lemma removed from form; use pronunciation as primary label
-            const pronunciation = formData.pronunciation as string | undefined;
-            const meaning = formData.meaning as string | undefined;
-            const partOfSpeech = formData.partOfSpeech as string | undefined;
-            const notes = formData.notes as string | undefined;
-
-            // Update basic fields AND glyph_order together (Two-List Architecture)
-            const updateInput: UpdateLexiconInput = {
-                // Keep lemma populated for backward compatibility by copying pronunciation if present
-                lemma: (pronunciation?.trim() || lexicon?.lemma || '').trim() || undefined,
-                pronunciation: pronunciation?.trim() || undefined,
-                meaning: meaning?.trim() || null,
-                part_of_speech: partOfSpeech?.trim() || null,
-                notes: notes?.trim() || null,
-                // Include glyph_order directly - supports IPA fallback characters
-                glyph_order: glyphOrder,
-            };
-
-            const updateResult = api.lexicon.update(lexiconId, updateInput);
-            if (!updateResult.success) {
-                throw new Error(updateResult.error?.message || 'Failed to update');
-            }
-
-            // Update ancestry
-            const ancestryResult = api.lexicon.updateAncestry(lexiconId, {
-                ancestry: ancestors.map((a, idx) => ({
-                    ancestor_id: a.ancestorId,
-                    position: idx,
-                    ancestry_type: a.ancestryType,
-                })),
-            });
-            if (!ancestryResult.success) {
-                console.warn('Failed to update ancestry:', ancestryResult.error?.message);
-            }
-
+        const result = await runApiAction(() => api.lexicon.delete(lexiconId), {
+            errorTitle: 'Could not delete word',
+            success: `Deleted "${name}".`,
+        });
+        if (result.success) {
             refresh();
-            setIsEditing(false);
-
-            return { success: true };
-        } catch (err) {
-            console.error('Failed to update lexicon:', err);
-            return {
-                success: false,
-                error: err instanceof Error ? err.message : 'Update failed',
-            };
+            navigate(ROUTES.lexicon);
         }
-    }, [api, lexiconId, glyphOrder, ancestors, refresh]);
+    }, [api, confirm, runApiAction, lexicon, lexiconId, validId, refresh, navigate]);
 
-    const formProps = registerForm('editLexiconForm', {
-        submitFunc: handleSubmit,
-    });
+    const handleTreeNodeClick = useCallback(
+        (nodeId: number) => navigate(resolveUrl(ROUTES.lexiconView, { id: nodeId })),
+        [navigate],
+    );
 
-    // Delete handlers
-    const handleDeleteClick = useCallback(() => {
-        if (lexicon) {
-            const descendantCount = lexicon.descendants?.length ?? 0;
-            if (descendantCount > 0) {
-                const names = lexicon.descendants.slice(0, 3).map(d => d.descendant.pronunciation ?? d.descendant.lemma).join(', ');
-                const more = descendantCount > 3 ? ` and ${descendantCount - 3} more` : '';
-                setDeleteWarning(
-                    `This word has ${descendantCount} descendant${descendantCount !== 1 ? 's' : ''}: ${names}${more}. ` +
-                    `Deleting it will remove etymology links from those words.`
-                );
-            } else {
-                setDeleteWarning(null);
-            }
-        }
-        setDeleteModalOpen(true);
-    }, [lexicon]);
-
-    const confirmDelete = useCallback(async () => {
-        if (!lexiconId) return;
-
-        setIsDeleting(true);
-        try {
-            const result = api.lexicon.delete(lexiconId);
-            if (result.success) {
-                refresh();
-                navigate('/lexicon');
-            } else {
-                console.error('Delete failed:', result.error?.message);
-            }
-        } catch (err) {
-            console.error('Delete failed:', err);
-        } finally {
-            setIsDeleting(false);
-            setDeleteModalOpen(false);
-        }
-    }, [api, lexiconId, refresh, navigate]);
-
-    // Handle tree node click
-    const handleTreeNodeClick = useCallback((nodeId: number) => {
-        navigate(`/lexicon/db/${nodeId}`);
-    }, [navigate]);
-
-    // Loading and error states
-    if (isLoading) {
-        return <div className={styles.loading}>Loading...</div>;
+    if (!isReady && !error) {
+        return <LoadingState variant="page" label="Loading the word" />;
     }
 
     if (error) {
-        return <div className={styles.error}>Error: {error.message}</div>;
-    }
-
-    if (!lexiconId || isNaN(lexiconId)) {
         return (
-            <div className={styles.notFound}>
-                <p>Invalid lexicon ID</p>
-                <Link to="/lexicon">Back to Lexicon</Link>
-            </div>
+            <EmptyState
+                icon="exclamation-triangle"
+                title="The database could not be opened"
+                description={error.message}
+                action={
+                    <Button as={Link} to={ROUTES.lexicon} className={buttonStyles.secondary}>
+                        Back to Lexicon
+                    </Button>
+                }
+            />
         );
     }
 
-    if (!lexicon) {
+    // Invalid id and not-found are the SAME dead end to the user, and both used
+    // to be a bare `<p>` with a naked link under it.
+    if (!validId || !lexicon) {
         return (
-            <div className={styles.notFound}>
-                <p>Lexicon entry not found</p>
-                <Link to="/lexicon">Back to Lexicon</Link>
-            </div>
+            <EmptyState
+                icon="question-circle"
+                title={validId ? 'That word does not exist' : 'That is not a word id'}
+                description={
+                    validId
+                        ? 'It may have been deleted, or the link may be out of date.'
+                        : `"${id}" is not a valid word id.`
+                }
+                action={
+                    <Button as={Link} to={ROUTES.lexicon} className={buttonStyles.secondary}>
+                        Back to Lexicon
+                    </Button>
+                }
+            />
         );
     }
+
+    const name = lexiconDisplayName(lexicon);
+    const hasEtymology = (ancestryTree?.ancestors?.length ?? 0) > 0;
 
     return (
-        <div className={classNames(styles.viewPage, flex.flexColumn, sizing.parentSize)}>
-            {/* Header */}
-            <div className={styles.header}>
-                <IconButton
-                    as={Link}
-                    to="/lexicon"
-                    iconName="arrow-left"
-                    aria-label="Back to Lexicon"
-                />
-                <h2 className={styles.title}>{lexicon.pronunciation ?? lexicon.lemma}</h2>
-                <div className={styles.headerActions}>
-                    {!isEditing && (
-                        <>
-                            <IconButton
-                                iconName="pencil"
-                                onClick={handleStartEdit}
-                                aria-label="Edit"
-                            >
-                                Edit
-                            </IconButton>
-                            <IconButton
-                                iconName="trash"
-                                iconColor="var(--status-bad)"
-                                onClick={handleDeleteClick}
-                                aria-label="Delete"
-                            >
-                                Delete
-                            </IconButton>
-                        </>
-                    )}
-                </div>
-            </div>
-
-            {/* Content */}
-            <div className={styles.content}>
-                {isEditing ? (
-                    /* Edit Mode */
-                    <SmartForm
-                        ref={smartFormRef}
-                        {...formProps}
-                        registerField={registerField}
-                        isFormValid={isFormValid}
-                        className={styles.formContainer}
-                    >
-                        <LexiconFormFields
-                            registerField={registerField}
-                            mode="edit"
-                            initialData={lexicon}
-                            onGlyphOrderChange={setGlyphOrder}
-                            onAncestorsChange={setAncestors}
-                        />
-
-                        <div className={styles.editActions}>
-                            <Button
-                                type="button"
-                                onClick={handleCancelEdit}
-                                className={buttonStyles.secondary}
-                            >
-                                Cancel
-                            </Button>
-                            <Button
-                                type="submit"
-                                className={buttonStyles.primary}
-                                disabled={!isFormValid}
-                            >
-                                Save Changes
-                            </Button>
-                        </div>
-                    </SmartForm>
-                ) : (
-                    /* View Mode */
+        <>
+            <PageHeader
+                title={name}
+                back={{ to: ROUTES.lexicon, label: 'Lexicon' }}
+                actions={
                     <>
-                        <section className={styles.displaySection}>
-                            <DetailedLexiconDisplay
-                                lexiconData={lexicon}
-                                graphemeMap={graphemeMap}
-                                showAncestry={false}
-                            />
-                        </section>
-
-                        {/* Etymology Tree */}
-                        {ancestryTree && (
-                            <section className={styles.etymologySection}>
-                                <h3 className={styles.sectionTitle}>Etymology Tree</h3>
-                                <EtymologyTree
-                                    rootNode={ancestryTree}
-                                    direction="ancestors"
-                                    maxDepth={3}
-                                    onNodeClick={handleTreeNodeClick}
-                                    currentWordId={lexiconId}
-                                />
-                            </section>
-                        )}
-
-                        {/* Descendants */}
-                        {lexicon.descendants && lexicon.descendants.length > 0 && (
-                            <section className={styles.descendantsSection}>
-                                <h3 className={styles.sectionTitle}>
-                                    Descendants ({lexicon.descendants.length})
-                                </h3>
-                                <div className={styles.descendantsList}>
-                                    {lexicon.descendants.map(d => (
-                                        <Link
-                                            key={d.descendant.id}
-                                            to={`/lexicon/db/${d.descendant.id}`}
-                                            className={styles.descendantItem}
-                                        >
-                                            <span className={styles.descendantType}>{d.ancestry_type}</span>
-                                            <span className={styles.descendantLemma}>{d.descendant.pronunciation ?? d.descendant.lemma}</span>
-                                        </Link>
-                                    ))}
-                                </div>
-                            </section>
-                        )}
+                        <IconButton
+                            as={Link}
+                            to={resolveUrl(ROUTES.lexiconEdit, { id: lexicon.id })}
+                            iconName="pencil"
+                            className={buttonStyles.secondary}
+                        >
+                            Edit
+                        </IconButton>
+                        <IconButton
+                            iconName="trash"
+                            iconColor="var(--status-bad)"
+                            onClick={() => void handleDelete()}
+                        >
+                            Delete
+                        </IconButton>
                     </>
+                }
+            />
+
+            <div className={styles.content}>
+                {/* No wrapper class: DetailedLexiconDisplay's own root already
+                    paints the card (padding + surface + border). */}
+                <section>
+                    <DetailedLexiconDisplay
+                        lexiconData={lexicon}
+                        graphemeMap={graphemeMap}
+                        showAncestry={false}
+                    />
+                </section>
+
+                <section className={styles.section} aria-labelledby="etymology-heading">
+                    <h3 id="etymology-heading" className={styles.sectionTitle}>
+                        Etymology
+                    </h3>
+                    {hasEtymology && ancestryTree ? (
+                        <EtymologyTree
+                            rootNode={ancestryTree}
+                            direction="ancestors"
+                            maxDepth={3}
+                            onNodeClick={handleTreeNodeClick}
+                            currentWordId={lexicon.id}
+                        />
+                    ) : (
+                        // A sentence saying "no etymology data available" is a
+                        // dead end; the user is on the one page that knows how
+                        // to fix it.
+                        <EmptyState
+                            icon="diagram-3"
+                            title="No ancestors recorded"
+                            description="Link this word to the words it came from to build its etymology."
+                            action={
+                                <Button
+                                    as={Link}
+                                    to={resolveUrl(ROUTES.lexiconEdit, { id: lexicon.id })}
+                                    className={buttonStyles.secondary}
+                                >
+                                    Add ancestors
+                                </Button>
+                            }
+                        />
+                    )}
+                </section>
+
+                {lexicon.descendants && lexicon.descendants.length > 0 && (
+                    <section className={styles.section} aria-labelledby="descendants-heading">
+                        <h3 id="descendants-heading" className={styles.sectionTitle}>
+                            Descendants ({lexicon.descendants.length})
+                        </h3>
+                        <ul className={styles.descendantsList}>
+                            {lexicon.descendants.map((d) => (
+                                <li key={d.descendant.id}>
+                                    <Link
+                                        to={resolveUrl(ROUTES.lexiconView, {
+                                            id: d.descendant.id,
+                                        })}
+                                        className={styles.descendantItem}
+                                    >
+                                        <span className={styles.descendantType}>
+                                            {d.ancestry_type}
+                                        </span>
+                                        <span className={styles.descendantLemma}>
+                                            {lexiconDisplayName(d.descendant)}
+                                        </span>
+                                    </Link>
+                                </li>
+                            ))}
+                        </ul>
+                    </section>
                 )}
             </div>
-
-            {/* Delete Confirmation Modal */}
-            <Modal
-                isOpen={deleteModalOpen}
-                setIsOpen={setDeleteModalOpen}
-                onClose={() => setDeleteModalOpen(false)}
-                allowClose={!isDeleting}
-            >
-                <div className={styles.deleteModal}>
-                    <h2>Delete Word</h2>
-                    <p>Are you sure you want to delete <strong>{lexicon.lemma}</strong>?</p>
-
-                    {deleteWarning && (
-                        <div className={styles.deleteWarning}>
-                            <strong>Warning:</strong> {deleteWarning}
-                        </div>
-                    )}
-
-                    <div className={styles.deleteActions}>
-                        <Button
-                            onClick={() => setDeleteModalOpen(false)}
-                            disabled={isDeleting}
-                        >
-                            Cancel
-                        </Button>
-                        <Button
-                            onClick={confirmDelete}
-                            disabled={isDeleting}
-                            style={{ background: 'var(--danger)', color: 'white' }}
-                        >
-                            {isDeleting ? 'Deleting...' : 'Delete Word'}
-                        </Button>
-                    </div>
-                </div>
-            </Modal>
-        </div>
+        </>
     );
 }

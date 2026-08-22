@@ -85,23 +85,13 @@ function translate(
         // Get all lexicon entries
         const lexiconEntries = getAllLexiconComplete();
 
-        // Build translation config if punctuation settings provided
-        let config: TranslationConfig | undefined;
-        if (punctuationSettings) {
-            // Get all graphemes to resolve punctuation grapheme IDs
-            const allGraphemes = getAllGraphemesComplete();
-            const punctuationGraphemes = new Map<number, GraphemeComplete>();
-
-            // Build map of grapheme IDs for punctuation
-            for (const grapheme of allGraphemes) {
-                punctuationGraphemes.set(grapheme.id, grapheme);
-            }
-
-            config = {
-                punctuationSettings,
-                punctuationGraphemes,
-            };
+        // Graphemes resolve both configured punctuation AND auto-spell matches,
+        // so the map is always built.
+        const graphemeMap = new Map<number, GraphemeComplete>();
+        for (const grapheme of getAllGraphemesComplete()) {
+            graphemeMap.set(grapheme.id, grapheme);
         }
+        const config: TranslationConfig = { punctuationSettings, graphemeMap };
 
         // Translate the phrase
         const result = translatePhrase(phrase, lexiconEntries, config);

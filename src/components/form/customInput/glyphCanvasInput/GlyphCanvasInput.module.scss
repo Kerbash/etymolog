@@ -11,16 +11,16 @@
 .label { font-weight: 500; color: var(--text-primary); }
 .actions { display: flex; gap: 0.5rem; align-items: center; }
 .count { font-size: 0.875rem; color: var(--text-secondary); padding-right: 0.5rem; }
-.virtualIndicator { font-style: italic; color: var(--status-warning, #f59e0b); font-size: 0.75rem; }
-.emptyButton { padding: 0.75rem 1.5rem; border: 1px dashed var(--border-primary); border-radius: 8px; background: transparent; color: var(--text-secondary); font-size: 0.875rem; cursor: pointer; transition: all 0.15s ease; }
+.virtualIndicator { font-style: italic; color: var(--status-warning); font-size: 0.75rem; }
+.emptyButton { padding: 0.75rem 1.5rem; border: 1px dashed var(--border-primary); border-radius: var(--radius-surface); background: transparent; color: var(--text-secondary); font-size: 0.875rem; cursor: pointer; transition: all 0.15s ease; }
 .emptyButton:hover { border-color: var(--interactive-base); color: var(--text-primary); background: var(--surface-raised); }
-.emptyButton:focus { outline: 2px solid var(--status-info, dodgerblue); outline-offset: 2px; }
+.emptyButton:focus { outline: 2px solid var(--status-info); outline-offset: 2px; }
 
 /* Auto-spell preview styles */
 .autoSpellPreview {
     padding: 0.5rem 0.75rem;
-    border-radius: 6px;
-    background: var(--surface-raised, #f5f5f5);
+    border-radius: var(--radius-control);
+    background: var(--surface-raised);
     border: 1px solid var(--border-primary);
 }
 
@@ -50,7 +50,7 @@
     justify-content: center;
     min-width: 1.5rem;
     padding: 0.125rem 0.375rem;
-    border-radius: 4px;
+    border-radius: var(--radius-chip);
     background: var(--surface-base);
     border: 1px solid var(--border-primary);
     font-size: 0.75rem;
@@ -59,14 +59,14 @@
 
 .previewVirtual {
     border-style: dashed;
-    border-color: var(--status-warning, #f59e0b);
-    background: var(--status-warning-bg, rgba(245, 158, 11, 0.1));
+    border-color: var(--status-warning);
+    background: var(--status-warning-bg);
     font-family: "Doulos SIL", "Charis SIL", "DejaVu Sans", sans-serif;
     font-size: 0.875rem;
 }
 
 .previewError {
-    color: var(--status-bad, #ef4444);
+    color: var(--status-bad);
     font-size: 0.8125rem;
 }
 
@@ -76,10 +76,10 @@
     align-items: flex-start;
     gap: 0.5rem;
     padding: 0.5rem 0.75rem;
-    border-radius: 6px;
-    background: var(--status-info-bg, rgba(59, 130, 246, 0.1));
-    border: 1px solid var(--status-info, #3b82f6);
-    color: var(--status-info-text, #1e40af);
+    border-radius: var(--radius-control);
+    background: var(--status-info-bg);
+    border: 1px solid var(--status-info);
+    color: var(--status-info);
     font-size: 0.8125rem;
     line-height: 1.4;
 }
@@ -87,5 +87,5 @@
 .virtualWarning i {
     flex-shrink: 0;
     margin-top: 0.125rem;
-    color: var(--status-info, #3b82f6);
+    color: var(--status-info);
 }

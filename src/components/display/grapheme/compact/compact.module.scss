@@ -4,7 +4,7 @@
     align-items: center;
     padding: 0.75rem;
     border: 1px solid var(--border-primary);
-    border-radius: 8px;
+    border-radius: var(--radius-surface);
     background: var(--surface-base);
     transition: all 0.2s ease;
     min-width: 100px;
@@ -15,8 +15,8 @@
 }
 
 .compactCard.clickable:hover {
-    border-color: var(--color-primary);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border-color: var(--interactive-base);
+    box-shadow: var(--shadow-raised);
     transform: translateY(-2px);
 }
 
@@ -50,5 +50,5 @@
 .pronunciation {
     font-size: 0.8rem;
     color: var(--text-secondary);
-    font-family: var(--font-mono, monospace);
+    font-family: var(--font-mono);
 }

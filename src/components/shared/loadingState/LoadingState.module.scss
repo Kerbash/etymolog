@@ -1,0 +1,32 @@
+// LoadingState — skeleton layouts. Tokens only; the shimmer colours come from
+// cyber-components' own --shimmer-base / --shimmer-highlight defaults.
+
+.root {
+    width: 100%;
+}
+
+.inline {
+    display: inline-flex;
+    align-items: center;
+    width: auto;
+}
+
+.stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+// Matches the galleries' own auto-fill grid, so the skeleton occupies the same
+// slots the cards will — no reflow when the data lands.
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1rem;
+}

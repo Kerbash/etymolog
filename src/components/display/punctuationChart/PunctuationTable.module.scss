@@ -6,14 +6,14 @@
     width: 100%;
     border-collapse: collapse;
     border-spacing: 0;
-    background-color: var(--color-background);
-    border-radius: 8px;
+    background-color: var(--surface-base);
+    border-radius: var(--radius-surface);
     overflow: hidden;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-raised);
 }
 
 .headerRow {
-    background-color: rgba(var(--color-primary-rgb), 0.1);
+    background-color: color-mix(in srgb, var(--interactive-base) 10%, transparent);
 
     th {
         padding: 0.75rem 1rem;
@@ -22,8 +22,8 @@
         font-size: 0.85rem;
         text-transform: uppercase;
         letter-spacing: 0.5px;
-        color: var(--color-text);
-        border-bottom: 2px solid rgba(var(--color-primary-rgb), 0.2);
+        color: var(--text-primary);
+        border-bottom: 2px solid color-mix(in srgb, var(--interactive-base) 20%, transparent);
     }
 }
 
@@ -53,23 +53,25 @@
 
 .categoryGroup {
     tr:last-child td {
-        border-bottom: 1px solid rgba(var(--color-border-rgb), 0.3);
+        border-bottom: 1px solid color-mix(in srgb, var(--border-secondary) 30%, transparent);
     }
 }
 
 .categoryHeader {
-    background-color: rgba(var(--color-secondary-rgb), 0.08);
+    background-color: var(--surface-base);
 
-    td {
+    th {
         padding: 0.5rem 1rem;
-        border-bottom: 1px solid rgba(var(--color-border-rgb), 0.2);
+        text-align: left;
+        font-weight: inherit;
+        border-bottom: 1px solid color-mix(in srgb, var(--border-secondary) 20%, transparent);
     }
 }
 
 .categoryLabel {
     font-weight: 700;
     font-size: 0.9rem;
-    color: var(--color-primary);
+    color: var(--interactive-base);
     text-transform: uppercase;
     letter-spacing: 0.75px;
 }
@@ -77,6 +79,6 @@
 /* Cell styling is handled by PunctuationCell.module.scss */
 .table tbody tr td {
     padding: 0.625rem 1rem;
-    border-bottom: 1px solid rgba(var(--color-border-rgb), 0.15);
+    border-bottom: 1px solid color-mix(in srgb, var(--border-secondary) 15%, transparent);
 }
 

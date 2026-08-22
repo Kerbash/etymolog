@@ -1,0 +1,43 @@
+// DialogPanel — the content surface of every Modal. Tokens only.
+
+.panel {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+
+    // `min(size, calc(100vw - 2rem))` instead of `min-width: 400px`: a minimum
+    // width cannot yield, which is exactly why every modal used to force a
+    // horizontal page scroll on a 360px phone. This shrinks instead.
+    width: min(var(--dialog-panel-width), calc(100vw - 2rem));
+    max-height: calc(100dvh - 4rem);
+    overflow-y: auto;
+
+    padding: var(--surface-padding);
+
+    background: var(--surface-base);
+    border: var(--border-width) solid var(--border-secondary);
+    border-radius: var(--radius-surface);
+    box-shadow: var(--shadow-overlay);
+    color: var(--text-primary);
+}
+
+.sizeSm { --dialog-panel-width: 400px; }
+.sizeMd { --dialog-panel-width: 560px; }
+.sizeLg { --dialog-panel-width: 760px; }
+
+.title {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+.body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.actions {
+    padding-top: 0.75rem;
+    border-top: var(--border-width) var(--divider-style) var(--border-secondary);
+}

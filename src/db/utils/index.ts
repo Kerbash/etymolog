@@ -5,3 +5,5 @@
  */
 
 export * from './spellingUtils';
+export * from './sanitize';
+export * from './logger';

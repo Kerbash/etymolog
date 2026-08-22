@@ -8,7 +8,6 @@
  * @module display/customChart/CustomChartCard
  */
 
-import classNames from 'classnames';
 import IconButton from 'cyber-components/interactable/buttons/iconButton/iconButton';
 import CustomBasicChart from './CustomBasicChart';
 import CustomSyllabaryChart from './CustomSyllabaryChart';

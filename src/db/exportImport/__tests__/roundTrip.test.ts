@@ -13,9 +13,9 @@ describe('roundTrip (service layer)', () => {
         clearDatabase();
     });
 
-    it('should round-trip an empty database via JSON services', () => {
+    it('should round-trip an empty database via JSON services', async () => {
         const json1 = exportAsJson();
-        importFromJson(json1);
+        await importFromJson(json1);
         const json2 = exportAsJson();
 
         const data1 = JSON.parse(json1);
@@ -25,7 +25,7 @@ describe('roundTrip (service layer)', () => {
         expect(data2.settings).toEqual(data1.settings);
     });
 
-    it('should round-trip a populated database via JSON services', () => {
+    it('should round-trip a populated database via JSON services', async () => {
         const db = getDatabase();
         db.run("INSERT INTO glyphs (name, svg_data, category) VALUES ('g1', '<svg>test</svg>', 'vowel')");
         db.run("INSERT INTO glyphs (name, svg_data) VALUES ('g2', '<svg>test2</svg>')");
@@ -35,12 +35,13 @@ describe('roundTrip (service layer)', () => {
         db.run("INSERT INTO phonemes (grapheme_id, phoneme, use_in_auto_spelling) VALUES (1, 'a', 1)");
         db.run("INSERT INTO lexicon (lemma, meaning, part_of_speech) VALUES ('hello', 'greeting', 'noun')");
         db.run("INSERT INTO lexicon_spelling (lexicon_id, grapheme_id, position) VALUES (1, 1, 0)");
+        db.run("INSERT INTO lexicon_meanings (lexicon_id, meaning, definition_order) VALUES (1, 'greeting', 0)");
 
         const before = collectExportData();
         const json = exportAsJson();
 
         // Wipe and re-import
-        importFromJson(json);
+        await importFromJson(json);
 
         const after = collectExportData();
         for (const table of Object.keys(before.tables) as (keyof typeof before.tables)[]) {
@@ -48,10 +49,10 @@ describe('roundTrip (service layer)', () => {
         }
     });
 
-    it('should report progress during import', () => {
+    it('should report progress during import', async () => {
         const json = exportAsJson();
         const stages: string[] = [];
-        importFromJson(json, (stage) => { stages.push(stage); });
+        await importFromJson(json, (stage) => { stages.push(stage); });
         expect(stages).toContain('validate');
         expect(stages).toContain('import');
         expect(stages).toContain('done');

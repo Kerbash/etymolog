@@ -45,9 +45,11 @@ export const boustrophedonStrategy: LayoutStrategy = {
         // Calculate how many glyphs fit per row
         const cellWidth = glyphWidth + spacing;
         const availableWidth = maxWidth ? maxWidth - padding * 2 : Infinity;
+        // Without a width to wrap against, fold into a roughly square block —
+        // the ox still turns, and the result has no magic row length.
         const glyphsPerRow = maxWidth
             ? Math.max(1, Math.floor((availableWidth + spacing) / cellWidth))
-            : 5; // Default to 5 glyphs per row if no maxWidth
+            : Math.max(1, Math.ceil(Math.sqrt(glyphs.length)));
 
         // Calculate the width of a full row (for RTL positioning)
         const rowWidth = glyphsPerRow * glyphWidth + (glyphsPerRow - 1) * spacing;

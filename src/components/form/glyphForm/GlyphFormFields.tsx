@@ -1,75 +1,83 @@
 /**
  * GlyphFormFields
  * ----------------
- * Shared form fields for creating and editing glyphs.
- * Extracted from NewGlyphModal to be reusable across create/edit contexts.
+ * The fields of the glyph form — the drawing canvas, the name, the category and
+ * the notes. It renders NO form element and NO buttons: the owner (a page or
+ * the nested-create modal) supplies the `<SmartForm>` and the action bar, which
+ * is what lets create, edit and the modal share exactly one set of fields.
  *
- * This component renders:
- * - SVG Drawing Canvas
- * - Glyph Name Input
- * - Category Input
- * - Notes Input
+ * ## One colour, and it is the reader's
  *
- * It does NOT render the form wrapper or submit buttons - that's the parent's responsibility.
+ * The canvas is restricted to a SINGLE ink (`GLYPH_INK`, in `glyphInk.ts`) and it is
+ * `currentColor`, so `SvgDrawer` renders no colour picker at all. Two problems
+ * go away together:
  *
- * IMPORTANT: This component follows SmartForm's pattern of calling registerField() on every
- * render. SmartForm handles the registration internally - the returned fieldState values
- * must be used fresh each render to receive state updates.
+ *  - eleven swatches invited a two-colour glyph, which a script cannot have;
+ *  - whatever was picked got BAKED into the stored `fill`/`stroke`, so a glyph
+ *    drawn in black vanished the moment the reader switched to the dark theme.
+ *
+ * `normalizeGlyphSvg` re-applies the rule on save for markup that did not come
+ * from this canvas (older glyphs, imports).
+ *
+ * `registerField()` is called on EVERY render on purpose — that is SmartForm's
+ * contract. It registers once internally and returns fresh state each render;
+ * caching the result in a ref is what produces stale-value bugs.
  */
 
 import classNames from "classnames";
-import { useEffect, useRef, useMemo } from "react";
-import type { Glyph } from "../../../db";
-import type { registerFieldReturnType } from "smart-form/types";
+import { useEffect, useId, useMemo, useRef } from "react";
 
-import LabelShiftTextInput from "smart-form/input/fancy/redditStyle/labelShiftTextInput/labelShiftTextInput.tsx";
 import HoverToolTip from "cyber-components/interactable/information/hoverToolTip/hoverToolTip.tsx";
+import NumberedSectionHeader from "cyber-components/graphics/decor/numbered-section-header";
+import LabelShiftTextInput from "smart-form/input/fancy/redditStyle/labelShiftTextInput/labelShiftTextInput.tsx";
 import SvgDrawerInput from "smart-form/input/basic/svgDrawerInput/svgDrawerInput.tsx";
 import TextInputValidatorFactory from "smart-form/commonValidatorFactory/textValidatorFactory/textValidatorFactory.ts";
+import type { registerFieldReturnType } from "smart-form/types";
 import { flex, sizing } from "utils-styles";
 
+import type { Glyph } from "../../../db";
+import { GLYPH_INK } from "./glyphInk";
+
+import styles from "./glyphFormFields.module.scss";
+
 export interface GlyphFormFieldsProps {
-    /** SmartForm's registerField function */
-    registerField: (name: string, options: any) => registerFieldReturnType;
-    /** Mode: 'create' for new glyphs, 'edit' for existing glyphs */
+    /**
+     * SmartForm's `registerField`. The options bag is deliberately loose — its
+     * shape differs per input type and SmartForm validates it internally.
+     */
+    registerField: (name: string, options: Record<string, unknown>) => registerFieldReturnType;
     mode: 'create' | 'edit';
-    /** Initial data for edit mode (glyph to edit) */
+    /** The glyph being edited. Required in `edit` mode. */
     initialData?: Glyph | null;
-    /** Optional class name for the container */
     className?: string;
 }
 
-/**
- * GlyphFormFields - Reusable form fields for glyph creation/editing
- *
- * DESIGN NOTE: registerField() is called on every render. This is intentional and correct!
- * SmartForm's registerField:
- * 1. Handles registration internally (only registers once via pending refs)
- * 2. Returns FRESH fieldState values from React state each render
- * 3. Provides stable handlers via internal caching
- *
- * DO NOT cache registerField results in refs - this causes stale state bugs.
- */
+/** The shape `GlyphFormFields` produces on submit. */
+export interface GlyphFormData {
+    glyphSvg: string;
+    glyphName: string;
+    category?: string;
+    notes?: string;
+}
+
 export default function GlyphFormFields({
     registerField,
     mode,
     initialData,
     className,
 }: GlyphFormFieldsProps) {
-    // Track if we've initialized the form with initial data
+    const sectionId = useId();
+    // Guards the one-shot "push the existing values into the DOM" effect below.
     const initializedRef = useRef(false);
 
-    // Memoize validation configs to prevent unnecessary re-registration
-    // (SmartForm uses options hash for caching, but stable refs help)
-    const glyphNameValidation = useMemo(() => TextInputValidatorFactory({
-        required: {
-            value: true,
-            message: "Glyph name is required"
-        },
-    }), []);
+    const glyphNameValidation = useMemo(
+        () =>
+            TextInputValidatorFactory({
+                required: { value: true, message: "Glyph name is required" },
+            }),
+        [],
+    );
 
-    // Register fields on every render - SmartForm handles internal state
-    // The returned objects contain fresh state values that update with React state
     const glyphSvgField = registerField("glyphSvg", {
         defaultValue: mode === 'edit' && initialData?.svg_data ? initialData.svg_data : undefined,
     });
@@ -87,88 +95,80 @@ export default function GlyphFormFields({
         defaultValue: mode === 'edit' && initialData?.notes ? initialData.notes : undefined,
     });
 
-    // Set initial values for edit mode after fields are registered
-    // This handles cases where the DOM needs to be updated with initial values
+    // Edit mode: the inputs are uncontrolled, so the existing values have to be
+    // written into the DOM once the refs exist. Deferred out of the render
+    // phase — these calls set SmartForm state.
     useEffect(() => {
-        if (mode === 'edit' && initialData && !initializedRef.current) {
-            initializedRef.current = true;
+        if (mode !== 'edit' || !initialData || initializedRef.current) return;
+        initializedRef.current = true;
 
-            // Use setTimeout to defer state updates out of render phase
-            setTimeout(() => {
-                const nameInput = glyphNameField.registerSmartFieldProps.ref?.current as HTMLInputElement | null;
-                if (nameInput && initialData.name) {
-                    nameInput.value = initialData.name;
-                    glyphNameField.fieldState.isEmpty.setIsEmpty(false);
-                }
+        const timer = setTimeout(() => {
+            const write = (field: registerFieldReturnType, value: string | null | undefined) => {
+                const el = field.registerSmartFieldProps.ref?.current as
+                    | HTMLInputElement
+                    | HTMLTextAreaElement
+                    | null;
+                if (!el || !value) return;
+                el.value = value;
+                field.fieldState.isEmpty.setIsEmpty(false);
+            };
+            write(glyphNameField, initialData.name);
+            write(categoryField, initialData.category);
+            write(notesField, initialData.notes);
+        }, 0);
 
-                const categoryInput = categoryField.registerSmartFieldProps.ref?.current as HTMLInputElement | null;
-                if (categoryInput && initialData.category) {
-                    categoryInput.value = initialData.category;
-                    categoryField.fieldState.isEmpty.setIsEmpty(false);
-                }
-
-                const notesInput = notesField.registerSmartFieldProps.ref?.current as HTMLTextAreaElement | null;
-                if (notesInput && initialData.notes) {
-                    notesInput.value = initialData.notes;
-                    notesField.fieldState.isEmpty.setIsEmpty(false);
-                }
-            }, 0);
-        }
+        return () => clearTimeout(timer);
     }, [mode, initialData, glyphNameField, categoryField, notesField]);
 
     return (
-        <div className={classNames(flex.flexCol, flex.flexGapM, className)}>
-            <div className={classNames(sizing.parentWidth, flex.flex, flex.justifyContentCenter)}>
-                {/* SVG Drawing Canvas */}
-                <HoverToolTip
-                    className={classNames(sizing.fitContent)}
-                    content={mode === 'edit' ? "Edit your glyph drawing" : "Draw your glyph here"}
-                >
-                    <SvgDrawerInput
-                        {...glyphSvgField}
-                    />
-                </HoverToolTip>
-            </div>
-
-            {/* Glyph Name Input */}
-            <HoverToolTip content={"The name of this glyph"}>
-                <LabelShiftTextInput
-                    displayName={"Glyph Name"}
-                    asInput={true}
-                    {...glyphNameField}
+        <div className={classNames(flex.flexColumn, flex.flexGapM, className)}>
+            <section className={styles.section} aria-labelledby={`${sectionId}-drawing`}>
+                {/* `NumberedSectionHeader` hardcodes an <h2>; the page's
+                    PageHeader owns that level, so the sections are level 3. */}
+                <NumberedSectionHeader
+                    number="01"
+                    title="Drawing"
+                    parts={{ title: { id: `${sectionId}-drawing`, 'aria-level': 3 } }}
                 />
-            </HoverToolTip>
 
-            {/* Category Input */}
-            <HoverToolTip content={"Category to organize your glyphs (e.g., Vowels, Consonants, Numbers)"}>
-                <LabelShiftTextInput
-                    displayName={"Category"}
-                    asInput={true}
-                    {...categoryField}
-                />
-            </HoverToolTip>
+                <div className={classNames(sizing.parentWidth, flex.flex, flex.justifyContentCenter)}>
+                    <HoverToolTip
+                        className={styles.drawerField}
+                        content={mode === 'edit' ? "Edit your glyph drawing" : "Draw your glyph here"}
+                    >
+                        <SvgDrawerInput
+                            displayName="Glyph drawing"
+                            colors={GLYPH_INK}
+                            {...glyphSvgField}
+                        />
+                    </HoverToolTip>
+                </div>
+            </section>
 
-            {/* Notes Input */}
-            <HoverToolTip
-                className={classNames(sizing.parentWidth)}
-                content={"Additional notes about this glyph"}
-            >
-                <LabelShiftTextInput
-                    displayName={"Notes"}
-                    asInput={false}
-                    {...notesField}
+            <section className={styles.section} aria-labelledby={`${sectionId}-details`}>
+                <NumberedSectionHeader
+                    number="02"
+                    title="Details"
+                    parts={{ title: { id: `${sectionId}-details`, 'aria-level': 3 } }}
                 />
-            </HoverToolTip>
+
+                <div className={classNames(flex.flexColumn, flex.flexGapM)}>
+                    <HoverToolTip content="The name of this glyph">
+                        <LabelShiftTextInput displayName="Glyph name" asInput {...glyphNameField} />
+                    </HoverToolTip>
+
+                    <HoverToolTip content="Category to organise your glyphs (e.g. Vowels, Consonants, Numbers)">
+                        <LabelShiftTextInput displayName="Category" asInput {...categoryField} />
+                    </HoverToolTip>
+
+                    <HoverToolTip
+                        className={sizing.parentWidth}
+                        content="Additional notes about this glyph"
+                    >
+                        <LabelShiftTextInput displayName="Notes" asInput={false} {...notesField} />
+                    </HoverToolTip>
+                </div>
+            </section>
         </div>
     );
-}
-
-/**
- * Type for the form data produced by GlyphFormFields
- */
-export interface GlyphFormData {
-    glyphSvg: string;
-    glyphName: string;
-    category?: string;
-    notes?: string;
 }

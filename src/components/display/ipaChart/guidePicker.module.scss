@@ -1,0 +1,41 @@
+/**
+ * GuidePicker — a label and a select, sized to sit in a page header's action
+ * slot next to a button without out-growing it.
+ */
+
+.picker {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: var(--heading-letter-spacing);
+    text-transform: var(--heading-transform);
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.select {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.9rem;
+    font-family: inherit;
+    color: var(--text-primary);
+    /* A token, not the UA default: an undeclared control is painted with the
+       browser's own chrome, which does not follow `[data-theme]`. */
+    background: var(--surface-raised);
+    border: var(--border-width) solid var(--border-primary);
+    border-radius: var(--radius-control);
+    cursor: pointer;
+    min-width: 9rem;
+    max-width: 100%;
+
+    &:focus-visible {
+        outline: 2px solid var(--interactive-base);
+        outline-offset: 2px;
+    }
+}

@@ -45,6 +45,8 @@ export default function IPAConsonantChart({
     isLoading = false,
     className,
     compact = false,
+    guide = null,
+    guideLabel,
 }: IPAConsonantChartProps) {
     // Memoize the cell lookup
     const getGrapheme = useCallback(
@@ -106,6 +108,8 @@ export default function IPAConsonantChart({
                                     isLoading={isLoading}
                                     size="small"
                                     description={getDescription(manner, place, false)}
+                                    guide={guide?.get(cell.voiceless) ?? null}
+                                    guideLabel={guideLabel}
                                 />
                             ) : (
                                 <span className={styles.emptySound} />
@@ -121,6 +125,8 @@ export default function IPAConsonantChart({
                                     isLoading={isLoading}
                                     size="small"
                                     description={getDescription(manner, place, true)}
+                                    guide={guide?.get(cell.voiced) ?? null}
+                                    guideLabel={guideLabel}
                                 />
                             ) : (
                                 <span className={styles.emptySound} />
@@ -130,7 +136,10 @@ export default function IPAConsonantChart({
                 </td>
             );
         },
-        [getGrapheme, onCellClick, isLoading, getDescription]
+        // `guide` and `guideLabel` are dependencies, not decoration: without
+        // them the memoised renderer keeps painting the PREVIOUS flavour after
+        // the picker changes, which looks exactly like a broken overlay.
+        [getGrapheme, onCellClick, isLoading, getDescription, guide, guideLabel]
     );
 
     // Memoize the table rows

@@ -11,7 +11,7 @@
  */
 
 import type { CSSProperties, ReactNode } from 'react';
-import type { Glyph, GlyphWithUsage } from '../../../../db/types';
+import type { AutoSpellResultExtended, Glyph, GlyphWithUsage } from '../../../../db/types';
 import type { registerFieldReturnType } from 'smart-form/types';
 
 // =============================================================================
@@ -321,7 +321,7 @@ export interface GlyphCanvasInputProps extends registerFieldReturnType {
     /** Optional callback when selection changes - non-breaking hook */
     onSelectionChange?: (ids: number[]) => void;
     /** Optional auto-spell preview data provided by parent (displayed by component) */
-    autoSpellPreview?: any | null;
+    autoSpellPreview?: AutoSpellResultExtended | null;
     /** Optional handler parent provides to generate/refresh auto-spell preview */
     onRequestAutoSpell?: () => void;
 }
@@ -329,6 +329,22 @@ export interface GlyphCanvasInputProps extends registerFieldReturnType {
 /**
  * Ref methods exposed by GlyphCanvasInput.
  */
+/**
+ * Options accepted by the imperative `setValue` handle.
+ *
+ * Mirrors SmartForm's own `SetValueOptions` (see
+ * `smart-form/input/basic/basicSelectListInput`) so a parent form can drive the
+ * canvas the same way it drives a built-in input.
+ */
+export interface SetValueOptions {
+    /** Whether to run validation after setting the value. Default: true */
+    doValidation?: boolean;
+    /** Whether to update fieldState (isEmpty, isChanged, isInputValid). Default: true */
+    toggleFieldState?: boolean;
+    /** Whether to mark the field as touched. Default: false */
+    toggleTouch?: boolean;
+}
+
 export interface GlyphCanvasInputRef {
     /** Current selected glyph IDs */
     readonly value: number[];

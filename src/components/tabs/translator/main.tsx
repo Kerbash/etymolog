@@ -2,16 +2,12 @@
  * Translator Tab Main
  * -------------------
  * Entry point for the Translator tab.
+ *
+ * See `lexicon/main.tsx` for why the wrapper div and its margin hack are gone.
  */
 
-import classNames from 'classnames';
-import { flex, sizing } from "utils-styles";
 import TranslatorHome from './TranslatorHome';
 
 export default function TranslatorMain() {
-    return (
-        <div className={classNames(flex.flexRow, flex.flexGapM, sizing.paddingM)} style={{ marginBottom: '1rem' }}>
-            <TranslatorHome />
-        </div>
-    );
+    return <TranslatorHome />;
 }

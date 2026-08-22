@@ -1,0 +1,9 @@
+/** LexiconEditor — the form column. Everything else is a shared primitive. */
+
+.form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--section-gap);
+    width: 100%;
+    min-width: 0;
+}

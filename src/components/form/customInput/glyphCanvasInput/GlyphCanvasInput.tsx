@@ -59,6 +59,7 @@ import type {
     GlyphCanvasInputRef,
     GlyphCanvasRef,
     InsertionStrategy,
+    SetValueOptions,
     VirtualGlyph,
 } from './types';
 import type {Glyph, GlyphWithUsage, GraphemeComplete, AutoSpellResultExtended} from '../../../../db/types';
@@ -72,6 +73,7 @@ import {defaultInsertionStrategy} from './strategies';
 import {GlyphCanvas} from './GlyphCanvas';
 import {GlyphKeyboardOverlay} from './GlyphKeyboardOverlay';
 import {buildRenderableMap, normalizeToRenderable, isVirtualGlyphId, createVirtualGlyph} from './utils';
+import {useEditedSinceMount} from '../useEditedSinceMount';
 
 import styles from './GlyphCanvasInput.module.scss';
 import HoverToolTip from "cyber-components/interactable/information/hoverToolTip/hoverToolTip.tsx";
@@ -136,7 +138,6 @@ const GlyphCanvasInput = forwardRef<GlyphCanvasInputRef, GlyphCanvasInputProps>(
         _
     ) {
         const idPrefix = useId();
-        const isInitialRender = useRef(true);
         const fieldStateRef = useRef(fieldState);
         fieldStateRef.current = fieldState;
 
@@ -260,13 +261,15 @@ const GlyphCanvasInput = forwardRef<GlyphCanvasInputRef, GlyphCanvasInputProps>(
         // This is the format used by Two-List Architecture for persistence
         const buildGlyphOrder = useCallback((): SpellingEntry[] => {
             return selectedIds.map(id => {
-                // Check if this is a virtual glyph
                 const virtualGlyph = virtualGlyphMap.get(id) || initialVirtualGlyphs?.get(id) || initialVirtualsFromGlyphOrder.get(id);
                 if (virtualGlyph && virtualGlyph.ipaCharacter) {
-                    // Return the IPA character directly
                     return virtualGlyph.ipaCharacter;
                 }
-                // For real graphemes, return the grapheme reference
+                if (isVirtualGlyphId(id)) {
+                    // A negative id with no virtual-glyph record would serialise as
+                    // "grapheme--N" and later render as literal text. Fail loudly.
+                    throw new Error(`Virtual glyph ${id} has no IPA character; cannot build spelling`);
+                }
                 return createGraphemeEntry(id);
             });
         }, [selectedIds, virtualGlyphMap, initialVirtualGlyphs, initialVirtualsFromGlyphOrder]);
@@ -296,7 +299,7 @@ const GlyphCanvasInput = forwardRef<GlyphCanvasInputRef, GlyphCanvasInputProps>(
                 setVirtualGlyphMap(new Map()); // Also clear virtual glyphs
             },
             // Backwards-compatible setValue pattern
-            setValue: (val: number[], options?: any) => {
+            setValue: (val: number[], options?: SetValueOptions) => {
                 setSelectedIds(Array.isArray(val) ? val : []);
                 if (options?.doValidation !== false) {
                     fieldStateRef.current.isTouched.setIsTouched(true);
@@ -332,19 +335,34 @@ const GlyphCanvasInput = forwardRef<GlyphCanvasInputRef, GlyphCanvasInputProps>(
 
         // Update parent field state when selection changes
         // Use ref for callback to prevent re-runs when callback reference changes
+        //
+        // The guard is an identity comparison against the selection this input
+        // mounted with, NOT a "first effect run" latch: StrictMode runs every
+        // mount effect twice while keeping refs, so a latch let the second run
+        // through and marked the untouched form changed. See
+        // `useEditedSinceMount`.
+        const selectionEdited = useEditedSinceMount(selectedIds);
         useEffect(() => {
-            if (isInitialRender.current) {
-                isInitialRender.current = false;
-                return;
-            }
+            if (!selectionEdited) return;
 
             fieldStateRef.current.isTouched.setIsTouched(true);
             fieldStateRef.current.isChanged.setIsChanged(true);
             fieldStateRef.current.isEmpty.setIsEmpty(selectedIds.length === 0);
-            fieldStateRef.current.isInputValid.setIsInputValid(true);
+            fieldStateRef.current._setValidation(null);
 
-            // Build glyph_order for saving
-            const glyphOrder = buildGlyphOrderRef.current();
+            // Build glyph_order for saving. A negative id with no virtual-glyph
+            // record is a programming error upstream; report it on the field
+            // (there is no error boundary) instead of throwing out of an effect.
+            let glyphOrder: SpellingEntry[];
+            try {
+                glyphOrder = buildGlyphOrderRef.current();
+            } catch (error) {
+                fieldStateRef.current._setValidation({
+                    type: 'error',
+                    message: error instanceof Error ? error.message : 'The spelling contains an unknown glyph',
+                });
+                return;
+            }
 
             // Notify parent via callback using ref (prevents infinite loops)
             // Include hasVirtualGlyphs flag and glyph_order so parent can save properly
@@ -353,7 +371,6 @@ const GlyphCanvasInput = forwardRef<GlyphCanvasInputRef, GlyphCanvasInputProps>(
                 onSelectionChangeRef.current?.(selectedIds.slice(), containsVirtual, glyphOrder);
             } catch (e) {
                 // swallow - callback should not break input
-                // eslint-disable-next-line no-console
                 console.error('onSelectionChange threw', e);
             }
 
@@ -363,7 +380,7 @@ const GlyphCanvasInput = forwardRef<GlyphCanvasInputRef, GlyphCanvasInputProps>(
                 // Save as glyph_order format (JSON string of SpellingEntry[])
                 hiddenInput.value = serializeGlyphOrder(glyphOrder);
             }
-        }, [selectedIds, registerSmartFieldProps.name]);
+        }, [selectedIds, selectionEdited, registerSmartFieldProps.name]);
 
         // Handle glyph selection from keyboard (both real and virtual glyphs)
         const handleSelect = useCallback((glyph: {
@@ -543,7 +560,7 @@ const GlyphCanvasInput = forwardRef<GlyphCanvasInputRef, GlyphCanvasInputProps>(
                                     aria-label="Apply auto-spell"
                                     themeType="basic"
                                     iconSize="1rem"
-                                    iconColor="var(--status-good, green)"
+                                    iconColor="var(--status-good)"
                                 >
                                     Apply
                                 </IconButton>

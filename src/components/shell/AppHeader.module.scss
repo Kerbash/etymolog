@@ -1,0 +1,83 @@
+// AppHeader — sticky app chrome.
+//
+// BasicHeader ships a fixed 57px height and a full-bleed --bg-primary bar. Both
+// are kept (the banner offset in PersistenceStatus.tsx depends on the 57), but
+// the height becomes a FLOOR here: under 640px the header wraps to two rows and
+// a hard height would clip the second one.
+
+.header {
+    position: sticky;
+    top: 0;
+    // Above page content, below the notification banners (z 9000) and modals.
+    z-index: 10;
+
+    height: auto;
+    min-height: 57px;
+}
+
+// The bar is full-bleed; its CONTENT lines up with the page content below it.
+.inner {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+
+    width: 100%;
+    max-width: var(--max-content-width);
+    margin-inline: auto;
+    min-height: calc(57px - 0.4em);
+}
+
+.title {
+    margin: 0;
+    font-size: 1.4rem;
+    // The name can be arbitrarily long; it must not push the action row off the
+    // right edge before the wrap breakpoint is reached.
+    overflow-wrap: anywhere;
+}
+
+.titleGroup {
+    min-width: 0;
+}
+
+.actions {
+    flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+    // Two rows: name (+ rename) above, the action row below. `flex-basis: 100%`
+    // on both groups is what turns the existing `flex-wrap` into a deliberate
+    // two-row layout instead of an arbitrary break inside the action row.
+    .titleGroup,
+    .actions {
+        flex-basis: 100%;
+    }
+
+    .actions {
+        justify-content: flex-start;
+    }
+
+    .inner {
+        padding-block: 0.35em;
+    }
+
+    .title {
+        font-size: 1.2rem;
+    }
+}
+
+@media (max-width: 480px) {
+    // Icon-only at phone widths. The buttons keep their `aria-label`, so the
+    // accessible name survives the label going away.
+    .newConlangLabel {
+        display: none;
+    }
+
+    // DarkmodeSwitch's documented hook for hosts that need the icon without the
+    // wording (`<span data-toggle-label>` around "Mode").
+    .darkmode [data-toggle-label] {
+        display: none;
+    }
+}

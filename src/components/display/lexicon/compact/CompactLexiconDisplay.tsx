@@ -1,4 +1,4 @@
-import type { LexiconComplete, GraphemeComplete } from '../../../../db/types';
+import type { LexiconComplete, GraphemeComplete, SpellingDisplayEntry } from '../../../../db/types';
 import { ScaledGlyphSpellingDisplay } from './ScaledGlyphSpellingDisplay';
 import styles from './compact.module.scss';
 import classNames from 'classnames';
@@ -15,20 +15,41 @@ interface CompactLexiconDisplayProps {
  * Designed for grid layout display.
  */
 export default function CompactLexiconDisplay({ lexiconData, graphemeMap, onClick }: CompactLexiconDisplayProps) {
-    // Render a short textual spelling (mixing grapheme names and IPA chars)
-    const textualSpelling = (lexiconData.spellingDisplay ?? lexiconData.spelling.map(g => ({ type: 'grapheme', grapheme: g } as any))).map((entry: any) => {
-        if (entry.type === 'grapheme') return entry.grapheme?.name ?? '?';
-        return entry.ipaCharacter ?? entry;
-    }).join(' ');
+    // Render a short textual spelling (mixing grapheme names and IPA chars).
+    // The legacy `spelling` fallback is TYPED into `SpellingDisplayEntry` rather
+    // than cast to `any`: the two shapes are close enough that a cast silently
+    // accepted the wrong one, and `entry.ipaCharacter ?? entry` used to be able
+    // to stringify a whole Grapheme object into the card.
+    const entries: SpellingDisplayEntry[] =
+        lexiconData.spellingDisplay ??
+        lexiconData.spelling.map((grapheme, position) => ({
+            type: 'grapheme' as const,
+            position,
+            grapheme,
+        }));
+
+    const textualSpelling = entries
+        .map((entry) =>
+            entry.type === 'grapheme' ? (entry.grapheme?.name ?? '?') : (entry.ipaCharacter ?? ''),
+        )
+        .join(' ');
+
+    // Get the primary meaning from meanings array, or fall back to meaning field
+    const primaryMeaning = lexiconData.meanings && lexiconData.meanings.length > 0
+        ? lexiconData.meanings[0].meaning
+        : lexiconData.meaning;
 
     // Truncate meaning for compact display
-    const truncatedMeaning = lexiconData.meaning
-        ? lexiconData.meaning.length > 50
-            ? `${lexiconData.meaning.substring(0, 47)}...`
-            : lexiconData.meaning
+    const truncatedMeaning = primaryMeaning
+        ? primaryMeaning.length > 50
+            ? `${primaryMeaning.substring(0, 47)}...`
+            : primaryMeaning
         : null;
 
     const hasSpelling = lexiconData.spellingDisplay && lexiconData.spellingDisplay.length > 0;
+    const additionalMeaningCount = lexiconData.meanings && lexiconData.meanings.length > 1
+        ? lexiconData.meanings.length - 1
+        : 0;
 
     return (
         <div
@@ -56,7 +77,12 @@ export default function CompactLexiconDisplay({ lexiconData, graphemeMap, onClic
             {/* Pronunciation already shown in title; removed secondary pronunciation element */}
 
             {truncatedMeaning && (
-                <p className={styles.meaning}>{truncatedMeaning}</p>
+                <p className={styles.meaning}>
+                    {truncatedMeaning}
+                    {additionalMeaningCount > 0 && (
+                        <span className={styles.moreMeaningsBadge}>+{additionalMeaningCount} more</span>
+                    )}
+                </p>
             )}
 
             <div className={styles.badges}>

@@ -313,9 +313,12 @@ export interface CreateLexiconInput {
     pronunciation?: string;
     is_native?: boolean;
     auto_spell?: boolean;
+    /** @deprecated Use meanings array instead. Single meaning for backward compatibility. */
     meaning?: string;
     part_of_speech?: string;
     notes?: string;
+    /** Array of meanings (replaces single meaning field) */
+    meanings?: CreateLexiconMeaningInput[];
     /**
      * Ordered spelling in glyph_order format.
      * Array of strings where each entry is either:
@@ -357,9 +360,12 @@ export interface UpdateLexiconInput {
     pronunciation?: string | null;
     is_native?: boolean;
     auto_spell?: boolean;
+    /** @deprecated Use meanings array instead. Single meaning for backward compatibility. */
     meaning?: string | null;
     part_of_speech?: string | null;
     notes?: string | null;
+    /** Array of meanings (replaces single meaning field) */
+    meanings?: CreateLexiconMeaningInput[];
     /** Update glyph_order directly */
     glyph_order?: string[];
     /** Mark/unmark entry as needing attention */
@@ -415,6 +421,12 @@ export interface LexiconDescendantEntry {
 /**
  * Parsed glyph_order entry for display purposes.
  */
+/**
+ * Structural role of a synthesised spelling entry. Absent on ordinary letters.
+ * The layout engine splits words/lines on these instead of on index arrays.
+ */
+export type SpellingRole = 'word-separator' | 'line-break' | 'punctuation';
+
 export interface SpellingDisplayEntry {
     /** Type of entry */
     type: 'grapheme' | 'ipa';
@@ -424,10 +436,12 @@ export interface SpellingDisplayEntry {
     grapheme?: Grapheme;
     /** IPA character (only for ipa type) */
     ipaCharacter?: string;
+    /** Separator / line-break / punctuation marker (translator output only) */
+    role?: SpellingRole;
 }
 
 /**
- * Complete lexicon entry with spelling, ancestors, and descendants.
+ * Complete lexicon entry with spelling, ancestors, descendants, and meanings.
  * This is the full representation for display purposes.
  */
 export interface LexiconComplete extends Lexicon {
@@ -447,6 +461,8 @@ export interface LexiconComplete extends Lexicon {
     descendants: LexiconDescendantEntry[];
     /** Whether the spelling contains IPA fallback characters */
     hasIpaFallbacks: boolean;
+    /** Multiple meanings for this lexicon entry */
+    meanings: LexiconMeaning[];
 }
 
 /**
@@ -461,6 +477,8 @@ export interface LexiconAncestryNode {
     position: number | null;
     /** Recursive ancestors */
     ancestors: LexiconAncestryNode[];
+    /** True when the subtree was cut by maxDepth (or a cycle guard) — not a real root. */
+    truncated?: boolean;
 }
 
 /**
@@ -469,6 +487,8 @@ export interface LexiconAncestryNode {
 export interface LexiconWithUsage extends Lexicon {
     /** Number of words that have this word as an ancestor */
     descendantCount: number;
+    /** Multiple meanings for this lexicon entry */
+    meanings: LexiconMeaning[];
 }
 
 /**
@@ -479,6 +499,43 @@ export interface LexiconReference {
     lemma: string;
     pronunciation: string | null;
     meaning: string | null;
+    meanings?: Pick<LexiconMeaning, 'meaning'>[];
+}
+
+// =============================================================================
+// LEXICON MEANINGS TYPES
+// =============================================================================
+
+/**
+ * A single meaning for a lexicon entry.
+ * Stores multiple definitions, parts of speech, and usage notes for each word.
+ */
+export interface LexiconMeaning {
+    id: number;
+    lexicon_id: number;
+    meaning: string;
+    part_of_speech: string | null;
+    usage_notes: string | null;
+    definition_order: number;
+}
+
+/**
+ * Input for creating a new lexicon meaning.
+ */
+export interface CreateLexiconMeaningInput {
+    meaning: string;
+    part_of_speech?: string;
+    usage_notes?: string;
+    definition_order?: number;
+}
+
+/**
+ * A meaning row from the form (without ID/lexicon_id).
+ */
+export interface LexiconMeaningFormRow {
+    meaning: string;
+    part_of_speech?: string;
+    usage_notes?: string;
 }
 
 // =============================================================================
@@ -493,9 +550,12 @@ export interface LexiconFormData {
     pronunciation?: string;
     isNative: boolean;
     autoSpell: boolean;
+    /** @deprecated Use meanings array instead */
     meaning?: string;
     partOfSpeech?: string;
     notes?: string;
+    /** Multiple meanings for this word */
+    meanings?: LexiconMeaningFormRow[];
     /** Selected grapheme IDs in order for spelling */
     spellingGraphemeIds: number[];
     /** Ancestor entries */
@@ -561,6 +621,14 @@ export interface PhraseWord {
     normalizedWord: string;
     /** Position in the phrase (0-indexed) */
     position: number;
+    /** What the token is; older callers that only produced words may omit it (= 'word'). */
+    kind?: 'word' | 'punctuation' | 'line-break';
+    /**
+     * For punctuation tokens: which punctuation setting governs the mark.
+     * Resolved by the tokenizer because a straight quote is an opening quote
+     * at the start of a word and a closing quote at its end.
+     */
+    punctuationKey?: keyof import('./api/types').PunctuationSettings;
 }
 
 /**

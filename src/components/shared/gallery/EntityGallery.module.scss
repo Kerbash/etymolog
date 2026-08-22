@@ -1,0 +1,56 @@
+/** EntityGallery — the toolbar strip the shared gallery adds above cyber `DataGallery`. */
+
+.root {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    width: 100%;
+    min-width: 0;
+}
+
+/* The filter row sits above DataGallery's own toolbar (search / sort / view). */
+.filterBar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.filterLabel {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.filterSelect {
+    padding: 0.25rem 0.5rem;
+
+    font-family: inherit;
+    font-size: 0.875rem;
+
+    color: var(--text-primary);
+    background: var(--surface-base);
+    border: var(--border-width) solid var(--border-primary);
+    border-radius: var(--radius-chip);
+    cursor: pointer;
+}
+
+.filterSelect:focus-visible {
+    outline: var(--border-width-strong) solid var(--focus-ring);
+    outline-offset: 1px;
+}
+
+/* The toolbar-end slot (the glyph gallery's "Auto-manage" switch lives here). */
+.toolbarSlot {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: 0.5rem;
+
+    font-size: 0.875rem;
+    white-space: nowrap;
+}
+
+.grid {
+    padding: 0.5rem 0.25rem;
+}

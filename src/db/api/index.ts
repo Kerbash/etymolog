@@ -16,6 +16,10 @@ export type {
     PunctuationSettings,
     DirectionValue,
     WritingSystemSettings,
+    BasicChartDefinition,
+    SyllabaryChartDefinition,
+    CustomChartDefinition,
+    SettingsImportResult,
     CreateGlyphRequest,
     UpdateGlyphRequest,
     GlyphListResponse,
@@ -38,6 +42,24 @@ export type {
 } from './types';
 
 export { DEFAULT_SETTINGS, DEFAULT_PUNCTUATION_CONFIG, DEFAULT_PUNCTUATION_SETTINGS, DEFAULT_WRITING_SYSTEM_SETTINGS } from './types';
+
+// The `wordGenerator` settings key. Re-exported here so a settings consumer can
+// type its own state without knowing where under `src/generator/` the shape is
+// declared; the generator barrel stays the entry point for everything else it
+// does (presets, coverage, the template parser).
+export type {
+    ClusterRules,
+    FrequencyTilt,
+    SyllableTemplate,
+    WordGeneratorProfile,
+    WordGeneratorSettings,
+} from '../../generator/profile/types';
+export {
+    cloneDefaultProfile,
+    cloneDefaultWordGeneratorSettings,
+    DEFAULT_PROFILE,
+    DEFAULT_WORD_GENERATOR_SETTINGS,
+} from '../../generator/profile/defaults';
 
 // Re-export lexicon API types
 export type {

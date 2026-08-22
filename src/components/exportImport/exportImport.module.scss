@@ -1,63 +1,52 @@
-@import '@styles/modal.module.scss';
-
-.modalContent {
-    @extend .modalContentTemplate;
-    padding: 1.5rem;
-    min-width: 400px;
-    max-width: 600px;
-}
-
-.menuItem {
-    width: 100%;
-    padding: 0.75rem 1rem;
-    font-size: 0.9rem;
-    text-align: left;
-    border: none;
-    background: transparent;
-    color: var(--text-primary, #ccc);
-    cursor: pointer;
-    transition: background 0.2s ease;
-    white-space: nowrap;
-
-    &:hover:not(:disabled) {
-        background: var(--color-bg-hover, rgba(255, 255, 255, 0.05));
-    }
-
-    &:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
-    }
-}
+// The panel surface comes from <DialogPanel> and the dropdown-row style from
+// @styles/graphic_template.module.scss (.menuItem). What remains here is the
+// import/export forms' own field chrome.
 
 .textarea {
     width: 100%;
     min-height: 200px;
     padding: 0.5em;
-    font-family: monospace;
+    font-family: var(--font-mono);
     font-size: 0.85rem;
-    background: var(--surface-raised, #1a1a2e);
-    color: var(--text-primary, #ccc);
-    border: 1px solid var(--border-primary, #333);
-    border-radius: 4px;
+    background: var(--surface-raised);
+    color: var(--text-primary);
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-chip);
     outline: none;
     resize: vertical;
+
+    /* `outline: none` above kills the UA ring AND, being a later-injected
+       module rule of equal specificity, the app-wide `:focus-visible` ring in
+       index.css. This puts one back — same token, higher specificity. */
+    &:focus-visible {
+        outline: 2px solid var(--focus-ring);
+        outline-offset: 2px;
+    }
 }
 
 .fileInput {
     width: 100%;
     padding: 0.5em;
     font-size: 0.9rem;
-    color: var(--text-primary, #ccc);
+    color: var(--text-primary);
 }
 
 .errorMessage {
-    color: var(--color-danger, #ff4444);
+    color: var(--status-bad);
     font-size: 0.85rem;
     margin: 0;
 }
 
 .fileName {
     font-size: 0.85rem;
-    color: var(--text-secondary, #888);
+    color: var(--text-secondary);
     margin: 0;
+}
+
+// The import forms' vertical stack (DialogPanel owns the surface; the form owns
+// its own rhythm because the action bar must live INSIDE the <form>).
+.form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
 }

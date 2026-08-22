@@ -1,1 +1,1 @@
-export { default as WritingSystemMain } from './main';
+export { default as WritingSystemPage } from './WritingSystemPage';

@@ -15,8 +15,8 @@
     flex-direction: column;
 
     background: var(--surface-raised);
-    border-radius: 12px 12px 0 0;
-    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
+    border-radius: var(--radius-surface) var(--radius-surface) 0 0;
+    box-shadow: var(--shadow-overlay);
 
     max-height: 50vh;
     padding: 1rem;
@@ -61,7 +61,7 @@
 .modeToggle {
     display: flex;
     border: 1px solid var(--border-primary);
-    border-radius: 6px;
+    border-radius: var(--radius-control);
     overflow: hidden;
 }
 
@@ -85,13 +85,13 @@
     }
 
     &:focus {
-        outline: 2px solid var(--focus-ring, var(--interactive-base));
+        outline: 2px solid var(--focus-ring);
         outline-offset: -2px;
     }
 
     &.active {
         background: var(--interactive-base);
-        color: var(--interactive-text, white);
+        color: var(--bg-tertiary);
     }
 }
 
@@ -123,7 +123,7 @@
 .switchModeLink {
     padding: 0.5rem 1rem;
     border: 1px solid var(--border-primary);
-    border-radius: 6px;
+    border-radius: var(--radius-control);
     background: var(--surface-raised);
     color: var(--interactive-base);
     font-style: normal;
@@ -137,7 +137,7 @@
     }
 
     &:focus {
-        outline: 2px solid var(--focus-ring, var(--interactive-base));
+        outline: 2px solid var(--focus-ring);
         outline-offset: 2px;
     }
 }
@@ -193,7 +193,7 @@
     gap: 0.5rem;
     padding: 0.5rem 1rem;
     border: 1px solid var(--border-primary);
-    border-radius: 6px;
+    border-radius: var(--radius-control);
     background: var(--surface-raised);
     color: var(--text-primary);
     cursor: pointer;
@@ -211,7 +211,7 @@
     }
 
     &:focus {
-        outline: 2px solid var(--focus-ring, var(--interactive-base));
+        outline: 2px solid var(--focus-ring);
         outline-offset: 2px;
     }
 
@@ -232,7 +232,7 @@
     position: fixed;
     inset: 0;
     z-index: 999;
-    background: rgba(0, 0, 0, 0.4);
+    background: var(--scrim);
     backdrop-filter: blur(2px);
 }
 
@@ -242,7 +242,7 @@
         max-height: 40vh;
         left: 10%;
         right: 10%;
-        border-radius: 12px 12px 0 0;
+        border-radius: var(--radius-surface) var(--radius-surface) 0 0;
     }
 }
 

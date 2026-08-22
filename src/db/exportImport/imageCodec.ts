@@ -38,7 +38,7 @@ import { encodeToPixels, decodeFromPixels } from './pixelCodec';
  *          is a Uint8ClampedArray in RGBA order
  */
 export async function jsonToPixelData(json: string): Promise<{
-    pixels: Uint8ClampedArray;
+    pixels: Uint8ClampedArray<ArrayBuffer>;
     width: number;
     height: number;
 }> {

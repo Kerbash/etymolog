@@ -1,142 +1,135 @@
 /**
- * GraphemeEditPage
- * -----------------
- * Page component for editing an existing grapheme.
- * Accessible at /script-maker/grapheme/db/:id
+ * GraphemeEditPage — `/script-maker/grapheme/db/:id`.
+ *
+ * The edit half of the grapheme CRUD pair.
+ *
+ * Delete goes through {@link useGraphemeDelete}, the same two-stage flow the
+ * gallery card uses: an ordinary danger confirmation, and — only when words are
+ * spelled with this grapheme — a second dialog that names them and explains
+ * what respelling will do before it happens.
  */
 
-import { useState, useRef, useCallback, useEffect } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
-import classNames from "classnames";
+import { useCallback, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 
+// NAMED import — the index has no default export; see LexiconEditor.
+import { NavigationGuard } from "cyber-components/container/navigationGuard";
 import { SmartForm, useSmartForm } from "smart-form/smartForm";
-import IconButton from "cyber-components/interactable/buttons/iconButton/iconButton.tsx";
-import { buttonStyles } from "cyber-components/interactable/buttons/button/button";
-import Modal from "cyber-components/container/modal/modal.tsx";
-import Button from "cyber-components/interactable/buttons/button/button.tsx";
 
 import { useEtymolog, type Glyph } from "../../../../db";
-import { GraphemeFormFields, type GraphemeFormData } from "../../../form/graphemeForm";
-import { flex, graphic } from "utils-styles";
-import styles from "./graphemeEditPage.module.scss";
+import { ROUTES } from "../../../../url_mapping";
+import { GraphemeFormFields, useGraphemeSubmit } from "../../../form/graphemeForm";
+import { DialogPanel } from "../../../shared";
+import { useRegisterUnsaved } from "../../../shell";
+import EntityEditLayout from "../entityEdit/EntityEditLayout";
+import { useGraphemeDelete } from "../useGraphemeDelete";
+
+import styles from "../entityEdit/entityEditPage.module.scss";
+
+function GuardCard({ children }: { closeModal: () => void; children: React.ReactNode }) {
+    return <DialogPanel size="sm">{children}</DialogPanel>;
+}
 
 export default function GraphemeEditPage() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
-    const { api, isLoading, error } = useEtymolog();
-    const { registerField, unregisterField, registerForm, isFormValid } = useSmartForm({ mode: "onChange" });
+    const { api, isReady, error } = useEtymolog();
+    const deleteGrapheme = useGraphemeDelete();
+    const { registerField, unregisterField, registerForm } = useSmartForm({ mode: "onChange" });
 
-    const [submitError, setSubmitError] = useState<string | null>(null);
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const isSubmittingRef = useRef(false);
-    const [selectedGlyphs, setSelectedGlyphs] = useState<Glyph[]>([]);
-    const initializedGlyphsRef = useRef(false);
-    const [showDeleteModal, setShowDeleteModal] = useState(false);
-    const [isDeleting, setIsDeleting] = useState(false);
+    const graphemeId = id ? Number.parseInt(id, 10) : NaN;
+    const result = Number.isNaN(graphemeId) ? null : api.grapheme.getByIdComplete(graphemeId);
+    const graphemeData = result?.success ? (result.data ?? null) : null;
 
-    const graphemeId = id ? parseInt(id, 10) : null;
-    const graphemeResult = graphemeId ? api.grapheme.getByIdComplete(graphemeId) : null;
-    const graphemeData = graphemeResult?.success ? graphemeResult.data : null;
+    /**
+     * The glyph list, DERIVED rather than seeded.
+     *
+     * `null` means "the user has not touched it", so the stored order shows
+     * through — including on the first render after the database finishes
+     * booting, when `graphemeData` arrives. Seeding a `useState` from an effect
+     * instead (the shape this replaces) renders one frame with an empty list,
+     * writes state during commit, and re-renders: a cascade React's
+     * `set-state-in-effect` rule exists to flag.
+     */
+    const [glyphEdits, setGlyphEdits] = useState<Glyph[] | null>(null);
+    const selectedGlyphs = glyphEdits ?? graphemeData?.glyphs ?? [];
 
-    // Initialize selectedGlyphs from graphemeData when it becomes available
-    // Using useEffect to avoid "setState during render" warning
-    useEffect(() => {
-        if (graphemeData && !initializedGlyphsRef.current) {
-            initializedGlyphsRef.current = true;
-            setSelectedGlyphs(graphemeData.glyphs);
-        }
-    }, [graphemeData]);
+    const handleSuccess = useCallback(() => navigate(ROUTES.scriptMaker), [navigate]);
 
-    const formProps = registerForm("editGraphemeForm", {
-        submitFunc: async (formData) => {
-            if (isSubmittingRef.current || !graphemeId) return { success: false, error: 'Invalid state' };
-            isSubmittingRef.current = true;
-            setIsSubmitting(true);
-
-            try {
-                setSubmitError(null);
-                const data = formData as unknown as GraphemeFormData;
-
-                if (selectedGlyphs.length === 0) throw new Error('Please add at least one glyph');
-                if (!data.graphemeName?.trim()) throw new Error('Grapheme name is required');
-
-                const updateResult = api.grapheme.update(graphemeId, {
-                    name: data.graphemeName.trim(),
-                    category: data.category?.trim() || undefined,
-                    notes: data.notes?.trim() || undefined,
-                });
-                if (!updateResult.success) throw new Error(updateResult.error?.message || 'Failed to update');
-
-                api.grapheme.updateGlyphs(graphemeId, {
-                    glyphs: selectedGlyphs.map((g, i) => ({ glyph_id: g.id, position: i })),
-                });
-
-                api.phoneme.deleteAllForGrapheme(graphemeId);
-                const validPhonemes = data.pronunciations?.filter(p => p.pronunciation?.trim()) || [];
-                for (const p of validPhonemes) {
-                    api.phoneme.add({ grapheme_id: graphemeId, phoneme: p.pronunciation.trim(), use_in_auto_spelling: p.useInAutoSpelling });
-                }
-
-                navigate('/script-maker');
-                return { success: true };
-            } catch (err) {
-                const msg = err instanceof Error ? err.message : 'Failed to update grapheme';
-                setSubmitError(msg);
-                return { success: false, error: msg };
-            } finally {
-                isSubmittingRef.current = false;
-                setIsSubmitting(false);
-            }
-        }
+    const submitFunc = useGraphemeSubmit({
+        mode: 'edit',
+        initialData: graphemeData,
+        glyphs: selectedGlyphs,
+        onSuccess: handleSuccess,
     });
 
-    const handleDelete = useCallback(async () => {
-        if (!graphemeId || isDeleting) return;
-        setIsDeleting(true);
-        try {
-            const result = api.grapheme.delete(graphemeId);
-            if (!result.success) throw new Error(result.error?.message);
-            setShowDeleteModal(false);
-            navigate('/script-maker');
-        } catch (err) {
-            setSubmitError(err instanceof Error ? err.message : 'Failed to delete');
-        } finally {
-            setIsDeleting(false);
-        }
-    }, [graphemeId, api.grapheme, navigate, isDeleting]);
+    const formProps = registerForm("editGraphemeForm", { submitFunc, lockFormOnSubmit: false });
 
-    if (isLoading) return <div className={styles.pageContainer}><p>Loading...</p></div>;
-    if (error) return <div className={styles.pageContainer}><p className={styles.errorMessage}>Error: {error.message}</p><IconButton as={Link} to="/script-maker" iconName="arrow-left">Back</IconButton></div>;
-    if (!graphemeData) return <div className={styles.pageContainer}><p className={styles.errorMessage}>Grapheme not found</p><IconButton as={Link} to="/script-maker" iconName="arrow-left">Back</IconButton></div>;
+    // A reorder or a removed glyph is unsaved work too, and it never touches a
+    // form FIELD — `isChanged` alone would report "nothing to lose" for a
+    // grapheme whose glyph order the user has just rearranged.
+    const isDirty =
+        (formProps.formState.isChanged || glyphEdits !== null) &&
+        !formProps.formState.isSubmitting;
+    useRegisterUnsaved("edit-grapheme", isDirty);
+
+    const handleDelete = useCallback(async () => {
+        if (!graphemeData) return;
+        const deleted = await deleteGrapheme({ id: graphemeData.id, name: graphemeData.name });
+        if (deleted) navigate(ROUTES.scriptMaker);
+    }, [deleteGrapheme, graphemeData, navigate]);
+
+    const fatal = error
+        ? { title: "The database could not be opened", description: error.message }
+        : isReady && !graphemeData
+          ? {
+                icon: "question-circle",
+                title: "That grapheme does not exist",
+                description: "It may have been deleted, or the link may be wrong.",
+            }
+          : null;
 
     return (
-        <div className={styles.pageContainer}>
-            <nav className={classNames(flex.flexRow, flex.flexGapM, styles.nav)}>
-                <IconButton as={Link} to="/script-maker" iconName="arrow-left">Back to Gallery</IconButton>
-            </nav>
-            <h2 className={graphic.underlineHighlightColorPrimary}>Edit Grapheme: {graphemeData.name}</h2>
-            {submitError && <div className={styles.errorMessage}>{submitError}</div>}
-
-            <SmartForm {...formProps} registerField={registerField} unregisterField={unregisterField} isFormValid={isFormValid} className={styles.formContainer}>
-                <GraphemeFormFields registerField={registerField} mode="edit" initialData={graphemeData} selectedGlyphs={selectedGlyphs} onSelectedGlyphsChange={setSelectedGlyphs} />
-                <div className={classNames(flex.flex, flex.flexGapM, styles.buttonRow)}>
-                    <IconButton className={buttonStyles.primary} type="submit" disabled={isSubmitting}>{isSubmitting ? 'Saving...' : 'Save Changes'}</IconButton>
-                    <IconButton className={buttonStyles.secondary} type="button" onClick={() => navigate('/script-maker')}>Cancel</IconButton>
-                    <IconButton className={classNames(buttonStyles.danger, styles.deleteButton)} type="button" iconName="trash" onClick={() => setShowDeleteModal(true)}>Delete</IconButton>
-                </div>
-            </SmartForm>
-
-            <Modal isOpen={showDeleteModal} setIsOpen={setShowDeleteModal} onClose={() => setShowDeleteModal(false)} allowClose={!isDeleting}>
-                <div className={styles.modalContent}>
-                    <h2 style={{ marginTop: 0 }}>Delete Grapheme</h2>
-                    <p>Are you sure you want to delete "{graphemeData.name}"?</p>
-                    <p className={styles.warningText}>This will also delete all associated pronunciations.</p>
-                    <div className={classNames(flex.flex, flex.flexGapM, styles.modalButtons)}>
-                        <Button onClick={() => setShowDeleteModal(false)} disabled={isDeleting}>Cancel</Button>
-                        <Button onClick={handleDelete} disabled={isDeleting} style={{ background: 'var(--danger)', color: 'white' }}>{isDeleting ? 'Deleting...' : 'Delete'}</Button>
-                    </div>
-                </div>
-            </Modal>
-        </div>
+        <EntityEditLayout
+            title={graphemeData ? `Edit grapheme "${graphemeData.name}"` : "Edit grapheme"}
+            back={{ to: ROUTES.scriptMaker, label: "Graphemes" }}
+            onCancel={() => navigate(ROUTES.scriptMaker)}
+            submitLabel="Save changes"
+            submitDisabled={!formProps.formState.isSubmittable}
+            isReady={isReady}
+            fatal={fatal}
+            danger={{ label: "Delete grapheme", onClick: () => void handleDelete() }}
+            overlays={
+                <NavigationGuard
+                    active={isDirty}
+                    modalCardTemplate={GuardCard}
+                    translationMap={{
+                        title: "Leave without saving?",
+                        message:
+                            "This grapheme has changes that have not been saved. Leaving now discards them.",
+                        leaveButton: "Discard and leave",
+                        stayButton: "Stay on this page",
+                    }}
+                />
+            }
+        >
+            {(actionBar) => (
+                <SmartForm
+                    {...formProps}
+                    registerField={registerField}
+                    unregisterField={unregisterField}
+                    className={styles.form}
+                >
+                    <GraphemeFormFields
+                        registerField={registerField}
+                        mode="edit"
+                        initialData={graphemeData}
+                        selectedGlyphs={selectedGlyphs}
+                        onSelectedGlyphsChange={setGlyphEdits}
+                    />
+                    {actionBar}
+                </SmartForm>
+            )}
+        </EntityEditLayout>
     );
 }

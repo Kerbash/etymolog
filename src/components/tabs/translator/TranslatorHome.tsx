@@ -1,133 +1,106 @@
 /**
  * Translator Home
  * ---------------
- * Main container for the phrase translation feature.
- * Allows users to input English phrases and translates them to conlang.
+ * Type an English phrase, see it in your script.
+ *
+ * Every state the page can be in now has a surface: nothing typed yet
+ * (`EmptyState`), a translation in flight (`LoadingState variant="inline"`), a
+ * failure (an app toast, which is what the rest of the app does), and a result.
+ * The page used to render the bare string "Translating..." and put its errors in
+ * a `div role="alert"` that no other failure in the app used.
  */
 
-import { useState, useEffect, useMemo } from 'react';
-import type { PhraseTranslationResult, GraphemeComplete } from '../../../db/types';
-import { useEtymolog } from '../../../db/context/EtymologContext';
-import PhraseInput from './_components/PhraseInput';
+import { useEffect, useMemo, useState } from 'react';
+
+import EmptyState from 'cyber-components/display/emptyState';
+
+import { useEtymolog } from '../../../db/context/etymologContext';
+import type { GraphemeComplete, PhraseTranslationResult } from '../../../db/types';
+import type { LayoutStrategyType } from '../../display/spelling/types';
+import { LoadingState, PageHeader, useNotify } from '../../shared';
 import PhraseDisplay from './_components/PhraseDisplay';
+import PhraseInput from './_components/PhraseInput';
+import TranslationControls from './_components/TranslationControls';
+
 import styles from './translator.module.scss';
 
 export default function TranslatorHome() {
     const { api, data, settings } = useEtymolog();
+    const notify = useNotify();
 
-    // State
     const [inputPhrase, setInputPhrase] = useState('');
-    const [translationResult, setTranslationResult] = useState<PhraseTranslationResult | null>(null);
+    const [strategy, setStrategy] = useState<LayoutStrategyType>('block');
+    const [translationResult, setTranslationResult] = useState<PhraseTranslationResult | null>(
+        null,
+    );
     const [isTranslating, setIsTranslating] = useState(false);
 
-    // Build graphemeMap from context data for glyph resolution
     const graphemeMap = useMemo(() => {
         const map = new Map<number, GraphemeComplete>();
-        for (const g of data.graphemesComplete) {
-            map.set(g.id, g);
-        }
+        for (const grapheme of data.graphemesComplete) map.set(grapheme.id, grapheme);
         return map;
     }, [data.graphemesComplete]);
 
-    // Compute word and line-break boundary indices by scanning combinedSpelling directly.
-    // Word boundaries = indices of space separator entries.
-    // Line break boundaries = indices of '\n' entries.
-    const { wordBoundaries, lineBreaks } = useMemo(() => {
-        if (!translationResult) return { wordBoundaries: undefined, lineBreaks: undefined };
-
-        const wordBounds: number[] = [];
-        const lineBounds: number[] = [];
-
-        for (let i = 0; i < translationResult.combinedSpelling.length; i++) {
-            const entry = translationResult.combinedSpelling[i];
-            if (entry.type === 'ipa' && entry.ipaCharacter === '\n') {
-                lineBounds.push(i);
-            } else if (entry.type === 'ipa' && entry.ipaCharacter === ' ') {
-                wordBounds.push(i);
-            }
+    // Debounced translation. `notify` is deliberately NOT a dependency: it is
+    // stable from the provider, and listing it here would re-run the effect (and
+    // re-translate) on every notification the app shows.
+    useEffect(() => {
+        if (!inputPhrase.trim()) {
+            setTranslationResult(null);
+            setIsTranslating(false);
+            return;
         }
 
-        return {
-            wordBoundaries: wordBounds.length > 0 ? wordBounds : undefined,
-            lineBreaks: lineBounds.length > 0 ? lineBounds : undefined,
-        };
-    }, [translationResult]);
+        setIsTranslating(true);
 
-    // Debounced translation
-    useEffect(() => {
         const timer = setTimeout(() => {
-            if (inputPhrase.trim()) {
-                setIsTranslating(true);
-                // Pass punctuation settings to the translate API
-                const result = api.phrase.translate(inputPhrase, settings.punctuation);
-                if (result.success && result.data) {
-                    setTranslationResult(result.data);
-                } else {
-                    console.error('Translation failed:', result.error);
-                    setTranslationResult(null);
-                }
-                setIsTranslating(false);
+            const result = api.phrase.translate(inputPhrase, settings.punctuation);
+            if (result.success && result.data) {
+                setTranslationResult(result.data);
             } else {
                 setTranslationResult(null);
+                notify.error(result.error?.message ?? 'The phrase could not be translated.', {
+                    title: 'Translation failed',
+                });
             }
-        }, 300); // 300ms debounce
+            setIsTranslating(false);
+        }, 300);
 
         return () => clearTimeout(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [inputPhrase, api, settings.punctuation]);
 
-    // === DEBUG: Log everything fed into the translator ===
-    if (translationResult) {
-        console.group('[TranslatorHome DEBUG]');
-        console.log('writingSystem settings:', settings.writingSystem);
-        console.log('wordBoundaries:', wordBoundaries);
-        console.log('wordTranslations count:', translationResult.wordTranslations.length);
-        console.log('combinedSpelling length:', translationResult.combinedSpelling.length);
-        console.log('combinedSpelling entries:',
-            translationResult.combinedSpelling.map((entry, i) => ({
-                index: i,
-                type: entry.type,
-                ipa: entry.ipaCharacter ?? null,
-                graphemeName: entry.grapheme?.name ?? null,
-                position: entry.position,
-                isBoundary: wordBoundaries?.includes(i) ? '<<< BOUNDARY' : '',
-            }))
-        );
-        console.log('wordTranslations detail:',
-            translationResult.wordTranslations.map((wt, i) => ({
-                wordIndex: i,
-                word: wt.word,
-                type: wt.type,
-                spellingLength: wt.spellingDisplay.length,
-                spellingEntries: wt.spellingDisplay.map(e => e.ipaCharacter ?? e.grapheme?.name ?? '?'),
-            }))
-        );
-        console.groupEnd();
-    }
-    // === END DEBUG ===
+    const hasInput = inputPhrase.trim().length > 0;
 
     return (
         <div className={styles.container}>
-            <h2 className={styles.heading}>Phrase Translator</h2>
-            <p className={styles.description}>
-                Translate English phrases to your constructed language. Words found in the lexicon will use their
-                defined spelling, while unknown words will be spelled character-by-character.
-            </p>
-
-            <PhraseInput
-                value={inputPhrase}
-                onChange={setInputPhrase}
+            <PageHeader
+                title="Phrase translator"
+                description="Words found in the lexicon use their defined spelling; unknown words are spelled character by character."
             />
 
-            {isTranslating && <div className={styles.loading}>Translating...</div>}
+            <PhraseInput value={inputPhrase} onChange={setInputPhrase} />
 
-            {translationResult && !isTranslating && (
+            <TranslationControls selectedStrategy={strategy} onStrategyChange={setStrategy} />
+
+            {!hasInput && (
+                <EmptyState
+                    icon="translate"
+                    title="Type a phrase to see it in your script"
+                    description="Anything you type above is laid out with the strategy you picked, using your graphemes."
+                />
+            )}
+
+            {hasInput && isTranslating && (
+                <LoadingState variant="inline" label="Translating the phrase" />
+            )}
+
+            {hasInput && !isTranslating && translationResult && (
                 <PhraseDisplay
                     translationResult={translationResult}
-                    strategy="block"
+                    strategy={strategy}
                     graphemeMap={graphemeMap}
                     writingSystem={settings.writingSystem}
-                    wordBoundaries={wordBoundaries}
-                    lineBreaks={lineBreaks}
                 />
             )}
         </div>

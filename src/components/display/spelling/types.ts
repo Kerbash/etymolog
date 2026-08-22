@@ -89,8 +89,10 @@ export interface RenderableGlyph {
     isVirtual: boolean;
     /** IPA character (only for virtual glyphs) */
     ipaCharacter?: string;
-    /** Original index in the input array */
+    /** Index of the input entry this glyph came from (a grapheme expands to several glyphs) */
     sourceIndex: number;
+    /** Structural role copied from the source entry — drives word/line splitting */
+    role?: import('../../../db/types').SpellingRole;
 }
 
 /**
@@ -299,20 +301,6 @@ export interface GlyphSpellingDisplayProps {
      * writing-system-aware text flow.
      */
     writingSystem?: import('../../../db/api/types').WritingSystemSettings;
-
-    /**
-     * Word boundary indices in the glyph array.
-     * Indices of glyphs that are word separators.
-     * Used by the composed block strategy to group glyphs into words.
-     */
-    wordBoundaries?: number[];
-
-    /**
-     * Line break indices in the glyph array.
-     * Indices of glyphs that are explicit line breaks ('\n').
-     * Used by the composed block strategy to force new lines.
-     */
-    lineBreaks?: number[];
 }
 
 // =============================================================================

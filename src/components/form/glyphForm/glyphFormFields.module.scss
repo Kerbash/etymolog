@@ -1,7 +1,23 @@
-/* GlyphFormFields styles */
+/* GlyphFormFields — the two numbered sections of the glyph form. */
 
-.formContainer {
+.section {
     display: flex;
     flex-direction: column;
     gap: 1rem;
+}
+
+/**
+ * The drawing field's wrapper.
+ *
+ * `width: fit-content` keeps the drawer at its natural size instead of
+ * stretching across a wide form — that is what `sizing.fitContent` was doing
+ * here. `max-width: 100%` is the half it was missing: the drawer has a hard
+ * ~366px minimum (a fixed 300px canvas plus padding), and without the cap that
+ * minimum pushed the form, the tab panel and the page past a 360px viewport.
+ * With it the drawer scrolls inside its own panel (see `svgDrawer.module.scss`)
+ * and the page reflows.
+ */
+.drawerField {
+    width: fit-content;
+    max-width: 100%;
 }

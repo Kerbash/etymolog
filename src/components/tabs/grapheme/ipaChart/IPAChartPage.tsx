@@ -1,140 +1,147 @@
 /**
- * IPAChartPage Component
+ * IPAChartPage — `/script-maker/chart`.
  *
- * Main page for viewing the IPA chart with grapheme assignments.
- * Accessible at /script-maker/chart
+ * The IPA consonant + vowel charts with the script's grapheme assignments
+ * painted on. Clicking an assigned sound edits its grapheme; clicking an
+ * unassigned one starts a new grapheme with that phoneme pre-filled.
  *
- * Features:
- * - Displays consonant and vowel charts
- * - Shows assigned graphemes with their glyphs
- * - Unassigned IPA characters are grayed out and clickable
- * - Clicking assigned → edit grapheme
- * - Clicking unassigned → create grapheme with pre-filled phoneme
+ * A thin wrapper over {@link ChartPageLayout} — the header, stats, loading,
+ * error and the collapsed explainer are all shared with the other three chart
+ * pages now.
  *
- * @module tabs/grapheme/ipaChart/IPAChartPage
+ * It also hosts the FLAVOUR GUIDE (word generator, Phase 4): the picker in the
+ * header slot, the tier overlay on the chart itself, and the legend under it.
+ * The chosen flavour lives in `settings.wordGenerator.guidePresetId`, so it is
+ * the same choice the syllabary page and the generator page see.
  */
 
-import { useMemo, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import classNames from 'classnames';
+import { useCallback, useId, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
-import IconButton from 'cyber-components/interactable/buttons/iconButton/iconButton';
-import { IPACombinedChart } from '../../../display/ipaChart';
+import {
+    GuideLegend,
+    GuidePicker,
+    IPACombinedChart,
+    useGuidePreset,
+} from '../../../display/ipaChart';
 import { useEtymolog } from '../../../../db';
-import { flex, graphic } from 'utils-styles';
 import type { GraphemeComplete } from '../../../../db/types';
-import styles from './IPAChartPage.module.scss';
+import { ROUTES, resolveUrl } from '../../../../url_mapping';
+import ChartPageLayout from '../chartPage/ChartPageLayout';
 
-/**
- * IPAChartPage - Main container for the IPA chart viewer.
- */
 export default function IPAChartPage() {
     const navigate = useNavigate();
-    const { api, isLoading, error } = useEtymolog();
-
-    // Fetch phoneme-grapheme mappings
-    const phonemeMapResult = useMemo(() => {
-        if (isLoading) return null;
-        return api.grapheme.getPhonemeMap();
-    }, [api, isLoading]);
+    const { api, isReady, error } = useEtymolog();
+    /** Bumped by Retry to re-run the lookup below. */
+    const [attempt, setAttempt] = useState(0);
+    /**
+     * The explainer is CONTROLLED here (it is uncontrolled on the other chart
+     * pages) so the legend's "Why it sounds like this" can open it. A second
+     * disclosure holding the same paragraph would be two places to look for one
+     * explanation.
+     */
+    const [aboutOpen, setAboutOpen] = useState(false);
+    const aboutId = useId();
 
     const phonemeMap = useMemo(() => {
-        if (!phonemeMapResult?.success || !phonemeMapResult.data) {
-            return new Map<string, GraphemeComplete>();
-        }
-        return phonemeMapResult.data;
-    }, [phonemeMapResult]);
+        if (!isReady) return new Map<string, GraphemeComplete>();
+        void attempt;
+        const result = api.grapheme.getPhonemeMap();
+        return result.success && result.data
+            ? result.data
+            : new Map<string, GraphemeComplete>();
+    }, [api, isReady, attempt]);
 
-    // Handle cell clicks - navigate to create or edit
     const handleCellClick = useCallback(
         (ipa: string, grapheme?: GraphemeComplete | null) => {
-            if (grapheme) {
-                // Navigate to edit page
-                navigate(`/script-maker/grapheme/db/${grapheme.id}`);
-            } else {
-                // Navigate to create page with pre-filled phoneme
-                navigate(`/script-maker/create?phoneme=${encodeURIComponent(ipa)}`);
-            }
+            navigate(
+                grapheme
+                    ? resolveUrl(ROUTES.graphemeEdit, { id: grapheme.id })
+                    : `${ROUTES.scriptMakerCreate}?phoneme=${encodeURIComponent(ipa)}`,
+            );
         },
-        [navigate]
+        [navigate],
     );
 
-    // Loading state
-    if (isLoading) {
-        return (
-            <div className={classNames(styles.container, styles.loading)}>
-                <div className={styles.loadingText}>Loading IPA Chart...</div>
-            </div>
-        );
-    }
+    const { preset, guide, guideLabel, coreFact, coverage } = useGuidePreset(phonemeMap);
 
-    // Error state
-    if (error) {
-        return (
-            <div className={classNames(styles.container, styles.error)}>
-                <div className={styles.errorText}>
-                    Failed to load chart: {error.message}
-                </div>
-            </div>
-        );
-    }
+    const showWhy = useCallback(() => {
+        setAboutOpen(true);
+        const explainer = document.getElementById(aboutId);
+        // Focus FOLLOWS the disclosure it opened. Without this a keyboard user
+        // presses "Why it sounds like this", the paragraph unrolls somewhere
+        // below them, and their focus is still on a button in the legend — the
+        // classic disclosure trap where the content that appeared is content
+        // you now have to go and find. `tabIndex={-1}` on the wrapper (see
+        // `ChartPageLayout`) makes it a legal focus target without putting it
+        // in the tab order.
+        explainer?.focus?.({ preventScroll: true });
+        // `scrollIntoView` is absent in happy-dom and on some older engines;
+        // the disclosure has still opened, so the guard costs nothing.
+        explainer?.scrollIntoView?.({ block: 'nearest' });
+    }, [aboutId]);
 
     return (
-        <div className={styles.container}>
-            {/* Navigation header */}
-            <nav className={classNames(flex.flexRow, flex.flexGapM, styles.nav)}>
-                <IconButton
-                    as={Link}
-                    to="/script-maker"
-                    iconName="arrow-left"
-                >
-                    Back to Graphemes
-                </IconButton>
-            </nav>
-
-            {/* Page title */}
-            <h2 className={classNames(graphic.underlineHighlightColorPrimary, styles.pageTitle)}>
-                IPA Chart
-            </h2>
-
-            {/* Description */}
-            <p className={styles.description}>
-                Click on an IPA character to create or edit its associated grapheme.
-                Assigned sounds show their grapheme glyphs; unassigned sounds appear grayed out.
-            </p>
-
-            {/* Stats bar */}
-            <div className={styles.statsBar}>
-                <span className={styles.stat}>
-                    <strong>{phonemeMap.size}</strong> IPA sounds assigned
-                </span>
-            </div>
-
-            {/* Combined IPA Chart with pan/zoom */}
+        <ChartPageLayout
+            title="IPA chart"
+            description="Click a sound to create or edit the grapheme that writes it. Assigned sounds show their glyphs; unassigned ones are greyed out."
+            back={{ to: ROUTES.scriptMaker, label: 'Graphemes' }}
+            actions={<GuidePicker />}
+            facts={[
+                { label: 'Sounds assigned', value: phonemeMap.size, big: true },
+                ...(coreFact
+                    ? [{ label: 'Core sounds in script', value: coreFact, big: true }]
+                    : []),
+            ]}
+            isReady={isReady}
+            error={error ?? null}
+            onRetry={() => setAttempt((n) => n + 1)}
+            aboutId={aboutId}
+            aboutOpen={aboutOpen}
+            onAboutOpenChange={setAboutOpen}
+            belowChart={
+                preset && coverage ? (
+                    <GuideLegend
+                        preset={preset}
+                        coverage={coverage}
+                        onShowWhy={showWhy}
+                        whyOpen={aboutOpen}
+                        whyTargetId={aboutId}
+                    />
+                ) : null
+            }
+            about={
+                <>
+                    <h4>How to read this chart</h4>
+                    <ul>
+                        <li>
+                            <strong>Consonants</strong> are organised by place of articulation
+                            (columns) and manner of articulation (rows). Each cell shows the
+                            voiceless/voiced pair.
+                        </li>
+                        <li>
+                            <strong>Vowels</strong> sit on a trapezoid by height (vertical) and
+                            backness (horizontal). Pairs show the unrounded and rounded variants.
+                        </li>
+                        <li>
+                            <strong>Shaded cells</strong> are sounds judged physically impossible.
+                        </li>
+                    </ul>
+                    {preset && (
+                        <>
+                            <h4>{preset.name}</h4>
+                            <p>{preset.why}</p>
+                        </>
+                    )}
+                </>
+            }
+        >
             <IPACombinedChart
                 phonemeMap={phonemeMap}
                 onCellClick={handleCellClick}
-                isLoading={isLoading}
-                className={styles.chartCanvas}
+                guide={guide}
+                guideLabel={guideLabel}
             />
-
-            {/* Additional info */}
-            <div className={styles.infoSection}>
-                <h4>Understanding the IPA Chart</h4>
-                <ul>
-                    <li>
-                        <strong>Consonants:</strong> Organized by place of articulation (columns)
-                        and manner of articulation (rows). Each cell shows voiceless/voiced pairs.
-                    </li>
-                    <li>
-                        <strong>Vowels:</strong> Positioned on a trapezoid by height (vertical)
-                        and backness (horizontal). Pairs show unrounded and rounded variants.
-                    </li>
-                    <li>
-                        <strong>Shaded cells:</strong> Indicate physically impossible sounds.
-                    </li>
-                </ul>
-            </div>
-        </div>
+        </ChartPageLayout>
     );
 }

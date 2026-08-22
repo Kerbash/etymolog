@@ -1,8 +1,10 @@
-@import '@styles/modal.module.scss';
+// ConlangNameModal — the panel surface comes from <DialogPanel> and the field
+// chrome from smart-form's LabelShiftTextInput. All that is left here is the
+// form's own vertical rhythm, which lives on the FORM (not the panel) because
+// the action bar has to sit inside the <form> to submit it.
 
-.modalContent {
-    @extend .modalContentTemplate;
-    padding: 1.5rem;
-    min-width: 400px;
-    max-width: 500px;
+.form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
 }

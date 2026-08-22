@@ -1,66 +1,96 @@
 /**
  * LexiconHome
- * ----------------
- * Main view for the Lexicon tab showing the gallery with navigation.
+ * -----------
+ * The Lexicon tab's index: a `PageHeader` with the word counts and the "New
+ * word" action, then the shared gallery.
+ *
+ * The four inline style objects that used to live here (a hand-built flex
+ * header row, a `0 0.5rem` padding, a `flex: 1; min-height: 0; overflow: auto`
+ * scroll box) are gone: the shell's `BasicBody` supplies the gutters and the
+ * column, and the page no longer has to manage its own scrolling now that the
+ * `height: 100dvh` shell is gone.
  */
 
-import { useNavigate, Link } from 'react-router-dom';
-import { useCallback, useMemo } from 'react';
-import { useEtymolog } from '../../../db';
-import LexiconGallery from './galleryLexicon/LexiconGallery';
-import type { LexiconComplete, GraphemeComplete } from '../../../db/types';
+import { useMemo } from 'react';
+import { Link } from 'react-router-dom';
+
 import IconButton from 'cyber-components/interactable/buttons/iconButton/iconButton.tsx';
-import { buttonStyles } from 'cyber-components/interactable/buttons/button/button.tsx';
-import classNames from 'classnames';
-import { flex, sizing } from "utils-styles";
+import { buttonStyles } from 'cyber-components/interactable/buttons/button';
+import type { QuickFact } from 'cyber-components/display/quickFactsRow';
+
+import { useEtymolog } from '../../../db';
+import type { GraphemeComplete } from '../../../db/types';
+import { ROUTES } from '../../../url_mapping';
+import { PageHeader } from '../../shared';
+import LexiconGallery from './galleryLexicon/LexiconGallery';
 
 export default function LexiconHome() {
-    const navigate = useNavigate();
-    const { data, isLoading, error } = useEtymolog();
+    const { data, isReady, error } = useEtymolog();
 
-    // Get lexicon data and build grapheme map
-    const lexicons = data.lexiconComplete ?? [];
+    // Memoised, not a bare `??`: the fallback produces a NEW empty array on
+    // every render, which would change the identity of every downstream `useMemo`
+    // dependency (and the gallery's `items`) on each pass.
+    const lexicons = useMemo(() => data.lexiconComplete ?? [], [data.lexiconComplete]);
 
-    // Build a map of grapheme ID to GraphemeComplete for SVG lookup
-    const graphemeMap = useMemo((): Map<number, GraphemeComplete> => {
-        return new Map((data.graphemesComplete ?? []).map((g: GraphemeComplete) => [g.id, g] as const));
-    }, [data.graphemesComplete]);
+    const graphemeMap = useMemo(
+        (): Map<number, GraphemeComplete> =>
+            new Map((data.graphemesComplete ?? []).map((g) => [g.id, g] as const)),
+        [data.graphemesComplete],
+    );
 
-    // Handle lexicon click - navigate to view page
-    const handleLexiconClick = useCallback((lexicon: LexiconComplete) => {
-        navigate(`/lexicon/db/${lexicon.id}`);
-    }, [navigate]);
+    const needsAttention = useMemo(
+        () => lexicons.filter((lexicon) => lexicon.needs_attention).length,
+        [lexicons],
+    );
+
+    // "Needs attention" only appears when there IS something to attend to — a
+    // permanent "0 needing attention" is noise that trains the eye to skip the
+    // strip, which is exactly when the non-zero case stops being noticed.
+    const facts = useMemo<QuickFact[]>(() => {
+        const items: QuickFact[] = [{ label: 'Words', value: lexicons.length, big: true }];
+        if (needsAttention > 0) {
+            items.push({ label: 'Needs attention', value: needsAttention, big: true });
+        }
+        return items;
+    }, [lexicons.length, needsAttention]);
 
     return (
-        <div className={classNames(flex.flexColumn, sizing.parentSize)} style={{ gap: '1rem' }}>
-            {/* Header with title and create button */}
-            <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                padding: '0 0.5rem',
-            }}>
-                <h2 style={{ margin: 0 }}>Lexicon</h2>
-                <IconButton
-                    as={Link}
-                    to="/lexicon/create"
-                    iconName="plus-lg"
-                    className={buttonStyles.primary}
-                >
-                    New Word
-                </IconButton>
-            </div>
+        <>
+            <PageHeader
+                title="Lexicon"
+                description="Every word in your language, with its spelling, meanings and etymology."
+                facts={facts}
+                actions={
+                    <>
+                        {/* Secondary, and second: the generator is the faster
+                            way to fill an empty lexicon, but "New word" is what
+                            a user who knows their word is looking for. */}
+                        <IconButton
+                            as={Link}
+                            to={ROUTES.lexiconGenerate}
+                            iconName="shuffle"
+                            className={buttonStyles.secondary}
+                        >
+                            Generate words
+                        </IconButton>
+                        <IconButton
+                            as={Link}
+                            to={ROUTES.lexiconCreate}
+                            iconName="plus-lg"
+                            className={buttonStyles.primary}
+                        >
+                            New word
+                        </IconButton>
+                    </>
+                }
+            />
 
-            {/* Gallery */}
-            <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-                <LexiconGallery
-                    lexicons={lexicons}
-                    graphemeMap={graphemeMap}
-                    isLoading={isLoading}
-                    error={error}
-                    onLexiconClick={handleLexiconClick}
-                />
-            </div>
-        </div>
+            <LexiconGallery
+                lexicons={lexicons}
+                graphemeMap={graphemeMap}
+                isReady={isReady}
+                error={error}
+            />
+        </>
     );
 }

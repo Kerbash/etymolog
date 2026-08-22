@@ -63,9 +63,9 @@ export default function PunctuationTable({
         return (
             <tbody key={category} className={styles.categoryGroup}>
                 <tr className={styles.categoryHeader}>
-                    <td colSpan={5}>
+                    <th scope="colgroup" colSpan={5}>
                         <span className={styles.categoryLabel}>{categoryLabel}</span>
-                    </td>
+                    </th>
                 </tr>
                 {marks.map(mark => (
                     <PunctuationCell
@@ -87,12 +87,15 @@ export default function PunctuationTable({
         <div className={classNames(styles.container, className)}>
             <table className={styles.table}>
                 <thead>
+                    {/* `scope="col"` on every header: without it a screen
+                        reader cannot tell which column a cell belongs to, and
+                        this table is five columns of near-identical controls. */}
                     <tr className={styles.headerRow}>
-                        <th className={styles.headerSymbol}>Symbol</th>
-                        <th className={styles.headerLabel}>Name</th>
-                        <th className={styles.headerDisplay}>Display</th>
-                        <th className={styles.headerStatus}>Status</th>
-                        <th className={styles.headerActions}>Actions</th>
+                        <th scope="col" className={styles.headerSymbol}>Symbol</th>
+                        <th scope="col" className={styles.headerLabel}>Name</th>
+                        <th scope="col" className={styles.headerDisplay}>Display</th>
+                        <th scope="col" className={styles.headerStatus}>Status</th>
+                        <th scope="col" className={styles.headerActions}>Actions</th>
                     </tr>
                 </thead>
                 {categoriesToShow.map(cat => renderCategory(cat.key, cat.label))}

@@ -1,0 +1,598 @@
+/**
+ * The word generator page.
+ *
+ * ONE stylesheet for the five components, because they are one surface: the
+ * chip in the inventory, the chip in the forbidden list and the quick-add chip
+ * in the shape editor are the same object to the user, and three modules would
+ * be three chips that drift apart.
+ *
+ * Tokens only — no colour literals, no `var()` fallbacks (see
+ * `styles/__tests__/tokens.test.ts` for why a fallback is the exact mechanism
+ * that breaks dark mode). Flex, gap and padding come from `utils-styles`
+ * classes at the call sites; what is here is grid, sizing and the things a
+ * utility class cannot express.
+ */
+
+/* ===========================================================================
+   PAGE LAYOUT
+   =========================================================================== */
+
+/**
+ * Two columns from 900px: the controls on the left, the words on the right, so
+ * a change to a switch and its effect on the batch are visible at once.
+ *
+ * `minmax(0, 1fr)` on BOTH tracks, never `1fr` alone: a grid track's default
+ * minimum is `auto` = min-content, so one long unbroken word (which is exactly
+ * what this page produces) would push its column wider than the viewport and
+ * take the whole page's horizontal scrollbar with it.
+ */
+.layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--section-gap);
+    align-items: start;
+}
+
+@media (min-width: 900px) {
+    .layout {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+
+    /* The results panel follows the controls down the page rather than
+       scrolling away from them. */
+    .results {
+        position: sticky;
+        top: 1rem;
+    }
+}
+
+.column {
+    display: flex;
+    flex-direction: column;
+    gap: var(--section-gap);
+    min-width: 0;
+}
+
+.section {
+    background: var(--surface-base);
+    border: var(--border-width) solid var(--border-primary);
+    border-radius: var(--radius-surface);
+    padding: var(--surface-padding);
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    min-width: 0;
+}
+
+.sectionHint {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+/* ===========================================================================
+   SHARED CONTROLS
+   =========================================================================== */
+
+.fieldLabel {
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: var(--heading-letter-spacing);
+    text-transform: var(--heading-transform);
+    color: var(--text-secondary);
+}
+
+.textInput,
+.numberInput,
+.select {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.95rem;
+    font-family: inherit;
+    color: var(--text-primary);
+    /* A token, not the UA default: an undeclared control is painted with the
+       browser's own chrome, which does not follow `[data-theme]`. */
+    background: var(--surface-raised);
+    border: var(--border-width) solid var(--border-primary);
+    border-radius: var(--radius-control);
+    min-width: 0;
+    max-width: 100%;
+
+    &:focus-visible {
+        outline: 2px solid var(--interactive-base);
+        outline-offset: 2px;
+    }
+}
+
+.textInput {
+    flex: 1 1 auto;
+}
+
+.numberInput {
+    width: 5rem;
+    flex: 0 0 auto;
+}
+
+.select {
+    cursor: pointer;
+}
+
+.monoInput {
+    font-family: var(--font-mono);
+}
+
+.invalid {
+    border-color: var(--status-error);
+}
+
+.fieldError {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--status-error);
+}
+
+.inlineButton {
+    padding: 0.35rem 0.7rem;
+    font: inherit;
+    font-size: 0.85rem;
+    color: var(--interactive-text);
+    background: var(--interactive-base);
+    border: var(--border-width) solid var(--interactive-base);
+    border-radius: var(--radius-control);
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+        background: var(--interactive-hover);
+        border-color: var(--interactive-hover);
+    }
+
+    &:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--interactive-base);
+        outline-offset: 2px;
+    }
+}
+
+.ghostButton {
+    padding: 0.3rem 0.6rem;
+    font: inherit;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+    border: var(--border-width) solid var(--border-primary);
+    border-radius: var(--radius-control);
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+        background: var(--surface-hover);
+    }
+
+    &:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--interactive-base);
+        outline-offset: 2px;
+    }
+}
+
+.linkAction {
+    font-size: 0.85rem;
+    color: var(--interactive-base);
+}
+
+/* ===========================================================================
+   01 FLAVOUR — the preset radio cards
+   =========================================================================== */
+
+.presetGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 13rem), 1fr));
+    gap: 0.6rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+/**
+ * Each card wraps a REAL radio input, visually hidden.
+ *
+ * That is what buys arrow-key movement, space to select, the roving tab stop
+ * and the announced "3 of 8" — all of which a `<button role="radio">` group has
+ * to reimplement by hand, and all of which were wrong in the hand-rolled
+ * versions this replaces.
+ */
+.presetCard {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.6rem 0.7rem;
+    background: var(--bg-secondary);
+    border: var(--border-width) solid var(--border-primary);
+    border-radius: var(--radius-surface);
+    cursor: pointer;
+    min-width: 0;
+
+    &:hover {
+        background: var(--surface-hover);
+    }
+}
+
+.presetCardSelected {
+    border-color: var(--interactive-base);
+    border-width: var(--border-width-strong);
+    background: var(--status-info-bg);
+}
+
+/* Visually hidden, NOT `display: none` — a hidden input is not focusable and
+   would take the whole group out of the keyboard order. */
+.visuallyHidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+}
+
+.presetCard:focus-within {
+    outline: 2px solid var(--interactive-base);
+    outline-offset: 2px;
+}
+
+.presetName {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--text-primary);
+}
+
+.presetTagline {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.presetTouchstones {
+    font-size: 0.75rem;
+    color: var(--text-secondary-muted);
+}
+
+.presetExamples {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--text-primary-muted);
+    overflow-wrap: anywhere;
+}
+
+.coverage {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.coverageMissing {
+    font-family: var(--font-mono);
+    color: var(--text-primary-muted);
+}
+
+/* ===========================================================================
+   02 SOUNDS — chips
+   =========================================================================== */
+
+.chipGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    min-width: 0;
+}
+
+.chipGroupLabel {
+    font-size: 0.75rem;
+    letter-spacing: var(--heading-letter-spacing);
+    text-transform: var(--heading-transform);
+    color: var(--text-secondary-muted);
+}
+
+.chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    background: var(--bg-secondary);
+    border: var(--border-width) solid var(--border-primary);
+    border-radius: var(--radius-chip);
+    overflow: hidden;
+}
+
+.chipButton {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.25rem 0.5rem;
+    font: inherit;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    background: none;
+    border: 0;
+    cursor: pointer;
+
+    &:hover {
+        background: var(--surface-hover);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--interactive-base);
+        outline-offset: -2px;
+    }
+}
+
+.chipSound {
+    font-family: var(--font-mono);
+}
+
+.chipTilt {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+/* `--status-good` is a BACKGROUND token: at 2.74:1 in light mode it must never
+   become text (`todo.md`). The tick reads as good against the good background. */
+.chipCheck {
+    font-size: 0.7rem;
+    padding: 0 0.2rem;
+    border-radius: var(--radius-pill);
+    background: var(--status-good-bg);
+    color: var(--text-primary);
+}
+
+.chipCommon {
+    border-color: var(--interactive-base);
+}
+
+.chipRare {
+    opacity: 0.75;
+}
+
+.chipOff {
+    opacity: 0.45;
+    text-decoration: line-through;
+}
+
+.chipUnknown {
+    border-color: var(--status-warning);
+}
+
+.chipRemove {
+    padding: 0.25rem 0.4rem;
+    font: inherit;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    background: none;
+    border: 0;
+    border-left: var(--border-width) solid var(--border-primary);
+    cursor: pointer;
+
+    &:hover {
+        color: var(--status-bad);
+        background: var(--surface-hover);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--interactive-base);
+        outline-offset: -2px;
+    }
+}
+
+.sourceRow {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.addRow {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+.addField {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    flex: 1 1 10rem;
+    min-width: 0;
+}
+
+.unknownTitle {
+    font-size: 0.8rem;
+    color: var(--status-warning);
+}
+
+/* ===========================================================================
+   03 SHAPE
+   =========================================================================== */
+
+.templateRow {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.templateList {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.rangeRow {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.range {
+    flex: 1 1 10rem;
+    min-width: 6rem;
+    accent-color: var(--interactive-base);
+}
+
+.rangeValue {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    min-width: 3rem;
+    text-align: right;
+}
+
+/* ===========================================================================
+   04 CONSTRAINTS
+   =========================================================================== */
+
+.switchRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.switchText {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 0;
+    flex: 1 1 12rem;
+}
+
+.switchLabel {
+    font-size: 0.9rem;
+    color: var(--text-primary);
+}
+
+.switchHint {
+    font-size: 0.78rem;
+    color: var(--text-secondary-muted);
+}
+
+/* ===========================================================================
+   RESULTS
+   =========================================================================== */
+
+.batchMeta {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.seed {
+    font-family: var(--font-mono);
+}
+
+.wordList {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    max-height: 32rem;
+    overflow-y: auto;
+    min-width: 0;
+}
+
+.wordRow {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3rem 0.4rem;
+    border-radius: var(--radius-control);
+    border: var(--border-width) solid transparent;
+    min-width: 0;
+
+    &:hover {
+        background: var(--surface-hover);
+    }
+}
+
+.wordRowSelected {
+    border-color: var(--interactive-base);
+    background: var(--status-info-bg);
+}
+
+.wordCheckbox {
+    flex: 0 0 auto;
+    accent-color: var(--interactive-base);
+}
+
+.wordIpa {
+    font-family: var(--font-mono);
+    font-size: 0.95rem;
+    color: var(--text-primary);
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.wordSpelling {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    max-width: 40%;
+    overflow: hidden;
+}
+
+.wordActions {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.footer {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    padding-top: 0.5rem;
+    border-top: var(--border-width) var(--divider-style) var(--border-secondary);
+}
+
+.warnings {
+    margin: 0;
+    padding-left: 1.1rem;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.headerActions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}

@@ -1,126 +1,169 @@
-@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@300;400;500;600;700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Bitcount+Prop+Single:wght@400&text=Nochi&display=swap');
+/* =============================================================================
+   Etymolog — global token layer
+   =============================================================================
 
+   THE ONLY place in this app where a colour literal, a radius literal or a
+   shadow literal may appear. Everything under `src/` paints with `var(…)` tokens
+   and nothing else; `src/styles/__tests__/tokens.test.ts` is the ratchet that
+   keeps it that way (it fails the build on an undefined token, on a hex/rgb/hsl
+   literal outside this file, and on `var(--x, #fallback)` anywhere).
+
+   WHY THE FALLBACK BAN MATTERS: `var(--color-text-primary, #1a1a1a)` looks
+   defensive but is the opposite — when the token is undefined (as ~22 of them
+   were), the literal ALWAYS wins, including under `[data-theme="dark"]`. That
+   single pattern is what pinned the whole Translator tab to light mode. A
+   missing token must fail loudly, not silently freeze a colour.
+
+   Token vocabulary is CLAUDE.md's semantic set (see "Color & Theming") plus the
+   16 nochi shape tokens, plus one small, clearly delimited block of app-derived
+   names — each defined in terms of a canonical token, never a raw value.
+
+   Fonts are loaded from <link> tags in index.html, not @import: an @import in
+   the app's entry CSS is a render-blocking round-trip that the PWA's runtime
+   cache cannot pre-warm.
+   ============================================================================= */
+
+/* =============================================================================
+   LIGHT THEME (default) — warm earth tones
+   ============================================================================= */
 :root {
-    /* ===d=========================================
-       SEMANTIC COLOR TOKENS (Theme-agnostic names)
-       These are what you use in your components
-       ============================================ */
-
-    /* Page Background */
+    /* ── Page background: the infinite canvas behind everything ───────────── */
     --page-background-primary: #fff6dd;
     --page-background-secondary: #fffaf8;
 
-    /* Backgrounds */
-    --bg-primary: var(--light-bg-primary);
-    --bg-secondary: var(--light-bg-secondary);
-    --bg-tertiary: var(--light-bg-tertiary);
+    /* ── Chrome: anchored to a viewport edge (header, footer, nav rail) ───── */
+    --bg-primary: rgb(204, 189, 169);
+    --bg-secondary: rgb(232, 219, 195);
+    --bg-tertiary: rgb(255, 245, 230);
 
-    /* Text colors */
-    --text-primary: var(--light-text-primary);
-    --text-secondary: var(--light-text-secondary);
-    --text-primary-muted: var(--light-text-muted);
+    /* ── Text ─────────────────────────────────────────────────────────────── */
+    --text-primary: rgb(51, 31, 0);
+    --text-secondary: rgb(87, 48, 9);
+    --text-primary-muted: rgb(107, 77, 35);
+    /* Darkened in Phase 8 for WCAG AA. The old rgb(138,112,74) measured
+       4.41:1 on --surface-base and 3.41:1 on --bg-secondary — below 4.5:1 for
+       the small text it carries (form hints, PageHeader descriptions, the
+       ancestry tree's meta lines). Now >= 4.57:1 against every background in
+       this theme. */
+    --text-secondary-muted: rgb(115, 93, 61);
 
-    /* Surfaces (cards, modals, etc) */
-    --surface-base: var(--light-surface-base);
-    --surface-raised: var(--light-surface-raised);
-    --surface-overlay: var(--light-surface-overlay);
+    /* ── Surfaces: scroll WITH the content (cards, panels, modals) ─────────
+       Translucent by design per CLAUDE.md — the page background shows through,
+       and the alpha is baked into the token so no call site writes color-mix.
+       0.55 / 0.65 / 0.95 base / raised / overlay. */
+    --surface-base: rgba(255, 250, 238, 0.55);
+    --surface-raised: rgba(249, 238, 218, 0.65);
+    --surface-overlay: rgba(255, 250, 238, 0.95);
 
-    /* Borders */
-    --border-primary: var(--light-border-primary);
-    --border-secondary: var(--light-border-secondary);
+    /* ── Borders ──────────────────────────────────────────────────────────── */
+    --border-primary: rgb(113, 100, 84);
+    --border-secondary: rgb(178, 160, 134);
 
-    /* Interactive states */
-    --interactive-base: var(--light-interactive-base);
-    --interactive-hover: var(--light-interactive-hover);
-    --interactive-active: var(--light-interactive-active);
+    /* ── Interactive ──────────────────────────────────────────────────────── */
+    --interactive-base: rgb(45, 19, 0);
+    --interactive-hover: rgb(91, 43, 9);
+    --interactive-active: rgb(255, 210, 176);
+    /* Text/icon colour that sits ON an --interactive-* fill (the .primary
+       button's label). MUST contrast the near-black-brown fill above, not the
+       page — without it, cyber-components' `color: var(--interactive-text)`
+       fell back to the inherited --text-primary (also dark brown) and the
+       primary CTA rendered dark-on-dark at 1.11:1. Cream on the dark fill is
+       ~16:1. */
+    --interactive-text: rgb(255, 246, 221);
 
-    /* Status colors (same in both themes) */
-    --status-success: rgb(145, 180, 120);
-    --status-warning: rgb(225, 195, 120);
-    --status-error: rgb(200, 120, 85);
-    --status-info: rgb(100, 150, 200);
+    /* ── Status, TRANSIENT family (action feedback that appears then fades:
+       toasts, submit results, validation messages). Muted on purpose. ────── */
+    /* Deepened in Phase 8: all four are used as small TEXT (the persistence
+       status line, the punctuation cell states, the canvas's "IPA fallback"
+       hint), and the previous values measured 2.08-3.46:1 against this
+       theme's backgrounds. Same hues, lower luminance — "muted" is what this
+       family is for — and now >= 4.5:1 everywhere. The -bg companions below
+       are unchanged: they are fills, and the text on them is --text-primary. */
+    --status-success: rgb(81, 104, 62);
+    --status-warning: rgb(117, 93, 39);
+    --status-error: rgb(151, 75, 45);
+    --status-info: rgb(60, 99, 141);
+    --status-success-bg: rgba(109, 140, 84, 0.12);
+    --status-warning-bg: rgba(186, 148, 62, 0.12);
+    --status-error-bg: rgba(184, 92, 55, 0.12);
+    --status-info-bg: rgba(72, 118, 168, 0.12);
 
-    /* Bad Good colors for status */
-    --status-good: rgb(100, 200, 100);
+    /* ── Status, PERSISTENT family (state badges that live on the surface:
+       "needs attention", "verified", a disabled row). Vibrant on purpose. ── */
+    --status-good: rgb(58, 150, 58);
     --status-bad: rgb(154, 0, 0);
+    --status-disabled: rgb(146, 137, 124);
+    --status-good-bg: rgba(58, 150, 58, 0.14);
+    --status-bad-bg: rgba(154, 0, 0, 0.12);
+    --status-disabled-bg: rgba(146, 137, 124, 0.14);
+}
 
-    /* Status backgrounds */
-    --status-success-bg: rgba(145, 180, 120, 0.1);
-    --status-warning-bg: rgba(225, 195, 120, 0.1);
-    --status-error-bg: rgba(200, 120, 85, 0.1);
-    --status-info-bg: rgba(100, 150, 200, 0.1);
+/* =============================================================================
+   DARK THEME — cool blues
+   Only the mode-dependent COLOUR tokens are redeclared here. Shape tokens and
+   utility colours are mode-invariant and live in the `:root` blocks below, so
+   they cannot drift between modes.
+   ============================================================================= */
+[data-theme="dark"] {
+    --page-background-primary: rgb(8, 18, 22);
+    --page-background-secondary: rgb(12, 24, 28);
 
+    --bg-primary: rgba(1, 13, 16, 0.8);
+    --bg-secondary: rgb(18, 30, 32);
+    --bg-tertiary: rgb(35, 45, 48);
 
-    /* ============================================
-       LIGHT THEME VALUES - Warm Earth Tones
-       ============================================ */
+    --text-primary: rgb(255, 255, 255);
+    --text-secondary: rgb(189, 179, 122);
+    --text-primary-muted: rgb(178, 182, 182);
+    /* Lifted in Phase 8 for WCAG AA: rgb(134,129,77) measured 4.35:1 on
+       --surface-base and 3.52:1 on --surface-overlay. Now >= 4.51:1 against
+       every background in this theme. */
+    --text-secondary-muted: rgb(154, 148, 89);
 
-    /* Light backgrounds */
-    --light-bg-primary: rgb(204, 189, 169);
-    --light-bg-secondary: rgb(74, 54, 28);
-    --light-bg-tertiary: rgb(255, 245, 230);
+    --surface-base: rgba(25, 37, 36, 0.55);
+    --surface-raised: rgba(35, 47, 46, 0.65);
+    --surface-overlay: rgba(35, 47, 46, 0.95);
 
-    /* Light text */
-    --light-text-primary: rgb(51, 31, 0);
-    --light-text-secondary: #573009;
-    --light-text-muted: rgb(107, 77, 35);
+    --border-primary: rgba(189, 179, 122, 0.3);
+    --border-secondary: rgba(189, 179, 122, 0.15);
 
-    /* Light surfaces */
-    --light-surface-base: rgba(0, 0, 0, 0);
-    --light-surface-raised: rgb(168, 143, 119);
-    --light-surface-overlay: rgb(90, 68, 40);
+    --interactive-base: rgb(189, 179, 122);
+    --interactive-hover: rgb(226, 217, 177);
+    --interactive-active: rgb(134, 129, 77);
+    /* On the light tan fill above, text must be dark — near-black at ~8.8:1.
+       (Mirror of the light theme's cream-on-dark; see that block's note.) */
+    --interactive-text: rgb(8, 18, 22);
 
-    /* Light borders */
-    --light-border-primary: rgb(113, 100, 84);
-    --light-border-secondary: rgb(108, 81, 49);
+    /* Status hues are lifted for a dark ground: the light-mode values are
+       chosen against cream and go muddy on near-black. Same semantics, same
+       names — only the luminance moves. */
+    --status-success: rgb(148, 190, 118);
+    --status-warning: rgb(226, 190, 106);
+    --status-error: rgb(224, 132, 96);
+    --status-info: rgb(122, 172, 224);
+    --status-success-bg: rgba(148, 190, 118, 0.16);
+    --status-warning-bg: rgba(226, 190, 106, 0.16);
+    --status-error-bg: rgba(224, 132, 96, 0.16);
+    --status-info-bg: rgba(122, 172, 224, 0.16);
 
-    /* Light interactive */
-    --light-interactive-base: rgb(45, 19, 0);
-    --light-interactive-hover: rgb(91, 43, 9);
-    --light-interactive-active: rgb(255, 210, 176);
+    --status-good: rgb(104, 210, 104);
+    /* Lifted in Phase 8: rgb(226,82,82) measured 3.72:1 on --bg-tertiary while
+       carrying small text (validation messages, the punctuation "missing"
+       state). Now >= 4.51:1 everywhere. */
+    --status-bad: rgb(251, 91, 91);
+    --status-disabled: rgb(126, 132, 132);
+    --status-good-bg: rgba(104, 210, 104, 0.18);
+    --status-bad-bg: rgba(226, 82, 82, 0.16);
+    --status-disabled-bg: rgba(126, 132, 132, 0.18);
+}
 
-
-    /* ============================================
-       DARK THEME VALUES - Cool Dark Blues
-       ============================================ */
-
-    /* Dark backgrounds */
-    --dark-bg-primary: rgba(1, 13, 16, 0.8);
-    --dark-bg-secondary: rgba(1, 13, 16, 0.8);
-    --dark-bg-tertiary: rgb(35, 45, 48);
-
-    /* Dark text */
-    --dark-text-primary: rgba(255, 255, 255, 0);
-    --dark-text-secondary: rgb(189, 179, 122);
-    --dark-text-muted: rgb(134, 129, 77);
-
-    /* Dark surfaces */
-    --dark-surface-base: rgb(25, 37, 36);
-    --dark-surface-raised: rgb(35, 47, 46);
-    --dark-surface-overlay: rgba(35, 47, 46, 0.95);
-
-    /* Dark borders */
-    --dark-border-primary: rgba(189, 179, 122, 0.3);
-    --dark-border-secondary: rgba(189, 179, 122, 0.15);
-
-    /* Dark interactive */
-    --dark-interactive-base: rgb(189, 179, 122);
-    --dark-interactive-hover: rgb(226, 217, 177);
-    --dark-interactive-active: rgb(134, 129, 77);
-
-    /* ============================================
-       LAYOUT & UTILITY VARIABLES
-       ============================================ */
-
-    --page-background-decor-radius: 0px;
-    --page-background-decor-spacing: 5dvw;
-    --page-background-decore-opacity: 0.5;
-
-    --max-content-width: 1200px;
-    --content-padding: 1rem;
-
-    /* UTILITY COLORS */
+/* =============================================================================
+   MODE-INVARIANT TOKENS
+   ============================================================================= */
+:root {
+    /* ── Utility colours: fixed, NOT theme-switched. Reach for these only when
+       a colour must be literally that colour (a legend swatch, a canvas
+       stroke) — never as a shortcut around the semantic set. ─────────────── */
     --red: #ff4444;
     --green: #32ff7e;
     --blue: #3b82f6;
@@ -132,57 +175,112 @@
     --cyan: #00ffff;
     --white: #ffffff;
     --black: #000000;
+
+    /* ── Layout ───────────────────────────────────────────────────────────── */
+    --max-content-width: 1200px;
+    --content-padding: 1rem;
+
+    /* ── Typography ───────────────────────────────────────────────────────── */
+    --font-body: 'Chakra Petch', system-ui, Avenir, Helvetica, Arial, sans-serif;
+    --font-mono: 'Chakra Petch', ui-monospace, 'Cascadia Mono', 'SF Mono', Menlo, Consolas, monospace;
+
+    /* ── Page-background decoration (consumed by the background component) ── */
+    --page-background-decor-radius: 0px;
+    --page-background-decor-spacing: 5dvw;
+    --page-background-decore-opacity: 0.5;
+
+    /* ── SHAPE TOKENS (the 16-name nochi family, SHAPE_TOKEN_NAMES) ────────
+       Mode-INVARIANT by contract: declared once, here, and never inside a
+       `[data-theme]` block. Light and dark are the same app with different
+       colours — a radius that changed with the colour scheme would read as a
+       different product.
+
+       Radii: surface = cards/panels/modals; control = buttons and inputs;
+       pill = stadium badges; chip = the square-cut badge language; media =
+       glyph tiles, chart cells and image frames. A genuinely circular element
+       (a dot, an avatar) stays `border-radius: 50%` — that is not a radius
+       token decision.
+
+       Elevation: the house look is BORDER-driven, so resting cards carry no
+       shadow (`--shadow-surface: none`). Only floating chrome (dropdowns) and
+       modals lift off the page. */
+    --radius-surface: 0.5em;
+    --radius-control: 0.35em;
+    --radius-pill: 999px;
+    --radius-chip: 0.25em;
+    --radius-media: 0.5em;
+
+    --shadow-surface: none;
+    --shadow-raised: 0 4px 6px rgba(0, 0, 0, 0.1);
+    --shadow-overlay: 0 12px 32px rgba(0, 0, 0, 0.25);
+
+    --border-width: 1px;
+    --border-width-strong: 2px;
+    --divider-style: solid;
+
+    --surface-padding: 1rem;
+    --section-gap: 1.5rem;
+
+    /* Heading treatment. Etymolog's identity is the typeface, not a mono-caps
+       motif — so the transform is off and the ornament is empty. They are
+       tokens rather than absent so a future theme can switch the motif ON
+       without touching a single component's SCSS. */
+    --heading-transform: none;
+    --heading-letter-spacing: 0;
+    --heading-prefix: '';
 }
 
-/* ============================================
-   DARK MODE SWITCH
-   ============================================ */
-[data-theme="dark"] {
-    --bg-primary: var(--dark-bg-primary);
-    --bg-secondary: var(--dark-bg-secondary);
-    --bg-tertiary: var(--dark-bg-tertiary);
+/* =============================================================================
+   APP-DERIVED TOKENS
+   -----------------------------------------------------------------------------
+   Names the app needs that CLAUDE.md's canonical table does not carry. EVERY
+   one is defined in terms of a canonical token, so they follow the theme for
+   free and there is exactly one place to re-tune them. Nothing else may be
+   added here without a matching entry in this comment — the ratchet test reads
+   this file as the closed vocabulary.
 
-    --text-primary: var(--dark-text-primary);
-    --text-secondary: var(--dark-text-secondary);
-    --text-primary-muted: var(--dark-text-muted);
-
-    --surface-base: var(--dark-surface-base);
-    --surface-raised: var(--dark-surface-raised);
-    --surface-overlay: var(--dark-surface-overlay);
-
-    --border-primary: var(--dark-border-primary);
-    --border-secondary: var(--dark-border-secondary);
-
-    --interactive-base: var(--dark-interactive-base);
-    --interactive-hover: var(--dark-interactive-hover);
-    --interactive-active: var(--dark-interactive-active);
+   --surface-hover        hover wash for a --surface-base row/card
+   --surface-raised-hover hover wash for a --surface-raised control
+   --border-hover         border colour on hover/active for an outlined control
+   --focus-ring           :focus-visible outline colour (one ring, app-wide)
+   --status-neutral       "no status" swatch — an ancestry node with no type,
+                          a legend entry for "unclassified"
+   --scrim                translucent black behind a custom overlay/dropzone
+   --scrollbar-thumb      thumb colour where a scroll container is styled
+   ============================================================================= */
+:root {
+    --surface-hover: color-mix(in srgb, var(--interactive-base) 8%, transparent);
+    --surface-raised-hover: color-mix(in srgb, var(--interactive-base) 14%, transparent);
+    --border-hover: var(--interactive-base);
+    --focus-ring: var(--interactive-base);
+    --status-neutral: var(--text-secondary-muted);
+    --scrim: color-mix(in srgb, var(--black) 55%, transparent);
+    --scrollbar-thumb: var(--border-primary);
 }
 
-/* BODY =========================================================== */
+/* =============================================================================
+   GLOBALS
+   ============================================================================= */
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
 
 body {
-    font-size: 16px;
-
     margin: 0;
     padding: 0;
 
+    font-family: var(--font-body);
+    font-size: 16px;
+
     color: var(--text-primary);
-    background-color: var(--bg-primary);
+    background: var(--page-background-primary);
 
-    height: 100dvh;
-    width: 100dvw;
+    min-height: 100dvh;
+    width: 100%;
     position: relative;
-}
-
-/* GLOBAL STYLES =========================================================== */
-* {
-    box-sizing: border-box;
-    font-family: 'Chakra Petch', system-ui, Avenir, Helvetica, Arial, sans-serif;
-}
-
-/* put this in your global reset */
-*, *::before, *::after {
-
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -190,6 +288,9 @@ h1, h2, h3, h4, h5, h6 {
 
     font-weight: normal;
     color: var(--text-primary);
+
+    text-transform: var(--heading-transform);
+    letter-spacing: var(--heading-letter-spacing);
 }
 
 button {
@@ -197,4 +298,56 @@ button {
     border: none;
     background: none;
     cursor: pointer;
+    font-family: inherit;
+}
+
+/* Form controls do not inherit the page font in any browser, and — now that
+   `<meta name="color-scheme" content="light dark">` tells the UA this app
+   supports both — a control that declares NO colours gets the USER-AGENT's
+   dark-mode chrome, which is a grey the app never chose and which does not flip
+   with `[data-theme]`. Several controls here (the translator's textarea, the
+   writing-system selects) declared only a border, so they rendered as dark-grey
+   boxes on the cream light theme.
+
+   Element selectors, so any component rule (a class) still wins on specificity.
+   Checkboxes and radios are excluded: painting a background over their native
+   glyph is what turns them into blank squares. */
+input:not([type='checkbox']):not([type='radio']),
+textarea,
+select {
+    font-family: inherit;
+    font-size: inherit;
+
+    color: var(--text-primary);
+    background-color: var(--surface-raised);
+    border: var(--border-width) solid var(--border-primary);
+    border-radius: var(--radius-control);
+}
+
+input[type='checkbox'],
+input[type='radio'] {
+    /* Tints the native control to the theme's accent without replacing it. */
+    accent-color: var(--interactive-base);
+}
+
+/* ONE focus ring for the whole app. `:focus-visible` (not `:focus`) so a mouse
+   click on a card does not leave a ring behind, while every keyboard path
+   still gets one. */
+:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+}
+
+/* Respect the OS "reduce motion" setting everywhere at once, rather than
+   per-component. Transitions collapse to effectively instant instead of being
+   removed, so state changes that DEPEND on a transitionend still fire. */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
 }

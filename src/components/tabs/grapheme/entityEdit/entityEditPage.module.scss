@@ -1,0 +1,52 @@
+/**
+ * The ONE stylesheet for every Script Maker create/edit page.
+ *
+ * Replaces `glyphEditPage.module.scss` and `graphemeEditPage.module.scss` (two
+ * copies of the same `.pageContainer` / `.nav` / `.buttonRow` / `.errorMessage`
+ * skeleton) plus `newGrapheme.module.scss`, which `NewGlyphPage`, `NewGlyphForm`
+ * and `NewGlyphModal` all imported for a single `.errorMessage` rule belonging
+ * to a different page.
+ *
+ * No `max-width` here: `BasicBody` already caps the content column at
+ * `--max-content-width` and centres it; a second cap nests two centred columns
+ * and makes the form narrower than the page it sits on.
+ */
+
+.page {
+    display: flex;
+    flex-direction: column;
+    gap: var(--section-gap);
+    width: 100%;
+    min-width: 0;
+}
+
+/** The `<SmartForm>` column inside the page. */
+.form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--section-gap);
+    width: 100%;
+    min-width: 0;
+}
+
+/**
+ * A list of the records that will disappear with this one, shown in the
+ * confirmation dialog's `extra` slot. Capped and scrollable: deleting a glyph
+ * used by forty graphemes must not push the dialog's buttons off-screen.
+ */
+.affectedList {
+    display: grid;
+    gap: 0.5rem;
+    margin: 0.5rem 0 0;
+    padding: 0.5rem;
+    max-height: 12rem;
+    overflow-y: auto;
+    background: var(--surface-raised);
+    border-radius: var(--radius-chip);
+}
+
+.affectedItem {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}

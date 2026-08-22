@@ -3,33 +3,25 @@
  *
  * Functions to convert various input formats to RenderableGlyph[].
  *
+ * A grapheme expands to N renderable glyphs, so indices in the OUTPUT are not
+ * indices in the INPUT. Two fields keep the relationship explicit:
+ *   - `sourceIndex` — the index of the input entry a glyph came from
+ *   - `role`        — copied from `SpellingDisplayEntry.role`, so layout
+ *                     strategies can find separators and line breaks without
+ *                     being handed index arrays computed in the wrong space
+ *
  * @module display/spelling/utils/normalization
  */
 
 import type { Glyph, GraphemeComplete, SpellingDisplayEntry } from '../../../../db/types';
 import type { RenderableGlyph, NormalizationContext, InputType } from '../types';
-
-/**
- * Generate a consistent negative ID for a virtual IPA glyph.
- * Uses a simple hash of the IPA character.
- */
-function generateVirtualId(ipaChar: string): number {
-    let hash = 0;
-    for (let i = 0; i < ipaChar.length; i++) {
-        const char = ipaChar.charCodeAt(i);
-        hash = ((hash << 5) - hash) + char;
-        hash = hash & hash; // Convert to 32-bit integer
-    }
-    // Ensure negative ID
-    return hash < 0 ? hash : -hash - 1;
-}
+import { generateVirtualGlyphId } from '../../../../db/utils/virtualGlyph';
 
 /**
  * Generate SVG data for a virtual IPA glyph.
  * Creates a simple text display of the IPA character.
  */
 function generateVirtualSvg(ipaChar: string): string {
-    // Escape special XML characters
     const escaped = ipaChar
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
@@ -41,30 +33,26 @@ function generateVirtualSvg(ipaChar: string): string {
     </svg>`;
 }
 
-/**
- * Create a virtual glyph for an IPA character.
- */
-function createVirtualGlyph(ipaChar: string, sourceIndex: number): RenderableGlyph {
+function createVirtualGlyph(ipaChar: string, sourceIndex: number, role?: SpellingDisplayEntry['role']): RenderableGlyph {
     return {
-        id: generateVirtualId(ipaChar),
+        id: generateVirtualGlyphId(ipaChar),
         name: ipaChar,
         svg_data: generateVirtualSvg(ipaChar),
         isVirtual: true,
         ipaCharacter: ipaChar,
         sourceIndex,
+        ...(role ? { role } : {}),
     };
 }
 
-/**
- * Convert a Glyph to RenderableGlyph.
- */
-function glyphToRenderable(glyph: Glyph, sourceIndex: number): RenderableGlyph {
+function glyphToRenderable(glyph: Glyph, sourceIndex: number, role?: SpellingDisplayEntry['role']): RenderableGlyph {
     return {
         id: glyph.id,
         name: glyph.name,
         svg_data: glyph.svg_data,
         isVirtual: false,
         sourceIndex,
+        ...(role ? { role } : {}),
     };
 }
 
@@ -78,7 +66,6 @@ export function detectInputType(input: unknown[]): InputType | 'renderable' | nu
 
     const first = input[0];
 
-    // Check for SpellingDisplayEntry (has 'type' property with 'grapheme' or 'ipa')
     if (typeof first === 'object' && first !== null && 'type' in first) {
         const entry = first as SpellingDisplayEntry;
         if (entry.type === 'grapheme' || entry.type === 'ipa') {
@@ -86,22 +73,18 @@ export function detectInputType(input: unknown[]): InputType | 'renderable' | nu
         }
     }
 
-    // Check for GraphemeComplete (has 'glyphs' array property)
     if (typeof first === 'object' && first !== null && 'glyphs' in first && Array.isArray((first as GraphemeComplete).glyphs)) {
         return 'graphemes';
     }
 
-    // Check for RenderableGlyph (has 'isVirtual' and 'sourceIndex' properties)
     if (typeof first === 'object' && first !== null && 'isVirtual' in first && 'sourceIndex' in first) {
         return 'renderable';
     }
 
-    // Check for Glyph (has 'svg_data' property)
     if (typeof first === 'object' && first !== null && 'svg_data' in first) {
         return 'glyphs';
     }
 
-    // Check for number (glyph ID)
     if (typeof first === 'number') {
         return 'ids';
     }
@@ -111,64 +94,45 @@ export function detectInputType(input: unknown[]): InputType | 'renderable' | nu
 
 /**
  * Normalize SpellingDisplayEntry[] to RenderableGlyph[].
+ * `sourceIndex` is the index of the ENTRY each glyph came from.
  */
 function normalizeSpellingDisplay(
     entries: SpellingDisplayEntry[],
     context: NormalizationContext
 ): RenderableGlyph[] {
     const result: RenderableGlyph[] = [];
-    let glyphIndex = 0;
 
-    for (const entry of entries) {
+    entries.forEach((entry, entryIndex) => {
         if (entry.type === 'grapheme' && entry.grapheme) {
-            // Look up full grapheme data if available
             const fullGrapheme = context.graphemeMap?.get(entry.grapheme.id);
             const glyphs = fullGrapheme?.glyphs ?? (entry.grapheme as GraphemeComplete).glyphs;
-
             if (glyphs && glyphs.length > 0) {
                 for (const glyph of glyphs) {
-                    result.push(glyphToRenderable(glyph, glyphIndex++));
+                    result.push(glyphToRenderable(glyph, entryIndex, entry.role));
                 }
             }
         } else if (entry.type === 'ipa' && entry.ipaCharacter) {
-            // Create virtual glyph for IPA character
-            result.push(createVirtualGlyph(entry.ipaCharacter, glyphIndex++));
+            result.push(createVirtualGlyph(entry.ipaCharacter, entryIndex, entry.role));
         }
-    }
+    });
 
     return result;
 }
 
-/**
- * Normalize Glyph[] to RenderableGlyph[].
- */
 function normalizeGlyphs(glyphs: Glyph[]): RenderableGlyph[] {
     return glyphs.map((glyph, index) => glyphToRenderable(glyph, index));
 }
 
-/**
- * Normalize GraphemeComplete[] to RenderableGlyph[].
- * Extracts all glyphs from all graphemes in order.
- */
 function normalizeGraphemes(graphemes: GraphemeComplete[]): RenderableGlyph[] {
     const result: RenderableGlyph[] = [];
-    let glyphIndex = 0;
-
-    for (const grapheme of graphemes) {
-        if (grapheme.glyphs) {
-            for (const glyph of grapheme.glyphs) {
-                result.push(glyphToRenderable(glyph, glyphIndex++));
-            }
+    graphemes.forEach((grapheme, graphemeIndex) => {
+        for (const glyph of grapheme.glyphs ?? []) {
+            result.push(glyphToRenderable(glyph, graphemeIndex));
         }
-    }
-
+    });
     return result;
 }
 
-/**
- * Normalize number[] (glyph IDs) to RenderableGlyph[].
- * Requires glyphMap in context.
- */
 function normalizeIds(
     ids: number[],
     context: NormalizationContext
@@ -185,7 +149,6 @@ function normalizeIds(
                 console.warn(`normalizeIds: Glyph with id ${id} not found in glyphMap`);
                 return null;
             }
-            // Handle both Glyph and RenderableGlyph in the map
             if ('isVirtual' in glyph) {
                 return { ...glyph, sourceIndex: index } as RenderableGlyph;
             }
@@ -196,10 +159,6 @@ function normalizeIds(
 
 /**
  * Normalize any supported input format to RenderableGlyph[].
- *
- * @param input - Input data in any supported format
- * @param context - Context containing optional maps for resolution
- * @returns Array of normalized glyphs ready for rendering
  */
 export function normalizeGlyphInput(
     input: SpellingDisplayEntry[] | Glyph[] | RenderableGlyph[] | GraphemeComplete[] | number[],
@@ -209,13 +168,10 @@ export function normalizeGlyphInput(
         return [];
     }
 
-    const inputType = detectInputType(input);
-
-    switch (inputType) {
+    switch (detectInputType(input)) {
         case 'spelling-display':
             return normalizeSpellingDisplay(input as SpellingDisplayEntry[], context);
         case 'renderable':
-            // Already in the right format, just return as-is
             return input as RenderableGlyph[];
         case 'glyphs':
             return normalizeGlyphs(input as Glyph[]);

@@ -1,9 +1,6 @@
-import { useState, useEffect } from 'react';
-import classNames from 'classnames';
+import { useState, useId } from 'react';
 import Modal from 'cyber-components/container/modal/modal.tsx';
-import Button from 'cyber-components/interactable/buttons/button/button.tsx';
-import { buttonStyles } from 'cyber-components/interactable/buttons/button/button.tsx';
-import { flex, sizing } from 'utils-styles';
+import { DialogPanel, FormActionBar } from '../shared';
 import styles from './exportImport.module.scss';
 
 interface ImportJsonModalProps {
@@ -12,16 +9,36 @@ interface ImportJsonModalProps {
     onImport: (json: string) => void;
 }
 
+/**
+ * The modal shell. The FORM is a separate component mounted only while the
+ * modal is open, so its state starts empty on every open instead of being
+ * cleared by an effect (`react-hooks/set-state-in-effect`) — the same pattern
+ * `CreateChartModal` uses.
+ */
 export default function ImportJsonModal({ isOpen, setIsOpen, onImport }: ImportJsonModalProps) {
+    return (
+        <Modal isOpen={isOpen} setIsOpen={setIsOpen}>
+            <DialogPanel size="md" title="Import from JSON">
+                {isOpen && (
+                    <ImportJsonForm
+                        onImport={onImport}
+                        onClose={() => setIsOpen(false)}
+                    />
+                )}
+            </DialogPanel>
+        </Modal>
+    );
+}
+
+interface ImportJsonFormProps {
+    onImport: (json: string) => void;
+    onClose: () => void;
+}
+
+function ImportJsonForm({ onImport, onClose }: ImportJsonFormProps) {
     const [value, setValue] = useState('');
     const [error, setError] = useState('');
-
-    useEffect(() => {
-        if (isOpen) {
-            setValue('');
-            setError('');
-        }
-    }, [isOpen]);
+    const textareaId = useId();
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -31,44 +48,30 @@ export default function ImportJsonModal({ isOpen, setIsOpen, onImport }: ImportJ
             return;
         }
         onImport(trimmed);
-        setIsOpen(false);
+        onClose();
     };
 
     return (
-        <Modal isOpen={isOpen} setIsOpen={setIsOpen}>
-            <form
-                onSubmit={handleSubmit}
-                className={classNames(styles.modalContent, flex.flexColumn, flex.flexGapM)}
-            >
-                <h2 style={{ margin: 0 }}>Import from JSON</h2>
+        <form onSubmit={handleSubmit} className={styles.form}>
+            {/* The textarea was unlabelled: a screen reader announced
+                "edit text, blank" and nothing about what to paste. */}
+            <label htmlFor={textareaId}>Etymolog JSON export data</label>
+            <textarea
+                id={textareaId}
+                className={styles.textarea}
+                value={value}
+                onChange={(e) => { setValue(e.target.value); setError(''); }}
+                placeholder="Paste Etymolog JSON export data here..."
+                autoFocus
+            />
 
-                <textarea
-                    className={styles.textarea}
-                    value={value}
-                    onChange={(e) => { setValue(e.target.value); setError(''); }}
-                    placeholder="Paste Etymolog JSON export data here..."
-                    autoFocus
-                />
+            {error && <p className={styles.errorMessage}>{error}</p>}
 
-                {error && <p className={styles.errorMessage}>{error}</p>}
-
-                <div className={classNames(flex.flexRow, flex.justifyContentEnd, flex.flexGapS)}>
-                    <Button
-                        type="button"
-                        className={buttonStyles.secondary}
-                        onClick={() => setIsOpen(false)}
-                    >
-                        Cancel
-                    </Button>
-                    <Button
-                        type="submit"
-                        className={buttonStyles.primary}
-                        disabled={!value.trim()}
-                    >
-                        Import
-                    </Button>
-                </div>
-            </form>
-        </Modal>
+            <FormActionBar
+                onCancel={onClose}
+                submitLabel="Import"
+                disabled={!value.trim()}
+            />
+        </form>
     );
 }

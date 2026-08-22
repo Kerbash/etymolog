@@ -1,32 +1,37 @@
 import { useState } from 'react';
-import classNames from 'classnames';
 import DropDownSmall from 'cyber-components/container/dropDownSmall/dropDownSmall.tsx';
 import IconButton from 'cyber-components/interactable/buttons/iconButton/iconButton.tsx';
-import Modal from 'cyber-components/container/modal/modal.tsx';
-import Button from 'cyber-components/interactable/buttons/button/button.tsx';
-import { buttonStyles } from 'cyber-components/interactable/buttons/button/button.tsx';
-import { flex, sizing } from 'utils-styles';
 import { useEtymolog } from '../../db';
+import { useConfirm } from '../shared';
 import { useExportImport } from './useExportImport';
 import ImportJsonModal from './ImportJsonModal';
 import ImportImageModal from './ImportImageModal';
-import styles from './exportImport.module.scss';
+import graphic_template from '@styles/graphic_template.module.scss';
 
-type ConfirmImport = { type: 'json'; data: string } | { type: 'image'; data: File };
+type PendingImport = { type: 'json'; data: string } | { type: 'image'; data: File };
 
 export function ExportButton() {
     const { handleExportJson, handleExportImage } = useExportImport();
 
     return (
+        /* `DropDownSmall` BUILDS the toggle element itself and renders
+            `toggleBtn` as its children, so the DEFAULT `toggleBtnAs="button"`
+            already gives a real, focusable, Enter/Space-operable button with
+            `aria-expanded` / `aria-haspopup` / `aria-label` on it. This used to
+            pass `toggleBtnAs="div"` (to avoid nesting `IconButton`'s own
+            `<button>` inside it), which left a `<div aria-haspopup>` no screen
+            reader announced as a control and no keyboard could reach. Rendering
+            the IconButton `as="span"` keeps the header's button styling while
+            the real button is the one the browser and AT see. */
         <DropDownSmall
-            toggleBtn={<IconButton iconName="download">Export</IconButton>}
+            toggleBtn={<IconButton as="span" iconName="download">Export</IconButton>}
             contentPin="bottom-end"
             ariaLabel="Export conlang data"
         >
-            <button className={styles.menuItem} onClick={handleExportJson}>
+            <button className={graphic_template.menuItem} onClick={handleExportJson}>
                 Export as JSON
             </button>
-            <button className={styles.menuItem} onClick={handleExportImage}>
+            <button className={graphic_template.menuItem} onClick={handleExportImage}>
                 Export as Image
             </button>
         </DropDownSmall>
@@ -40,43 +45,49 @@ interface ImportButtonProps {
 export function ImportButton({ onSuccess }: ImportButtonProps = {}) {
     const { settings } = useEtymolog();
     const { handleImportJson, handleImportImage } = useExportImport();
+    const confirm = useConfirm();
 
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const [importJsonOpen, setImportJsonOpen] = useState(false);
     const [importImageOpen, setImportImageOpen] = useState(false);
-    const [confirmImport, setConfirmImport] = useState<ConfirmImport | null>(null);
 
-    const onJsonImportSubmit = (json: string) => {
-        setConfirmImport({ type: 'json', data: json });
-    };
+    // Import REPLACES everything. It used to confirm through a hand-rolled modal
+    // whose "Confirm Import" button was `buttonStyles.primary` — indistinguishable
+    // from a Save. It is a danger-toned confirmation now, and it names the conlang
+    // whose data is about to be overwritten.
+    const requestImport = async (pending: PendingImport) => {
+        const confirmed = await confirm({
+            title: `Replace all data in "${settings.conlangName}"?`,
+            message:
+                `Importing overwrites every glyph, grapheme and lexicon entry in ` +
+                `"${settings.conlangName}" with the contents of this file. The current ` +
+                `data cannot be recovered afterwards — export it first if you want a copy.`,
+            confirmLabel: 'Replace and import',
+            tone: 'danger',
+        });
+        if (!confirmed) return;
 
-    const onImageImportSubmit = (file: File) => {
-        setConfirmImport({ type: 'image', data: file });
-    };
-
-    const handleConfirm = () => {
-        if (!confirmImport) return;
-        if (confirmImport.type === 'json') {
-            handleImportJson(confirmImport.data, onSuccess);
+        if (pending.type === 'json') {
+            handleImportJson(pending.data, onSuccess);
         } else {
-            handleImportImage(confirmImport.data, onSuccess);
+            handleImportImage(pending.data, onSuccess);
         }
-        setConfirmImport(null);
     };
 
     return (
         <>
             <DropDownSmall
-                toggleBtn={<IconButton iconName="upload">Import</IconButton>}
+                /* Real <button> toggle — see the note on ExportButton. */
+                toggleBtn={<IconButton as="span" iconName="upload">Import</IconButton>}
                 contentPin="bottom-end"
                 ariaLabel="Import conlang data"
                 isOpen={dropdownOpen}
                 onOpenChange={setDropdownOpen}
             >
-                <button className={styles.menuItem} onClick={() => { setDropdownOpen(false); setImportJsonOpen(true); }}>
+                <button className={graphic_template.menuItem} onClick={() => { setDropdownOpen(false); setImportJsonOpen(true); }}>
                     Import JSON
                 </button>
-                <button className={styles.menuItem} onClick={() => { setDropdownOpen(false); setImportImageOpen(true); }}>
+                <button className={graphic_template.menuItem} onClick={() => { setDropdownOpen(false); setImportImageOpen(true); }}>
                     Import Image
                 </button>
             </DropDownSmall>
@@ -84,40 +95,15 @@ export function ImportButton({ onSuccess }: ImportButtonProps = {}) {
             <ImportJsonModal
                 isOpen={importJsonOpen}
                 setIsOpen={setImportJsonOpen}
-                onImport={onJsonImportSubmit}
+                onImport={(json) => void requestImport({ type: 'json', data: json })}
             />
 
             <ImportImageModal
                 isOpen={importImageOpen}
                 setIsOpen={setImportImageOpen}
-                onImport={onImageImportSubmit}
+                onImport={(file) => void requestImport({ type: 'image', data: file })}
             />
 
-            <Modal
-                isOpen={confirmImport !== null}
-                setIsOpen={(open) => { if (!open) setConfirmImport(null); }}
-            >
-                <div className={classNames(styles.modalContent, flex.flexColumn, flex.flexGapM)}>
-                    <h2 style={{ margin: 0 }}>Confirm Import</h2>
-                    <p style={{ margin: 0 }}>
-                        This will replace <strong>ALL</strong> current data for <strong>{settings.conlangName}</strong>. Continue?
-                    </p>
-                    <div className={classNames(flex.flexRow, flex.justifyContentEnd, flex.flexGapS)}>
-                        <Button
-                            className={buttonStyles.secondary}
-                            onClick={() => setConfirmImport(null)}
-                        >
-                            Cancel
-                        </Button>
-                        <Button
-                            className={buttonStyles.primary}
-                            onClick={handleConfirm}
-                        >
-                            Confirm Import
-                        </Button>
-                    </div>
-                </div>
-            </Modal>
         </>
     );
 }

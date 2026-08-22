@@ -1,26 +1,33 @@
 /**
  * Lexicon Service
  *
- * CRUD operations for managing lexicon entries and their relationships
- * to graphemes (spelling) and other lexicon entries (ancestry).
+ * CRUD operations for lexicon entries and their relationships to graphemes
+ * (spelling) and to other entries (ancestry).
  *
- * Two-List Architecture:
- * - glyph_order: JSON array storing the true ordered spelling (source of truth)
- *   - Grapheme references: "grapheme-{id}"
- *   - IPA characters: Stored as-is
- * - lexicon_spelling: Junction table for relational queries only
+ * ONE source of truth for spelling: `lexicon.glyph_order`, a JSON array of
+ * entries — `"grapheme-<id>"` for a real grapheme, or a bare IPA character for
+ * a fallback. `lexicon_spelling` is a DERIVED index (one row per grapheme
+ * occurrence, `position` = index in `glyph_order`) kept in sync by
+ * `syncLexiconSpellingFromGlyphOrder()` so "which words use grapheme X?" is a
+ * join rather than a JSON scan. Every writer — `updateLexicon`,
+ * `setLexiconSpelling`, `addSpellingToLexicon`, `clearLexiconSpelling` —
+ * funnels through `glyph_order`; nothing writes the junction table directly.
  *
- * Architecture:
- * - Lexicon: A vocabulary entry with lemma, pronunciation, meaning
- * - LexiconSpelling: Junction table linking graphemes to lexicon (for queries)
- * - LexiconAncestry: Self-referential junction table for etymological relationships
+ * Every multi-statement write runs in `withTransaction()` (savepoint nesting,
+ * one persist per outermost commit). Foreign keys are enforced on the
+ * connection, so the explicit child deletes in `deleteLexicon` are belt-and-
+ * braces rather than the only thing holding the data together.
+ *
+ * Rows are mapped by column NAME (`utils/sql.ts`); see `mapLexiconRecord`.
  */
 
-import { getDatabase, persistDatabase } from './database';
+import { getDatabase } from './database';
+import { withTransaction } from './utils/transaction';
+import { execRows, execOne, execScalar, lastInsertId, inPlaceholders, type SqlRecord } from './utils/sql';
+import { validateStringLength, LIMITS } from './utils/sanitize';
 import {
     serializeGlyphOrder,
     deserializeGlyphOrder,
-    extractGraphemeIds,
     parseGlyphOrder,
     createGraphemeEntry,
     type SpellingEntry,
@@ -44,394 +51,402 @@ import type {
     CreateLexiconAncestryInput,
     AncestryType,
     SpellingDisplayEntry,
+    LexiconMeaning,
+    CreateLexiconMeaningInput,
 } from './types';
 import {
     addClosurePaths,
-    removeClosurePaths,
     rebuildClosureTable,
-    wouldCreateCycleClosure
+    wouldCreateCycleClosure,
+    getAllDescendantIdsClosure,
+    getAllAncestorIdsClosure,
 } from './closureService';
+
+// =============================================================================
+// ROW MAPPING
+// =============================================================================
+
+/** Column list for a lexicon row; `alias` lets it sit in a JOIN. */
+function lexiconColumns(alias = ''): string {
+    const p = alias ? `${alias}.` : '';
+    return [
+        'id', 'lemma', 'pronunciation', 'is_native', 'auto_spell', 'meaning',
+        'part_of_speech', 'notes', 'glyph_order', 'needs_attention', 'created_at', 'updated_at',
+    ].map(c => `${p}${c}`).join(', ');
+}
+
+function mapLexiconRecord(rec: SqlRecord): Lexicon {
+    return {
+        id: rec.id as number,
+        lemma: rec.lemma as string,
+        pronunciation: (rec.pronunciation as string | null) ?? null,
+        is_native: rec.is_native === 1,
+        auto_spell: rec.auto_spell === 1,
+        meaning: (rec.meaning as string | null) ?? null,
+        part_of_speech: (rec.part_of_speech as string | null) ?? null,
+        notes: (rec.notes as string | null) ?? null,
+        glyph_order: (rec.glyph_order as string | null) ?? '[]',
+        needs_attention: rec.needs_attention === 1,
+        created_at: rec.created_at as string,
+        updated_at: rec.updated_at as string,
+    };
+}
+
+function mapGraphemeRecord(rec: SqlRecord): Grapheme {
+    return {
+        id: rec.id as number,
+        name: rec.name as string,
+        category: (rec.category as string | null) ?? null,
+        notes: (rec.notes as string | null) ?? null,
+        created_at: rec.created_at as string,
+        updated_at: rec.updated_at as string,
+    };
+}
+
+function mapMeaningRecord(rec: SqlRecord): LexiconMeaning {
+    return {
+        id: rec.id as number,
+        lexicon_id: rec.lexicon_id as number,
+        meaning: rec.meaning as string,
+        part_of_speech: (rec.part_of_speech as string | null) ?? null,
+        usage_notes: (rec.usage_notes as string | null) ?? null,
+        definition_order: rec.definition_order as number,
+    };
+}
+
+const LEXICON_ORDER = 'needs_attention DESC, COALESCE(pronunciation, lemma) ASC';
 
 // =============================================================================
 // LEXICON CRUD OPERATIONS
 // =============================================================================
 
+function getMeaningsForLexicon(lexiconId: number): LexiconMeaning[] {
+    return execRows(
+        getDatabase(),
+        `SELECT id, lexicon_id, meaning, part_of_speech, usage_notes, definition_order
+         FROM lexicon_meanings WHERE lexicon_id = ? ORDER BY definition_order ASC`,
+        [lexiconId],
+    ).map(mapMeaningRecord);
+}
+
+function insertMeanings(lexiconId: number, meanings: CreateLexiconMeaningInput[]): void {
+    const db = getDatabase();
+    meanings.forEach((meaning, i) => {
+        db.run(
+            `INSERT INTO lexicon_meanings (lexicon_id, meaning, part_of_speech, usage_notes, definition_order)
+             VALUES (?, ?, ?, ?, ?)`,
+            [
+                lexiconId,
+                meaning.meaning,
+                meaning.part_of_speech ?? null,
+                meaning.usage_notes ?? null,
+                meaning.definition_order ?? i,
+            ],
+        );
+    });
+}
+
 /**
- * Create a new lexicon entry with optional spelling and ancestry.
- *
- * Supports both new glyph_order format and legacy spelling format.
- * The glyph_order is stored as the source of truth, and lexicon_spelling
- * is updated for relational queries.
+ * Create a new lexicon entry with optional spelling, meanings and ancestry.
+ * Accepts either `glyph_order` (canonical) or legacy `spelling` rows, which
+ * are converted to `glyph_order` on the way in.
  */
 export function createLexicon(input: CreateLexiconInput): LexiconComplete {
     const db = getDatabase();
 
-    // Determine glyph_order from input
+    if (input.lemma) validateStringLength(input.lemma, LIMITS.LEMMA, 'Lemma');
+    if (input.pronunciation) validateStringLength(input.pronunciation, LIMITS.PRONUNCIATION, 'Pronunciation');
+    if (input.meaning) validateStringLength(input.meaning, LIMITS.MEANING, 'Meaning');
+    if (input.notes) validateStringLength(input.notes, LIMITS.NOTES, 'Notes');
+    if (input.part_of_speech) validateStringLength(input.part_of_speech, LIMITS.PART_OF_SPEECH, 'Part of speech');
+
     let glyphOrder: SpellingEntry[] = [];
-
     if (input.glyph_order && input.glyph_order.length > 0) {
-        // New format: use glyph_order directly
         glyphOrder = input.glyph_order;
-        // console.log('DEBUG: glyphOrder from input:', glyphOrder);
     } else if (input.spelling && input.spelling.length > 0) {
-        // Legacy format: convert spelling to glyph_order
-        // Sort by position first to ensure correct order
-        const sortedSpelling = [...input.spelling].sort((a, b) => a.position - b.position);
-        glyphOrder = sortedSpelling.map(s => createGraphemeEntry(s.grapheme_id));
+        glyphOrder = [...input.spelling]
+            .sort((a, b) => a.position - b.position)
+            .map(s => createGraphemeEntry(s.grapheme_id));
     }
 
-    const glyphOrderJson = serializeGlyphOrder(glyphOrder);
+    let meanings: CreateLexiconMeaningInput[] = [];
+    if (input.meanings && input.meanings.length > 0) {
+        meanings = input.meanings;
+    } else if (input.meaning && input.meaning.trim()) {
+        meanings = [{ meaning: input.meaning }];
+    }
+    const primaryMeaning = meanings.length > 0 ? meanings[0].meaning : null;
 
-    // Insert the lexicon entry
-    db.run(
-        `INSERT INTO lexicon (lemma, pronunciation, is_native, auto_spell, meaning, part_of_speech, notes, glyph_order, needs_attention) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-            input.lemma !== undefined ? input.lemma : null,
-            input.pronunciation !== undefined ? input.pronunciation : null,
-            input.is_native !== false ? 1 : 0,
-            input.auto_spell !== false ? 1 : 0,
-            input.meaning !== undefined ? input.meaning : null,
-            input.part_of_speech !== undefined ? input.part_of_speech : null,
-            input.notes !== undefined ? input.notes : null,
-            glyphOrderJson,
-            0, // needs_attention defaults to false
-        ]
-    );
-
-    const result = db.exec('SELECT last_insert_rowid() as id');
-    const lexiconId = result[0].values[0][0] as number;
-
-    // Sync lexicon_spelling junction table from glyph_order
-    syncLexiconSpellingFromGlyphOrder(lexiconId, glyphOrder);
-
-    // Add ancestry if provided
-    if (input.ancestry && input.ancestry.length > 0) {
-        for (const ancestryInput of input.ancestry) {
-            addAncestorToLexicon(lexiconId, ancestryInput);
+    const lexiconId = withTransaction(db, () => {
+        db.run(
+            `INSERT INTO lexicon (lemma, pronunciation, is_native, auto_spell, meaning, part_of_speech, notes, glyph_order, needs_attention)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+            [
+                input.lemma ?? null,
+                input.pronunciation ?? null,
+                input.is_native !== false ? 1 : 0,
+                input.auto_spell !== false ? 1 : 0,
+                primaryMeaning,
+                input.part_of_speech ?? null,
+                input.notes ?? null,
+                serializeGlyphOrder(glyphOrder),
+            ],
+        );
+        const id = lastInsertId(db);
+        syncLexiconSpellingFromGlyphOrder(id, glyphOrder);
+        insertMeanings(id, meanings);
+        for (const ancestryInput of input.ancestry ?? []) {
+            addAncestorToLexicon(id, ancestryInput);
         }
-    }
-
-    persistDatabase();
+        return id;
+    });
 
     const lexicon = getLexiconComplete(lexiconId);
     if (!lexicon) {
         throw new Error('Failed to create lexicon entry');
     }
-
     return lexicon;
 }
 
-/**
- * Get a lexicon entry by ID (without spelling or ancestry).
- */
+/** Get a lexicon entry by ID (without spelling or ancestry). */
 export function getLexiconById(id: number): Lexicon | null {
-    const db = getDatabase();
-
-    const result = db.exec(
-        `SELECT id, lemma, pronunciation, is_native, auto_spell, meaning, part_of_speech, notes, glyph_order, needs_attention, created_at, updated_at 
-         FROM lexicon WHERE id = ?`,
-        [id]
-    );
-
-    if (result.length === 0 || result[0].values.length === 0) {
-        return null;
-    }
-
-    const row = result[0].values[0];
-    return mapRowToLexicon(row);
+    const rec = execOne(getDatabase(), `SELECT ${lexiconColumns()} FROM lexicon WHERE id = ?`, [id]);
+    return rec ? mapLexiconRecord(rec) : null;
 }
 
-/**
- * Get a lexicon entry with its spelling (ordered graphemes).
- */
 export function getLexiconWithSpelling(id: number): LexiconWithSpelling | null {
     const lexicon = getLexiconById(id);
     if (!lexicon) return null;
-
-    const spelling = getSpellingByLexiconId(id);
-    return { ...lexicon, spelling };
+    return { ...lexicon, spelling: getSpellingByLexiconId(id) };
 }
 
-/**
- * Get a lexicon entry with its direct ancestors.
- */
 export function getLexiconWithAncestry(id: number): LexiconWithAncestry | null {
     const lexicon = getLexiconById(id);
     if (!lexicon) return null;
-
-    const ancestors = getAncestorsByLexiconId(id);
-    return { ...lexicon, ancestors };
+    return { ...lexicon, ancestors: getAncestorsByLexiconId(id) };
 }
 
-/**
- * Get a lexicon entry with its descendants.
- */
 export function getLexiconWithDescendants(id: number): LexiconWithDescendants | null {
     const lexicon = getLexiconById(id);
     if (!lexicon) return null;
+    return { ...lexicon, descendants: getDescendantsByLexiconId(id) };
+}
 
-    const descendants = getDescendantsByLexiconId(id);
-    return { ...lexicon, descendants };
+/** Graphemes-only projection of a spelling display (legacy `spelling` field). */
+function graphemesOf(display: SpellingDisplayEntry[]): Grapheme[] {
+    return display.filter(e => e.type === 'grapheme' && e.grapheme).map(e => e.grapheme!);
 }
 
 /**
- * Get a lexicon entry with spelling, ancestors, and descendants.
- * Uses glyph_order as the source of truth for spelling display.
+ * Get a lexicon entry with spelling, ancestors, descendants and meanings.
  */
 export function getLexiconComplete(id: number): LexiconComplete | null {
     const lexicon = getLexiconById(id);
     if (!lexicon) return null;
 
-    // Build spelling display from glyph_order
     const { entries: spellingDisplay, hasIpaFallbacks } = buildSpellingDisplay(lexicon.glyph_order);
-
-    // Legacy spelling field (graphemes only)
-    const spelling = spellingDisplay
-        .filter(e => e.type === 'grapheme' && e.grapheme)
-        .map(e => e.grapheme!);
-
-    const ancestors = getAncestorsByLexiconId(id);
-    const descendants = getDescendantsByLexiconId(id);
-
-    return { ...lexicon, spellingDisplay, spelling, ancestors, descendants, hasIpaFallbacks };
+    return {
+        ...lexicon,
+        spellingDisplay,
+        spelling: graphemesOf(spellingDisplay),
+        ancestors: getAncestorsByLexiconId(id),
+        descendants: getDescendantsByLexiconId(id),
+        hasIpaFallbacks,
+        meanings: getMeaningsForLexicon(id),
+    };
 }
 
-/**
- * Get all lexicon entries (without related data).
- */
+/** Get all lexicon entries (without related data). */
 export function getAllLexicon(): Lexicon[] {
-    const db = getDatabase();
-
-    const result = db.exec(
-        `SELECT id, lemma, pronunciation, is_native, auto_spell, meaning, part_of_speech, notes, glyph_order, needs_attention, created_at, updated_at 
-         FROM lexicon 
-         ORDER BY needs_attention DESC, COALESCE(pronunciation, lemma) ASC`
-    );
-
-    if (result.length === 0) {
-        return [];
-    }
-
-    return result[0].values.map(mapRowToLexicon);
+    return execRows(getDatabase(), `SELECT ${lexiconColumns()} FROM lexicon ORDER BY ${LEXICON_ORDER}`)
+        .map(mapLexiconRecord);
 }
 
-/**
- * Get all lexicon entries with their spelling.
- */
 export function getAllLexiconWithSpelling(): LexiconWithSpelling[] {
-    const entries = getAllLexicon();
-
-    return entries.map(entry => ({
-        ...entry,
-        spelling: getSpellingByLexiconId(entry.id),
-    }));
+    return getAllLexicon().map(entry => ({ ...entry, spelling: getSpellingByLexiconId(entry.id) }));
 }
 
 /**
- * Get all lexicon entries with full data.
- * Entries needing attention are sorted to the top.
+ * Get all lexicon entries with full data — FOUR statements total regardless
+ * of lexicon size (entries, graphemes, ancestry edges, meanings), grouped in
+ * JS. Entries needing attention sort to the top.
  */
 export function getAllLexiconComplete(): LexiconComplete[] {
+    const db = getDatabase();
     const entries = getAllLexicon();
+    if (entries.length === 0) return [];
+
+    const byId = new Map(entries.map(e => [e.id, e]));
+    const graphemeIndex = loadGraphemeIndex();
+
+    const ancestorsOf = new Map<number, LexiconAncestorEntry[]>();
+    const descendantsOf = new Map<number, LexiconDescendantEntry[]>();
+    for (const edge of execRows(db, `SELECT lexicon_id, ancestor_id, position, ancestry_type FROM lexicon_ancestry ORDER BY position ASC`)) {
+        const childId = edge.lexicon_id as number;
+        const parentId = edge.ancestor_id as number;
+        const parent = byId.get(parentId);
+        const child = byId.get(childId);
+        const type = edge.ancestry_type as AncestryType;
+        if (parent) {
+            if (!ancestorsOf.has(childId)) ancestorsOf.set(childId, []);
+            ancestorsOf.get(childId)!.push({ ancestor: parent, position: edge.position as number, ancestry_type: type });
+        }
+        if (child) {
+            if (!descendantsOf.has(parentId)) descendantsOf.set(parentId, []);
+            descendantsOf.get(parentId)!.push({ descendant: child, ancestry_type: type });
+        }
+    }
+    for (const list of descendantsOf.values()) {
+        list.sort((a, b) => sortKey(a.descendant).localeCompare(sortKey(b.descendant)));
+    }
+
+    const meaningsOf = new Map<number, LexiconMeaning[]>();
+    for (const rec of execRows(db, `SELECT id, lexicon_id, meaning, part_of_speech, usage_notes, definition_order FROM lexicon_meanings ORDER BY definition_order ASC`)) {
+        const m = mapMeaningRecord(rec);
+        if (!meaningsOf.has(m.lexicon_id)) meaningsOf.set(m.lexicon_id, []);
+        meaningsOf.get(m.lexicon_id)!.push(m);
+    }
 
     return entries.map(entry => {
-        const { entries: spellingDisplay, hasIpaFallbacks } = buildSpellingDisplay(entry.glyph_order);
-        const spelling = spellingDisplay
-            .filter(e => e.type === 'grapheme' && e.grapheme)
-            .map(e => e.grapheme!);
-
+        const { entries: spellingDisplay, hasIpaFallbacks } = buildSpellingDisplay(entry.glyph_order, graphemeIndex);
         return {
             ...entry,
             spellingDisplay,
-            spelling,
-            ancestors: getAncestorsByLexiconId(entry.id),
-            descendants: getDescendantsByLexiconId(entry.id),
+            spelling: graphemesOf(spellingDisplay),
+            ancestors: ancestorsOf.get(entry.id) ?? [],
+            descendants: descendantsOf.get(entry.id) ?? [],
+            meanings: meaningsOf.get(entry.id) ?? [],
             hasIpaFallbacks,
         };
     });
 }
 
-/**
- * Get all lexicon entries with usage (descendant count).
- */
+function sortKey(l: Lexicon): string {
+    return l.pronunciation ?? l.lemma;
+}
+
+/** Get all lexicon entries with descendant counts. */
 export function getAllLexiconWithUsage(): LexiconWithUsage[] {
     const db = getDatabase();
-
-    const result = db.exec(`
-        SELECT l.id, l.lemma, l.pronunciation, l.is_native, l.auto_spell, l.meaning, 
-               l.part_of_speech, l.notes, l.glyph_order, l.needs_attention, l.created_at, l.updated_at,
-               COUNT(la.id) as descendant_count
+    const meaningsOf = new Map<number, LexiconMeaning[]>();
+    for (const rec of execRows(db, `SELECT id, lexicon_id, meaning, part_of_speech, usage_notes, definition_order FROM lexicon_meanings ORDER BY definition_order ASC`)) {
+        const m = mapMeaningRecord(rec);
+        if (!meaningsOf.has(m.lexicon_id)) meaningsOf.set(m.lexicon_id, []);
+        meaningsOf.get(m.lexicon_id)!.push(m);
+    }
+    return execRows(db, `
+        SELECT ${lexiconColumns('l')}, COUNT(la.id) AS descendant_count
         FROM lexicon l
         LEFT JOIN lexicon_ancestry la ON l.id = la.ancestor_id
         GROUP BY l.id
         ORDER BY l.needs_attention DESC, COALESCE(l.pronunciation, l.lemma) ASC
-    `);
-
-    if (result.length === 0) {
-        return [];
-    }
-
-    return result[0].values.map((row: unknown[]) => ({
-        ...mapRowToLexicon(row),
-        descendantCount: row[12] as number,
+    `).map(rec => ({
+        ...mapLexiconRecord(rec),
+        descendantCount: rec.descendant_count as number,
+        meanings: meaningsOf.get(rec.id as number) ?? [],
     }));
 }
 
-/**
- * Search lexicon entries by lemma, pronunciation, or meaning.
- */
+/** Search by lemma, pronunciation, or any meaning. */
 export function searchLexicon(query: string): Lexicon[] {
-    const db = getDatabase();
-
-    const result = db.exec(
-        `SELECT id, lemma, pronunciation, is_native, auto_spell, meaning, part_of_speech, notes, glyph_order, needs_attention, created_at, updated_at 
-         FROM lexicon 
-         WHERE pronunciation LIKE ? OR meaning LIKE ? OR lemma LIKE ?
-         ORDER BY needs_attention DESC, COALESCE(pronunciation, lemma) ASC`,
-        [`%${query}%`, `%${query}%`, `%${query}%`]
-    );
-
-    if (result.length === 0) {
-        return [];
-    }
-
-    return result[0].values.map(mapRowToLexicon);
+    const like = `%${query}%`;
+    return execRows(getDatabase(), `
+        SELECT DISTINCT ${lexiconColumns('l')}
+        FROM lexicon l
+        LEFT JOIN lexicon_meanings lm ON l.id = lm.lexicon_id
+        WHERE l.pronunciation LIKE ? OR l.meaning LIKE ? OR l.lemma LIKE ? OR lm.meaning LIKE ?
+        ORDER BY l.needs_attention DESC, COALESCE(l.pronunciation, l.lemma) ASC
+    `, [like, like, like, like]).map(mapLexiconRecord);
 }
 
-/**
- * Get lexicon entries filtered by is_native flag.
- */
 export function getLexiconByNative(isNative: boolean): Lexicon[] {
-    const db = getDatabase();
-
-    const result = db.exec(
-        `SELECT id, lemma, pronunciation, is_native, auto_spell, meaning, part_of_speech, notes, glyph_order, needs_attention, created_at, updated_at 
-         FROM lexicon 
-         WHERE is_native = ?
-         ORDER BY needs_attention DESC, COALESCE(pronunciation, lemma) ASC`,
-        [isNative ? 1 : 0]
-    );
-
-    if (result.length === 0) {
-        return [];
-    }
-
-    return result[0].values.map(mapRowToLexicon);
+    return execRows(
+        getDatabase(),
+        `SELECT ${lexiconColumns()} FROM lexicon WHERE is_native = ? ORDER BY ${LEXICON_ORDER}`,
+        [isNative ? 1 : 0],
+    ).map(mapLexiconRecord);
 }
 
 /**
- * Update a lexicon entry's basic info.
- * If glyph_order is provided, also syncs the lexicon_spelling junction table.
+ * Update a lexicon entry. Providing `glyph_order` resyncs the spelling index;
+ * providing `meanings` replaces the meanings table rows.
  */
 export function updateLexicon(id: number, input: UpdateLexiconInput): Lexicon | null {
     const db = getDatabase();
 
+    if (input.lemma) validateStringLength(input.lemma, LIMITS.LEMMA, 'Lemma');
+    if (input.pronunciation) validateStringLength(input.pronunciation, LIMITS.PRONUNCIATION, 'Pronunciation');
+    if (input.meaning) validateStringLength(input.meaning, LIMITS.MEANING, 'Meaning');
+    if (input.notes) validateStringLength(input.notes, LIMITS.NOTES, 'Notes');
+    if (input.part_of_speech) validateStringLength(input.part_of_speech, LIMITS.PART_OF_SPEECH, 'Part of speech');
+
     const updates: string[] = [];
     const values: (string | number | null)[] = [];
+    const set = (column: string, value: string | number | null) => {
+        updates.push(`${column} = ?`);
+        values.push(value);
+    };
 
-    if (input.lemma !== undefined) {
-        updates.push('lemma = ?');
-        values.push(input.lemma);
-    }
-    if (input.pronunciation !== undefined) {
-        updates.push('pronunciation = ?');
-        values.push(input.pronunciation);
-    }
-    if (input.is_native !== undefined) {
-        updates.push('is_native = ?');
-        values.push(input.is_native ? 1 : 0);
-    }
-    if (input.auto_spell !== undefined) {
-        updates.push('auto_spell = ?');
-        values.push(input.auto_spell ? 1 : 0);
-    }
-    if (input.meaning !== undefined) {
-        updates.push('meaning = ?');
-        values.push(input.meaning);
-    }
-    if (input.part_of_speech !== undefined) {
-        updates.push('part_of_speech = ?');
-        values.push(input.part_of_speech);
-    }
-    if (input.notes !== undefined) {
-        updates.push('notes = ?');
-        values.push(input.notes);
-    }
-    if (input.glyph_order !== undefined) {
-        const glyphOrderJson = serializeGlyphOrder(input.glyph_order);
-        updates.push('glyph_order = ?');
-        values.push(glyphOrderJson);
-    }
-    if (input.needs_attention !== undefined) {
-        updates.push('needs_attention = ?');
-        values.push(input.needs_attention ? 1 : 0);
+    if (input.lemma !== undefined) set('lemma', input.lemma);
+    if (input.pronunciation !== undefined) set('pronunciation', input.pronunciation);
+    if (input.is_native !== undefined) set('is_native', input.is_native ? 1 : 0);
+    if (input.auto_spell !== undefined) set('auto_spell', input.auto_spell ? 1 : 0);
+
+    if (input.meanings !== undefined) {
+        set('meaning', input.meanings.length > 0 ? input.meanings[0].meaning : null);
+    } else if (input.meaning !== undefined) {
+        set('meaning', input.meaning);
     }
 
-    if (updates.length === 0) {
+    if (input.part_of_speech !== undefined) set('part_of_speech', input.part_of_speech);
+    if (input.notes !== undefined) set('notes', input.notes);
+    if (input.glyph_order !== undefined) set('glyph_order', serializeGlyphOrder(input.glyph_order));
+    if (input.needs_attention !== undefined) set('needs_attention', input.needs_attention ? 1 : 0);
+
+    if (updates.length === 0 && input.meanings === undefined) {
         return getLexiconById(id);
     }
 
-    updates.push("updated_at = datetime('now')");
-    values.push(id);
-
-    db.run(`UPDATE lexicon SET ${updates.join(', ')} WHERE id = ?`, values);
-
-    // If glyph_order was updated, sync the junction table
-    if (input.glyph_order !== undefined) {
-        syncLexiconSpellingFromGlyphOrder(id, input.glyph_order);
-    }
-
-    persistDatabase();
+    withTransaction(db, () => {
+        if (updates.length > 0) {
+            updates.push("updated_at = datetime('now')");
+            db.run(`UPDATE lexicon SET ${updates.join(', ')} WHERE id = ?`, [...values, id]);
+        }
+        if (input.glyph_order !== undefined) {
+            syncLexiconSpellingFromGlyphOrder(id, input.glyph_order);
+        }
+        if (input.meanings !== undefined) {
+            db.run('DELETE FROM lexicon_meanings WHERE lexicon_id = ?', [id]);
+            insertMeanings(id, input.meanings);
+        }
+    });
 
     return getLexiconById(id);
 }
 
 /**
- * Delete a lexicon entry.
- * Cascades to spelling and ancestry.
- * Safely removes relationships where this lexicon is an ancestor.
+ * Delete a lexicon entry. Removes its spelling index, meanings and ancestry
+ * edges in both directions, then rebuilds the closure so no transitive path
+ * through the deleted word survives.
  */
 export function deleteLexicon(id: number): boolean {
     const db = getDatabase();
-
-    // Check if lexicon exists
-    const existing = getLexiconById(id);
-    if (!existing) {
+    if (!getLexiconById(id)) {
         throw new Error(`Lexicon entry with id ${id} not found`);
     }
-
-    // Manual cascade deletion (required if FKs are disabled/unreliable)
-
-    // 1. Delete spelling
-    db.run('DELETE FROM lexicon_spelling WHERE lexicon_id = ?', [id]);
-
-    // 2. Delete ancestry where this is the child
-    db.run('DELETE FROM lexicon_ancestry WHERE lexicon_id = ?', [id]);
-
-    // 3. Delete ancestry where this is the ancestor
-    // This effectively acts as CASCADE (removing the relationship)
-    db.run('DELETE FROM lexicon_ancestry WHERE ancestor_id = ?', [id]);
-
-    // 4. Delete the lexicon entry
-    db.run('DELETE FROM lexicon WHERE id = ?', [id]);
-
-    const changes = db.getRowsModified();
-    if (changes > 0) {
-        persistDatabase();
-    }
-
-    return changes > 0;
+    return withTransaction(db, () => {
+        db.run('DELETE FROM lexicon_spelling WHERE lexicon_id = ?', [id]);
+        db.run('DELETE FROM lexicon_meanings WHERE lexicon_id = ?', [id]);
+        db.run('DELETE FROM lexicon_ancestry WHERE lexicon_id = ? OR ancestor_id = ?', [id, id]);
+        db.run('DELETE FROM lexicon WHERE id = ?', [id]);
+        const changes = db.getRowsModified();
+        rebuildClosureTable(db);
+        return changes > 0;
+    });
 }
 
-/**
- * Get count of lexicon entries.
- */
 export function getLexiconCount(): number {
-    const db = getDatabase();
-
-    const result = db.exec('SELECT COUNT(*) FROM lexicon');
-    return result[0]?.values[0]?.[0] as number ?? 0;
+    return execScalar<number>(getDatabase(), 'SELECT COUNT(*) FROM lexicon') ?? 0;
 }
 
 // =============================================================================
@@ -439,310 +454,225 @@ export function getLexiconCount(): number {
 // =============================================================================
 
 /**
- * Get the ordered graphemes for a lexicon entry's spelling.
+ * Graphemes of a word's spelling in order (one entry per occurrence, IPA
+ * fallbacks excluded). Read from the derived index.
  */
 export function getSpellingByLexiconId(lexiconId: number): Grapheme[] {
-    const db = getDatabase();
-
-    const result = db.exec(`
+    return execRows(getDatabase(), `
         SELECT g.id, g.name, g.category, g.notes, g.created_at, g.updated_at
         FROM graphemes g
         JOIN lexicon_spelling ls ON g.id = ls.grapheme_id
         WHERE ls.lexicon_id = ?
         ORDER BY ls.position ASC
-    `, [lexiconId]);
-
-    if (result.length === 0) {
-        return [];
-    }
-
-    return result[0].values.map((row: unknown[]) => ({
-        id: row[0] as number,
-        name: row[1] as string,
-        category: row[2] as string | null,
-        notes: row[3] as string | null,
-        created_at: row[4] as string,
-        updated_at: row[5] as string,
-    }));
+    `, [lexiconId]).map(mapGraphemeRecord);
 }
 
-/**
- * Get the junction table entries for a lexicon's spelling.
- */
+/** Raw rows of the spelling index. */
 export function getLexiconSpellingEntries(lexiconId: number): LexiconSpelling[] {
-    const db = getDatabase();
-
-    const result = db.exec(`
+    return execRows(getDatabase(), `
         SELECT id, lexicon_id, grapheme_id, position
-        FROM lexicon_spelling
-        WHERE lexicon_id = ?
-        ORDER BY position ASC
-    `, [lexiconId]);
-
-    if (result.length === 0) {
-        return [];
-    }
-
-    return result[0].values.map((row: unknown[]) => ({
-        id: row[0] as number,
-        lexicon_id: row[1] as number,
-        grapheme_id: row[2] as number,
-        position: row[3] as number,
+        FROM lexicon_spelling WHERE lexicon_id = ? ORDER BY position ASC
+    `, [lexiconId]).map(rec => ({
+        id: rec.id as number,
+        lexicon_id: rec.lexicon_id as number,
+        grapheme_id: rec.grapheme_id as number,
+        position: rec.position as number,
     }));
 }
 
+function requireLexicon(id: number): Lexicon {
+    const lexicon = getLexiconById(id);
+    if (!lexicon) {
+        throw new Error(`Lexicon entry with id ${id} not found`);
+    }
+    return lexicon;
+}
+
 /**
- * Add a grapheme to a lexicon's spelling at a specific position.
+ * Insert a grapheme into a word's spelling at `position` (clamped to the
+ * current length). Writes `glyph_order`; the index follows.
  */
 export function addSpellingToLexicon(lexiconId: number, input: CreateLexiconSpellingInput): LexiconSpelling {
     const db = getDatabase();
-
-    db.run(`
-        INSERT INTO lexicon_spelling (lexicon_id, grapheme_id, position)
-        VALUES (?, ?, ?)
-    `, [lexiconId, input.grapheme_id, input.position]);
-
-    const result = db.exec('SELECT last_insert_rowid() as id');
-    const id = result[0].values[0][0] as number;
-
-    // Update lexicon's updated_at
-    db.run(`UPDATE lexicon SET updated_at = datetime('now') WHERE id = ?`, [lexiconId]);
-
-    persistDatabase();
-
-    return {
-        id,
-        lexicon_id: lexiconId,
-        grapheme_id: input.grapheme_id,
-        position: input.position,
-    };
+    return withTransaction(db, () => {
+        const current = deserializeGlyphOrder(requireLexicon(lexiconId).glyph_order);
+        const at = Math.max(0, Math.min(input.position, current.length));
+        current.splice(at, 0, createGraphemeEntry(input.grapheme_id));
+        updateLexicon(lexiconId, { glyph_order: current });
+        const row = execOne(
+            db,
+            'SELECT id, lexicon_id, grapheme_id, position FROM lexicon_spelling WHERE lexicon_id = ? AND position = ?',
+            [lexiconId, at],
+        );
+        if (!row) {
+            throw new Error('Spelling index out of sync after insert');
+        }
+        return {
+            id: row.id as number,
+            lexicon_id: row.lexicon_id as number,
+            grapheme_id: row.grapheme_id as number,
+            position: row.position as number,
+        };
+    });
 }
 
 /**
- * Replace a lexicon's entire spelling (delete all and re-add).
+ * Replace a word's spelling with the given grapheme rows (sorted by position).
+ * Any IPA fallbacks in the current spelling are dropped — the caller is
+ * stating the full new spelling.
  */
 export function setLexiconSpelling(lexiconId: number, spelling: CreateLexiconSpellingInput[]): void {
-    const db = getDatabase();
-
-    // Delete existing spelling
-    db.run('DELETE FROM lexicon_spelling WHERE lexicon_id = ?', [lexiconId]);
-
-    // Add new spelling
-    for (const input of spelling) {
-        db.run(`
-            INSERT INTO lexicon_spelling (lexicon_id, grapheme_id, position)
-            VALUES (?, ?, ?)
-        `, [lexiconId, input.grapheme_id, input.position]);
-    }
-
-    // Update lexicon's updated_at
-    db.run(`UPDATE lexicon SET updated_at = datetime('now') WHERE id = ?`, [lexiconId]);
-
-    persistDatabase();
+    requireLexicon(lexiconId);
+    const glyphOrder = [...spelling]
+        .sort((a, b) => a.position - b.position)
+        .map(s => createGraphemeEntry(s.grapheme_id));
+    updateLexicon(lexiconId, { glyph_order: glyphOrder });
 }
 
-/**
- * Remove all spelling from a lexicon entry.
- */
+/** Remove the entire spelling. Returns the number of index rows that existed. */
 export function clearLexiconSpelling(lexiconId: number): number {
     const db = getDatabase();
-
-    db.run('DELETE FROM lexicon_spelling WHERE lexicon_id = ?', [lexiconId]);
-
-    const changes = db.getRowsModified();
-    if (changes > 0) {
-        db.run(`UPDATE lexicon SET updated_at = datetime('now') WHERE id = ?`, [lexiconId]);
-        persistDatabase();
-    }
-
-    return changes;
+    return withTransaction(db, () => {
+        const before = execScalar<number>(db, 'SELECT COUNT(*) FROM lexicon_spelling WHERE lexicon_id = ?', [lexiconId]) ?? 0;
+        updateLexicon(lexiconId, { glyph_order: [] });
+        return before;
+    });
 }
 
 // =============================================================================
 // LEXICON ANCESTRY OPERATIONS
 // =============================================================================
 
-/**
- * Get the direct ancestors of a lexicon entry.
- */
+/** Direct ancestors of a word, in compound position order. */
 export function getAncestorsByLexiconId(lexiconId: number): LexiconAncestorEntry[] {
-    const db = getDatabase();
-
-    const result = db.exec(`
-        SELECT l.id, l.lemma, l.pronunciation, l.is_native, l.auto_spell, l.meaning, 
-               l.part_of_speech, l.notes, l.created_at, l.updated_at,
-               la.position, la.ancestry_type
+    return execRows(getDatabase(), `
+        SELECT ${lexiconColumns('l')}, la.position AS ancestry_position, la.ancestry_type
         FROM lexicon l
         JOIN lexicon_ancestry la ON l.id = la.ancestor_id
         WHERE la.lexicon_id = ?
         ORDER BY la.position ASC
-    `, [lexiconId]);
-
-    if (result.length === 0) {
-        return [];
-    }
-
-    return result[0].values.map((row: unknown[]) => ({
-        ancestor: mapRowToLexicon(row),
-        position: row[10] as number,
-        ancestry_type: row[11] as AncestryType,
+    `, [lexiconId]).map(rec => ({
+        ancestor: mapLexiconRecord(rec),
+        position: rec.ancestry_position as number,
+        ancestry_type: rec.ancestry_type as AncestryType,
     }));
 }
 
-/**
- * Get the descendants of a lexicon entry (words derived from this word).
- */
+/** Words derived directly from this word. */
 export function getDescendantsByLexiconId(ancestorId: number): LexiconDescendantEntry[] {
-    const db = getDatabase();
-
-    const result = db.exec(`
-        SELECT l.id, l.lemma, l.pronunciation, l.is_native, l.auto_spell, l.meaning, 
-               l.part_of_speech, l.notes, l.created_at, l.updated_at,
-               la.ancestry_type
+    return execRows(getDatabase(), `
+        SELECT ${lexiconColumns('l')}, la.ancestry_type
         FROM lexicon l
         JOIN lexicon_ancestry la ON l.id = la.lexicon_id
         WHERE la.ancestor_id = ?
         ORDER BY COALESCE(l.pronunciation, l.lemma) ASC
-    `, [ancestorId]);
-
-    if (result.length === 0) {
-        return [];
-    }
-
-    return result[0].values.map((row: unknown[]) => ({
-        descendant: mapRowToLexicon(row),
-        ancestry_type: row[10] as AncestryType,
+    `, [ancestorId]).map(rec => ({
+        descendant: mapLexiconRecord(rec),
+        ancestry_type: rec.ancestry_type as AncestryType,
     }));
 }
 
-/**
- * Get the junction table entries for a lexicon's ancestry.
- */
+/** Raw rows of the ancestry junction for a word. */
 export function getLexiconAncestryEntries(lexiconId: number): LexiconAncestry[] {
-    const db = getDatabase();
-
-    const result = db.exec(`
+    return execRows(getDatabase(), `
         SELECT id, lexicon_id, ancestor_id, position, ancestry_type
-        FROM lexicon_ancestry
-        WHERE lexicon_id = ?
-        ORDER BY position ASC
-    `, [lexiconId]);
-
-    if (result.length === 0) {
-        return [];
-    }
-
-    return result[0].values.map((row: unknown[]) => ({
-        id: row[0] as number,
-        lexicon_id: row[1] as number,
-        ancestor_id: row[2] as number,
-        position: row[3] as number,
-        ancestry_type: row[4] as AncestryType,
+        FROM lexicon_ancestry WHERE lexicon_id = ? ORDER BY position ASC
+    `, [lexiconId]).map(rec => ({
+        id: rec.id as number,
+        lexicon_id: rec.lexicon_id as number,
+        ancestor_id: rec.ancestor_id as number,
+        position: rec.position as number,
+        ancestry_type: rec.ancestry_type as AncestryType,
     }));
 }
 
-/**
- * Add an ancestor to a lexicon entry.
- */
+function touchLexicon(lexiconId: number): void {
+    getDatabase().run(`UPDATE lexicon SET updated_at = datetime('now') WHERE id = ?`, [lexiconId]);
+}
+
+/** Throws if the closure contains any self-path — the signature of a cycle. */
+function assertClosureAcyclic(): void {
+    const self = execScalar<number>(
+        getDatabase(),
+        'SELECT 1 FROM lexicon_ancestry_closure WHERE ancestor_id = descendant_id LIMIT 1',
+    );
+    if (self !== undefined) {
+        throw new Error('Ancestry change would create a cycle in the etymology tree');
+    }
+}
+
+/** Add one ancestor edge. Rejects cycles before writing. */
 export function addAncestorToLexicon(lexiconId: number, input: CreateLexiconAncestryInput): LexiconAncestry {
-    // Check for cycles
     if (wouldCreateCycleClosure(lexiconId, input.ancestor_id)) {
         throw new Error(`Cannot add ancestor: would create a cycle (lexicon ${lexiconId} is an ancestor of ${input.ancestor_id})`);
     }
-
     const db = getDatabase();
-
-    db.run(`
-        INSERT INTO lexicon_ancestry (lexicon_id, ancestor_id, position, ancestry_type)
-        VALUES (?, ?, ?, ?)
-    `, [lexiconId, input.ancestor_id, input.position, input.ancestry_type ?? 'derived']);
-
-    const result = db.exec('SELECT last_insert_rowid() as id');
-    const id = result[0].values[0][0] as number;
-
-    // Update lexicon's updated_at
-    db.run(`UPDATE lexicon SET updated_at = datetime('now') WHERE id = ?`, [lexiconId]);
-
-    // Update closure table
-    addClosurePaths(lexiconId, input.ancestor_id);
-
-    persistDatabase();
-
-    return {
-        id,
-        lexicon_id: lexiconId,
-        ancestor_id: input.ancestor_id,
-        position: input.position,
-        ancestry_type: input.ancestry_type ?? 'derived',
-    };
+    const type = input.ancestry_type ?? 'derived';
+    return withTransaction(db, () => {
+        db.run(
+            `INSERT INTO lexicon_ancestry (lexicon_id, ancestor_id, position, ancestry_type) VALUES (?, ?, ?, ?)`,
+            [lexiconId, input.ancestor_id, input.position, type],
+        );
+        const id = lastInsertId(db);
+        touchLexicon(lexiconId);
+        addClosurePaths(lexiconId, input.ancestor_id, db);
+        return { id, lexicon_id: lexiconId, ancestor_id: input.ancestor_id, position: input.position, ancestry_type: type };
+    });
 }
 
 /**
- * Replace a lexicon's entire ancestry (delete all and re-add).
+ * Replace a word's ancestry. Each new ancestor is cycle-checked against the
+ * current graph (a word's own outgoing edges never lie on a path from its
+ * would-be ancestor, so replacing them does not change the answer), the
+ * closure is rebuilt, and a self-path assertion guards the result.
  */
 export function setLexiconAncestry(lexiconId: number, ancestry: CreateLexiconAncestryInput[]): void {
-    const db = getDatabase();
-
-    // Delete existing ancestry
-    db.run('DELETE FROM lexicon_ancestry WHERE lexicon_id = ?', [lexiconId]);
-
-    // Add new ancestry
     for (const input of ancestry) {
-        db.run(`
-            INSERT INTO lexicon_ancestry (lexicon_id, ancestor_id, position, ancestry_type)
-            VALUES (?, ?, ?, ?)
-        `, [lexiconId, input.ancestor_id, input.position, input.ancestry_type ?? 'derived']);
+        if (wouldCreateCycleClosure(lexiconId, input.ancestor_id)) {
+            throw new Error(`Cannot set ancestry: ancestor ${input.ancestor_id} would create a cycle`);
+        }
     }
-
-    // Update lexicon's updated_at
-    db.run(`UPDATE lexicon SET updated_at = datetime('now') WHERE id = ?`, [lexiconId]);
-
-    // Rebuild closure table to be safe since we did a bulk change involving deletes
-    rebuildClosureTable();
-
-    persistDatabase();
+    const db = getDatabase();
+    withTransaction(db, () => {
+        db.run('DELETE FROM lexicon_ancestry WHERE lexicon_id = ?', [lexiconId]);
+        for (const input of ancestry) {
+            db.run(
+                `INSERT INTO lexicon_ancestry (lexicon_id, ancestor_id, position, ancestry_type) VALUES (?, ?, ?, ?)`,
+                [lexiconId, input.ancestor_id, input.position, input.ancestry_type ?? 'derived'],
+            );
+        }
+        touchLexicon(lexiconId);
+        rebuildClosureTable(db);
+        assertClosureAcyclic();
+    });
 }
 
-/**
- * Remove an ancestor from a lexicon entry.
- */
+/** Remove one ancestor edge. */
 export function removeAncestorFromLexicon(lexiconId: number, ancestorId: number): boolean {
     const db = getDatabase();
-
-    db.run('DELETE FROM lexicon_ancestry WHERE lexicon_id = ? AND ancestor_id = ?', [lexiconId, ancestorId]);
-
-    const changes = db.getRowsModified();
-    if (changes > 0) {
-        db.run(`UPDATE lexicon SET updated_at = datetime('now') WHERE id = ?`, [lexiconId]);
-
-        // Remove closure paths (currently implemented as full rebuild in closureService)
-        removeClosurePaths(lexiconId, ancestorId);
-
-        persistDatabase();
-    }
-
-    return changes > 0;
+    return withTransaction(db, () => {
+        db.run('DELETE FROM lexicon_ancestry WHERE lexicon_id = ? AND ancestor_id = ?', [lexiconId, ancestorId]);
+        const changes = db.getRowsModified();
+        if (changes > 0) {
+            touchLexicon(lexiconId);
+            rebuildClosureTable(db);
+        }
+        return changes > 0;
+    });
 }
 
-/**
- * Clear all ancestry for a lexicon entry.
- */
+/** Remove all ancestry for a word. */
 export function clearLexiconAncestry(lexiconId: number): number {
     const db = getDatabase();
-
-    db.run('DELETE FROM lexicon_ancestry WHERE lexicon_id = ?', [lexiconId]);
-
-    const changes = db.getRowsModified();
-    if (changes > 0) {
-        db.run(`UPDATE lexicon SET updated_at = datetime('now') WHERE id = ?`, [lexiconId]);
-
-        // Ancestry cleared, rebuild closure (simplest approach for now)
-        rebuildClosureTable();
-
-        persistDatabase();
-    }
-
-    return changes;
+    return withTransaction(db, () => {
+        db.run('DELETE FROM lexicon_ancestry WHERE lexicon_id = ?', [lexiconId]);
+        const changes = db.getRowsModified();
+        if (changes > 0) {
+            touchLexicon(lexiconId);
+            rebuildClosureTable(db);
+        }
+        return changes;
+    });
 }
 
 // =============================================================================
@@ -750,260 +680,122 @@ export function clearLexiconAncestry(lexiconId: number): number {
 // =============================================================================
 
 /**
- * Get the full ancestry tree for a lexicon entry (recursive).
- * Uses a recursive CTE for efficient querying.
- *
- * @param id - The lexicon entry ID to get ancestry for
- * @param maxDepth - Maximum depth to traverse (default: 50, to prevent infinite loops)
+ * Full ancestry tree. The visited set is PER PATH, so a diamond (two parents
+ * sharing a grandparent) renders the grandparent under both branches; a node
+ * cut by `maxDepth` or by a (should-be-impossible) cycle is marked
+ * `truncated` instead of masquerading as a root.
  */
 export function getFullAncestryTree(id: number, maxDepth: number = 50): LexiconAncestryNode {
-    const lexicon = getLexiconById(id);
-    if (!lexicon) {
+    const root = getLexiconById(id);
+    if (!root) {
         throw new Error(`Lexicon entry with id ${id} not found`);
     }
 
-    // Build the tree recursively
-    const visited = new Set<number>();
-
-    function buildNode(entryId: number, ancestryType: AncestryType | null, position: number | null, depth: number): LexiconAncestryNode {
-        const entry = getLexiconById(entryId);
-        if (!entry || visited.has(entryId) || depth > maxDepth) {
-            return {
-                entry: entry ?? { id: entryId, lemma: '[Not Found]' } as Lexicon,
-                ancestry_type: ancestryType,
-                position: position,
-                ancestors: [],
-            };
+    function buildNode(
+        entry: Lexicon,
+        ancestryType: AncestryType | null,
+        position: number | null,
+        depth: number,
+        path: Set<number>,
+    ): LexiconAncestryNode {
+        if (depth >= maxDepth) {
+            return { entry, ancestry_type: ancestryType, position, ancestors: [], truncated: true };
         }
-
-        visited.add(entryId);
-
-        const ancestorEntries = getAncestorsByLexiconId(entryId);
-        const ancestorNodes = ancestorEntries.map(ae =>
-            buildNode(ae.ancestor.id, ae.ancestry_type, ae.position, depth + 1)
-        );
-
-        return {
-            entry,
-            ancestry_type: ancestryType,
-            position: position,
-            ancestors: ancestorNodes,
-        };
+        const nextPath = new Set(path).add(entry.id);
+        const ancestors = getAncestorsByLexiconId(entry.id).map(ae => {
+            if (nextPath.has(ae.ancestor.id)) {
+                return { entry: ae.ancestor, ancestry_type: ae.ancestry_type, position: ae.position, ancestors: [], truncated: true };
+            }
+            return buildNode(ae.ancestor, ae.ancestry_type, ae.position, depth + 1, nextPath);
+        });
+        return { entry, ancestry_type: ancestryType, position, ancestors };
     }
 
-    return buildNode(id, null, null, 0);
+    return buildNode(root, null, null, 0, new Set());
+}
+
+/** All transitive ancestor ids (optionally only those within `maxDepth` edges). */
+export function getAllAncestorIds(id: number, maxDepth?: number): number[] {
+    return getAllAncestorIdsClosure(id, maxDepth);
+}
+
+/** All transitive descendant ids (optionally only those within `maxDepth` edges). */
+export function getAllDescendantIds(id: number, maxDepth?: number): number[] {
+    return getAllDescendantIdsClosure(id, maxDepth);
 }
 
 /**
- * Get all ancestor IDs for a lexicon entry (flattened, recursive).
- * Useful for checking if adding an ancestor would create a cycle.
- */
-export function getAllAncestorIds(id: number, maxDepth: number = 50): number[] {
-    const db = getDatabase();
-
-    // Use recursive CTE for efficiency
-    const result = db.exec(`
-        WITH RECURSIVE ancestors AS (
-            SELECT ancestor_id, 1 as depth
-            FROM lexicon_ancestry
-            WHERE lexicon_id = ?
-            
-            UNION ALL
-            
-            SELECT la.ancestor_id, a.depth + 1
-            FROM lexicon_ancestry la
-            JOIN ancestors a ON la.lexicon_id = a.ancestor_id
-            WHERE a.depth < ?
-        )
-        SELECT DISTINCT ancestor_id FROM ancestors
-    `, [id, maxDepth]);
-
-    if (result.length === 0) {
-        return [];
-    }
-
-    return result[0].values.map((row: unknown[]) => row[0] as number);
-}
-
-/**
- * Get all descendant IDs for a lexicon entry (flattened, recursive).
- */
-export function getAllDescendantIds(id: number, maxDepth: number = 50): number[] {
-    const db = getDatabase();
-
-    // Use closure table for O(1) if available
-    const closureResult = db.exec(`
-        SELECT descendant_id FROM lexicon_ancestry_closure
-        WHERE ancestor_id = ?
-    `, [id]);
-
-    if (closureResult.length > 0) {
-        return closureResult[0].values.map(row => row[0] as number);
-    }
-
-    // Fallback to recursive CTE (if closure table empty/broken)
-    const result = db.exec(`
-        WITH RECURSIVE descendants AS (
-            SELECT lexicon_id, 1 as depth
-            FROM lexicon_ancestry
-            WHERE ancestor_id = ?
-            
-            UNION ALL
-            
-            SELECT la.lexicon_id, d.depth + 1
-            FROM lexicon_ancestry la
-            JOIN descendants d ON la.ancestor_id = d.lexicon_id
-            WHERE d.depth < ?
-        )
-        SELECT DISTINCT lexicon_id FROM descendants
-    `, [id, maxDepth]);
-
-    if (result.length === 0) {
-        return [];
-    }
-
-    return result[0].values.map((row: unknown[]) => row[0] as number);
-}
-
-/**
- * Check if adding an ancestor would create a cycle.
- *
- * Adding `ancestorId` as an ancestor of `lexiconId` would create a cycle if:
- * 1. lexiconId === ancestorId (self-reference)
- * 2. lexiconId is already an ancestor of ancestorId (because then we'd have:
- *    ancestorId -> ... -> lexiconId -> ancestorId, creating a loop)
- *
- * In other words: if lexiconId appears in the ancestry chain of ancestorId,
- * we cannot make ancestorId an ancestor of lexiconId.
+ * Would making `ancestorId` an ancestor of `lexiconId` create a cycle?
+ * True when they are the same word or `lexiconId` already sits above
+ * `ancestorId` in the tree.
  */
 export function wouldCreateCycle(lexiconId: number, ancestorId: number): boolean {
     return wouldCreateCycleClosure(lexiconId, ancestorId);
 }
 
 // =============================================================================
-// HELPER FUNCTIONS
+// SPELLING INDEX + DISPLAY
 // =============================================================================
 
 /**
- * Map a database row to a Lexicon object.
- * Expected column order: id, lemma, pronunciation, is_native, auto_spell, meaning,
- *                        part_of_speech, notes, glyph_order, needs_attention, created_at, updated_at
- */
-function mapRowToLexicon(row: unknown[]): Lexicon {
-    return {
-        id: row[0] as number,
-        lemma: row[1] as string,
-        pronunciation: row[2] as string | null,
-        is_native: (row[3] as number) === 1,
-        auto_spell: (row[4] as number) === 1,
-        meaning: row[5] as string | null,
-        part_of_speech: row[6] as string | null,
-        notes: row[7] as string | null,
-        glyph_order: row[8] as string ?? '[]',
-        needs_attention: (row[9] as number) === 1,
-        created_at: row[10] as string,
-        updated_at: row[11] as string,
-    };
-}
-
-/**
- * Sync the lexicon_spelling junction table from glyph_order.
- * This extracts unique grapheme IDs from glyph_order and updates the junction table.
- *
- * @param lexiconId - The lexicon entry ID
- * @param glyphOrder - The glyph_order array
+ * Rebuild the `lexicon_spelling` index for one word from its `glyph_order`:
+ * one row per grapheme OCCURRENCE, `position` = index in `glyph_order` (so
+ * it lines up with `SpellingDisplayEntry.position`). Runs inside the caller's
+ * transaction; a constraint failure propagates and rolls everything back.
  */
 export function syncLexiconSpellingFromGlyphOrder(lexiconId: number, glyphOrder: SpellingEntry[]): void {
     const db = getDatabase();
-
-    // Delete existing spelling entries
     db.run('DELETE FROM lexicon_spelling WHERE lexicon_id = ?', [lexiconId]);
-
-    // Extract unique grapheme IDs from glyph_order
-    const extracted = extractGraphemeIds(glyphOrder);
-
-    // Add new entries (position just for ordering, we use grapheme_id uniqueness)
-    // Note: Since glyph_order is the source of truth for ordering, we just need
-    // the junction table for queries like "which words use grapheme X?"
-    // We'll assign position based on first occurrence in glyph_order
-    const positionMap = new Map<number, number>();
-    let position = 0;
-    for (const entry of parseGlyphOrder(glyphOrder)) {
-        if (entry.type === 'grapheme' && entry.graphemeId && !positionMap.has(entry.graphemeId)) {
-            positionMap.set(entry.graphemeId, position++);
+    parseGlyphOrder(glyphOrder).forEach((entry, index) => {
+        if (entry.type === 'grapheme' && entry.graphemeId) {
+            db.run(
+                'INSERT INTO lexicon_spelling (lexicon_id, grapheme_id, position) VALUES (?, ?, ?)',
+                [lexiconId, entry.graphemeId, index],
+            );
         }
-    }
+    });
+}
 
-    for (const graphemeId of extracted.graphemeIds) {
-        const pos = positionMap.get(graphemeId) ?? 0;
-        try {
-            db.run(`
-                INSERT INTO lexicon_spelling (lexicon_id, grapheme_id, position)
-                VALUES (?, ?, ?)
-            `, [lexiconId, graphemeId, pos]);
-        } catch (error) {
-            // Ignore constraint violations (shouldn't happen with unique grapheme IDs)
-            console.warn(`[LexiconService] Failed to sync spelling for lexicon ${lexiconId}, grapheme ${graphemeId}:`, error);
-        }
-    }
+/** Every grapheme, keyed by id — one statement. */
+export function loadGraphemeIndex(ids?: number[]): Map<number, Grapheme> {
+    const db = getDatabase();
+    const rows = ids
+        ? execRows(db, `SELECT id, name, category, notes, created_at, updated_at FROM graphemes WHERE id IN (${inPlaceholders(ids.length)})`, ids)
+        : execRows(db, 'SELECT id, name, category, notes, created_at, updated_at FROM graphemes');
+    return new Map(rows.map(rec => [rec.id as number, mapGraphemeRecord(rec)]));
 }
 
 /**
- * Build spelling display entries from glyph_order.
- * Resolves grapheme references to full grapheme data.
- *
- * @param glyphOrder - The glyph_order JSON string
- * @returns Array of SpellingDisplayEntry
+ * Resolve a `glyph_order` JSON string into display entries. Pass a prefetched
+ * `graphemeIndex` when rendering many words; otherwise the graphemes this word
+ * references are fetched with one `IN (...)` query.
  */
-export function buildSpellingDisplay(glyphOrder: string): { entries: SpellingDisplayEntry[]; hasIpaFallbacks: boolean } {
-    const db = getDatabase();
-    const entries: SpellingDisplayEntry[] = [];
+export function buildSpellingDisplay(
+    glyphOrder: string,
+    graphemeIndex?: Map<number, Grapheme>,
+): { entries: SpellingDisplayEntry[]; hasIpaFallbacks: boolean } {
     const parsed = parseGlyphOrder(deserializeGlyphOrder(glyphOrder));
+    const index = graphemeIndex ?? loadGraphemeIndex(
+        [...new Set(parsed.filter(e => e.type === 'grapheme' && e.graphemeId).map(e => e.graphemeId!))],
+    );
+
+    const entries: SpellingDisplayEntry[] = [];
     let hasIpaFallbacks = false;
-
-    for (let i = 0; i < parsed.length; i++) {
-        const entry = parsed[i];
-
+    parsed.forEach((entry, position) => {
         if (entry.type === 'grapheme' && entry.graphemeId) {
-            // Resolve grapheme from database
-            const result = db.exec(`
-                SELECT id, name, category, notes, created_at, updated_at
-                FROM graphemes WHERE id = ?
-            `, [entry.graphemeId]);
-
-            if (result.length > 0 && result[0].values.length > 0) {
-                const row = result[0].values[0];
-                entries.push({
-                    type: 'grapheme',
-                    position: i,
-                    grapheme: {
-                        id: row[0] as number,
-                        name: row[1] as string,
-                        category: row[2] as string | null,
-                        notes: row[3] as string | null,
-                        created_at: row[4] as string,
-                        updated_at: row[5] as string,
-                    },
-                });
+            const grapheme = index.get(entry.graphemeId);
+            if (grapheme) {
+                entries.push({ type: 'grapheme', position, grapheme });
             } else {
-                // Grapheme not found - might have been deleted
-                // Convert to IPA fallback if we have the character info
-                entries.push({
-                    type: 'ipa',
-                    position: i,
-                    ipaCharacter: `[?${entry.graphemeId}]`, // Placeholder for missing grapheme
-                });
+                // Grapheme no longer exists — surface a visible placeholder.
+                entries.push({ type: 'ipa', position, ipaCharacter: `[?${entry.graphemeId}]` });
                 hasIpaFallbacks = true;
             }
         } else if (entry.type === 'ipa' && entry.ipaCharacter) {
-            entries.push({
-                type: 'ipa',
-                position: i,
-                ipaCharacter: entry.ipaCharacter,
-            });
+            entries.push({ type: 'ipa', position, ipaCharacter: entry.ipaCharacter });
             hasIpaFallbacks = true;
         }
-    }
+    });
 
     return { entries, hasIpaFallbacks };
 }
@@ -1012,141 +804,62 @@ export function buildSpellingDisplay(glyphOrder: string): { entries: SpellingDis
 // GRAPHEME DELETION HANDLING
 // =============================================================================
 
-/**
- * Get all lexicon entries that use a specific grapheme in their spelling.
- *
- * @param graphemeId - The grapheme ID to check
- * @returns Array of lexicon entries using this grapheme
- */
+/** Words whose spelling uses a grapheme (via the derived index). */
 export function getLexiconEntriesUsingGrapheme(graphemeId: number): Lexicon[] {
-    const db = getDatabase();
-
-    const result = db.exec(`
-        SELECT DISTINCT l.id, l.lemma, l.pronunciation, l.is_native, l.auto_spell, 
-                l.meaning, l.part_of_speech, l.notes, l.glyph_order, l.needs_attention, 
-                l.created_at, l.updated_at
-         FROM lexicon l
-         JOIN lexicon_spelling ls ON l.id = ls.lexicon_id
-         WHERE ls.grapheme_id = ?
-         ORDER BY COALESCE(l.pronunciation, l.lemma) ASC
-     `, [graphemeId]);
-
-    if (result.length === 0) {
-        return [];
-    }
-
-    return result[0].values.map(mapRowToLexicon);
+    return execRows(getDatabase(), `
+        SELECT DISTINCT ${lexiconColumns('l')}
+        FROM lexicon l
+        JOIN lexicon_spelling ls ON l.id = ls.lexicon_id
+        WHERE ls.grapheme_id = ?
+        ORDER BY COALESCE(l.pronunciation, l.lemma) ASC
+    `, [graphemeId]).map(mapLexiconRecord);
 }
 
 /**
- * Handle grapheme deletion by respelling affected lexicon entries.
- *
- * For entries with auto_spell=true:
- * - Trigger auto-respelling using the pronunciation
- * - Replace deleted grapheme with IPA fallback if respelling fails
- *
- * For entries with auto_spell=false:
- * - Mark needs_attention=true for manual review
- * - Replace deleted grapheme with IPA placeholder
- *
- * @param graphemeId - The ID of the deleted grapheme
- * @param deletedGraphemePronunciation - Optional primary phoneme of the deleted grapheme (for IPA fallback)
- * @returns Object with counts of affected entries
+ * Rewrite every word that uses `graphemeId` so the grapheme can be deleted:
+ * each occurrence becomes the fallback IPA character. Auto-spelled words are
+ * counted as respelled; manually spelled words are flagged `needs_attention`
+ * for review. Runs in one transaction.
  */
 export function handleGraphemeDeletion(
     graphemeId: number,
-    deletedGraphemePronunciation?: string
-): {
-    respelledCount: number;
-    markedForAttentionCount: number;
-    affectedLexiconIds: number[];
-} {
-    const affectedEntries = getLexiconEntriesUsingGrapheme(graphemeId);
-    const affectedLexiconIds: number[] = [];
-    let respelledCount = 0;
-    let markedForAttentionCount = 0;
-
-    // Note: We don't use auto-spell here to avoid circular dependencies.
-    // Instead, we replace the deleted grapheme with IPA fallback and let the user
-    // re-spell manually if needed, or rely on auto_spell during the next edit.
-
-    for (const entry of affectedEntries) {
-        affectedLexiconIds.push(entry.id);
-
-        // Parse current glyph_order
-        const currentGlyphOrder = deserializeGlyphOrder(entry.glyph_order);
-
-        // Replace the deleted grapheme with IPA fallback
-        const graphemeEntry = createGraphemeEntry(graphemeId);
-        const fallbackChar = deletedGraphemePronunciation || '?';
-
-        const newGlyphOrder = currentGlyphOrder.map(e =>
-            e === graphemeEntry ? fallbackChar : e
-        );
-
-        // For auto_spell entries, we'll mark them but not force attention
-        // since they can be auto-respelled on next edit
-        const shouldMarkAttention = !entry.auto_spell;
-
-        updateLexicon(entry.id, {
-            glyph_order: newGlyphOrder,
-            needs_attention: shouldMarkAttention,
-        });
-
-        if (shouldMarkAttention) {
-            markedForAttentionCount++;
-        } else {
-            respelledCount++; // Count as "handled" since auto_spell entries will auto-fix
-        }
-    }
-
-    return {
-        respelledCount,
-        markedForAttentionCount,
-        affectedLexiconIds,
-    };
-}
-
-/**
- * Get lexicon entries that need attention (manual review required).
- *
- * @returns Array of lexicon entries with needs_attention=true
- */
-export function getLexiconEntriesNeedingAttention(): Lexicon[] {
+    deletedGraphemePronunciation?: string,
+): { respelledCount: number; markedForAttentionCount: number; affectedLexiconIds: number[] } {
     const db = getDatabase();
+    return withTransaction(db, () => {
+        const affected = getLexiconEntriesUsingGrapheme(graphemeId);
+        const target = createGraphemeEntry(graphemeId);
+        const fallback = deletedGraphemePronunciation || '?';
+        let respelledCount = 0;
+        let markedForAttentionCount = 0;
 
-    const result = db.exec(`
-        SELECT id, lemma, pronunciation, is_native, auto_spell, meaning, 
-               part_of_speech, notes, glyph_order, needs_attention, created_at, updated_at
-        FROM lexicon
-        WHERE needs_attention = 1
-        ORDER BY updated_at DESC
-    `);
+        for (const entry of affected) {
+            const glyphOrder = deserializeGlyphOrder(entry.glyph_order).map(e => (e === target ? fallback : e));
+            // A manually spelled word needs review; a word that was ALREADY
+            // flagged stays flagged — this is not the place to clear it.
+            const needsAttention = !entry.auto_spell || entry.needs_attention;
+            updateLexicon(entry.id, { glyph_order: glyphOrder, needs_attention: needsAttention });
+            if (needsAttention) markedForAttentionCount++;
+            else respelledCount++;
+        }
 
-    if (result.length === 0) {
-        return [];
-    }
-
-    return result[0].values.map(mapRowToLexicon);
+        return { respelledCount, markedForAttentionCount, affectedLexiconIds: affected.map(e => e.id) };
+    });
 }
 
-/**
- * Mark a lexicon entry as no longer needing attention.
- *
- * @param lexiconId - The lexicon entry ID
- * @returns The updated lexicon entry
- */
+/** Words flagged for manual review. */
+export function getLexiconEntriesNeedingAttention(): Lexicon[] {
+    return execRows(
+        getDatabase(),
+        `SELECT ${lexiconColumns()} FROM lexicon WHERE needs_attention = 1 ORDER BY updated_at DESC`,
+    ).map(mapLexiconRecord);
+}
+
 export function clearNeedsAttention(lexiconId: number): Lexicon | null {
     return updateLexicon(lexiconId, { needs_attention: false });
 }
 
-/**
- * Update a lexicon's glyph_order directly and sync the junction table.
- *
- * @param lexiconId - The lexicon entry ID
- * @param glyphOrder - The new glyph_order array
- * @returns The updated lexicon entry
- */
+/** Set a word's spelling directly from a `glyph_order` array and clear the review flag. */
 export function setLexiconGlyphOrder(lexiconId: number, glyphOrder: SpellingEntry[]): Lexicon | null {
     return updateLexicon(lexiconId, { glyph_order: glyphOrder, needs_attention: false });
 }

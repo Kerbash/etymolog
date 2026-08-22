@@ -17,8 +17,8 @@
  * import { useEtymolog, EtymologProvider } from '../db';
  * const { api, data, isLoading } = useEtymolog();
  *
- * // Legacy approach (direct imports) - deprecated
- * import { initDatabase, createGlyph, createGrapheme, useGlyphs, useGraphemes } from '../db';
+ * // Service layer (direct imports) - used by tests and the API layer
+ * import { initDatabase, createGlyph, createGrapheme } from '../db';
  */
 
 // =============================================================================
@@ -87,12 +87,29 @@ export {
     getDatabase,
     isDatabaseInitialized,
     persistDatabase,
+    persistDatabaseNow,
+    exportDatabaseBytes,
     exportDatabaseFile,
     importDatabaseFile,
     closeDatabase,
     clearDatabase,
-    resetDatabase
+    resetDatabase,
+    getDatabaseHealth,
+    createDetachedDatabase,
+    type DatabaseHealth,
 } from './database';
+
+export {
+    getPersistenceState,
+    subscribePersistence,
+    flushPersist,
+    type PersistenceState,
+    type PersistenceStatus,
+    type PersistenceErrorCode,
+    type StorageAdapterKind,
+} from './persistence';
+
+export { withTransaction, getTransactionDepth, TransactionRollbackFailed } from './utils/transaction';
 
 // =============================================================================
 // TYPE DEFINITIONS
@@ -304,11 +321,3 @@ export {
 } from './formHandler';
 
 export type { CombinedGlyphGraphemeFormData } from './formHandler';
-
-// =============================================================================
-// REACT HOOKS (Legacy - prefer useEtymolog() from context)
-// =============================================================================
-/** @deprecated Use useEtymolog() from EtymologContext instead */
-export { useGlyphs } from './useGlyphs';
-/** @deprecated Use useEtymolog() from EtymologContext instead */
-export { useGraphemes, useDatabase } from './useGraphemes';

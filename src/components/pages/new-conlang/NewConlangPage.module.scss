@@ -1,0 +1,72 @@
+// NewConlangPage — the app's front door.
+//
+// Every rule here replaces an inline `style={{…}}` (five of them, including two
+// hardcoded font sizes and a `color: var(--text-secondary)` that only worked by
+// accident). Tokens only, so the page follows the theme like everything else.
+
+.page {
+    justify-content: center;
+    align-items: center;
+    padding: var(--content-padding);
+}
+
+// The hero reads as one centred card of increasing specificity: identity,
+// action, then the state the app is already in.
+.hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--section-gap);
+
+    width: 100%;
+    max-width: 40rem;
+    text-align: center;
+}
+
+.intro {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.title {
+    margin: 0;
+    font-size: 2.5rem;
+}
+
+.tagline {
+    margin: 0;
+    color: var(--text-secondary);
+}
+
+.actions {
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+// The first-run steer. A new conlang cannot spell a word before it has
+// graphemes, so the page says where to start instead of letting the Lexicon's
+// "New word" button lead into a dead end.
+.hint {
+    margin: 0;
+    max-width: 32rem;
+
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.loaded {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+
+    width: 100%;
+    padding: var(--surface-padding);
+
+    background: var(--surface-base);
+    border: var(--border-width) solid var(--border-secondary);
+    border-radius: var(--radius-surface);
+    box-shadow: var(--shadow-surface);
+}

@@ -7,6 +7,27 @@
     <meta http-equiv="expires" content="0" />
     <link rel="icon" type="image/svg+xml" href="vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Tells the UA which schemes the page supports, so form controls,
+         scrollbars and the pre-paint canvas match the active theme instead of
+         flashing a light chrome over a dark app. -->
+    <meta name="color-scheme" content="light dark" />
+    <!-- Fonts. These were `@import url(...)` at the top of src/index.css, which
+         is a render-blocking round-trip discovered only after the CSS itself
+         has downloaded and parsed. As <link> tags they are discovered by the
+         preload scanner in the initial HTML, and the preconnects open the two
+         connections (stylesheet host + font-file host) in parallel with it.
+         The PWA runtime cache (vite.config.ts) already CacheFirsts both hosts,
+         so this is a first-load cost only. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@300;400;500;600;700&display=swap"
+    />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Bitcount+Prop+Single:wght@400&text=Nochi&display=swap"
+    />
     <title>etymolog</title>
   </head>
   <body>

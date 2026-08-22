@@ -60,7 +60,10 @@ import {
     // Auto-spell
     generateSpellingFromPronunciation,
     previewAutoSpelling,
+    getDatabase,
+    deleteGrapheme,
 } from '../index';
+import type { LexiconComplete } from '../types';
 
 // =============================================================================
 // HELPER FUNCTIONS
@@ -465,10 +468,12 @@ describe('Lexicon Service', () => {
                 spelling: [{ grapheme_id: grapheme.id, position: 0 }],
             });
 
-            // Note: The deleteGrapheme service manually deletes related rows first,
-            // which bypasses FK constraints. This test verifies that FK RESTRICT
-            // works when trying to delete via direct SQL.
-            // In production, you should check lexicon_spelling usage before delete.
+            // Foreign keys are enforced on every connection (Phase 1): a raw
+            // DELETE that would orphan lexicon_spelling must be refused by
+            // SQLite itself, not just by the service-level usage check.
+            const db = getDatabase();
+            expect(() => db.run('DELETE FROM graphemes WHERE id = ?', [grapheme.id])).toThrow(/FOREIGN KEY/);
+            expect(() => deleteGrapheme(grapheme.id)).toThrow(/lexicon/);
 
             // Verify the lexicon still has spelling
             const spelling = getSpellingByLexiconId(lexicon.id);
@@ -890,11 +895,11 @@ describe('Lexicon Service', () => {
 
         it('should handle extremely long meaning', () => {
             const longMeaning = 'a'.repeat(10000);
-            const result = createLexicon({
+            // Input validation rejects strings exceeding limits
+            expect(() => createLexicon({
                 lemma: 'test',
                 meaning: longMeaning,
-            });
-            expect(result.meaning).toBe(longMeaning);
+            })).toThrow('exceeds maximum length');
         });
 
         it('should handle multiple words with same spelling', () => {
@@ -925,10 +930,12 @@ describe('Lexicon Service', () => {
                 ],
             });
 
-            // Two-List Architecture: lexicon_spelling stores UNIQUE graphemes for relational queries
-            // The full ordered spelling (including duplicates) is in glyph_order
+            // lexicon_spelling is a derived index of glyph_order: one row per
+            // grapheme OCCURRENCE at its true position, so repeated graphemes
+            // are all present (they used to be deduped, losing the positions).
             const spellingEntries = getSpellingByLexiconId(word.id);
-            expect(spellingEntries).toHaveLength(1); // Unique graphemes only
+            expect(spellingEntries).toHaveLength(3);
+            expect(spellingEntries.every(g => g.id === grapheme.id)).toBe(true);
 
             // Verify the full spelling via getLexiconComplete
             const complete = getLexiconComplete(word.id);
@@ -969,7 +976,7 @@ describe('Lexicon Service', () => {
         });
 
         it('should handle word with many ancestors (wide tree)', () => {
-            const roots: any[] = [];
+            const roots: LexiconComplete[] = [];
             for (let i = 0; i < 5; i++) {
                 roots.push(createTestLexicon(`root${i}`, `r${i}`));
             }

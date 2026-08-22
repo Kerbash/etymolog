@@ -24,8 +24,11 @@ export function useNormalizedGlyphs(
     input: SpellingDisplayEntry[] | Glyph[] | RenderableGlyph[] | GraphemeComplete[] | number[],
     context: NormalizationContext = {}
 ): RenderableGlyph[] {
-    return useMemo(
-        () => normalizeGlyphInput(input, context),
-        [input, context.glyphMap, context.graphemeMap]
-    );
+    // The whole `context` object is the dependency, not its two fields: the
+    // React compiler cannot match `context.glyphMap` in the dep list against
+    // the `context` referenced in the body, and refuses to preserve the
+    // memoization at all. Callers already memoize the object they pass
+    // (`GlyphSpellingDisplay` builds it in a `useMemo`), so this is the same
+    // number of recomputations, correctly declared.
+    return useMemo(() => normalizeGlyphInput(input, context), [input, context]);
 }

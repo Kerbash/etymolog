@@ -13,7 +13,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 4px;
+    border-radius: var(--radius-chip);
     transition: all 0.15s ease;
     user-select: none;
     position: relative;
@@ -41,7 +41,7 @@
         width: 100%;
         height: 100%;
         font-size: 24px;
-        border-radius: 2px;
+        border-radius: var(--radius-chip);
 
         .glyphDisplay {
             max-width: 100%;
@@ -65,10 +65,10 @@
             transform: scale(0.98);
         }
 
-        &:focus {
-            outline: 2px solid var(--interactive-hover);
-            outline-offset: 2px;
-        }
+        // The focus ring is NOT declared here — see the rule at the end of
+        // `.cell`. On the vowel variant the guide overlay also paints an
+        // `outline`, and the two rules weigh exactly the same, so the focus
+        // ring only wins by coming last in the file.
     }
 
     &.assigned {
@@ -89,7 +89,7 @@
         &:hover {
             opacity: 1;
             border-color: var(--interactive-hover);
-            background: rgba(var(--interactive-base), 0.1);
+            background: color-mix(in srgb, var(--interactive-base) 10%, transparent);
         }
 
         .ipaText {
@@ -100,6 +100,83 @@
     &.loading {
         opacity: 0.5;
         pointer-events: none;
+    }
+
+    /* =========================================================================
+       THE FLAVOUR GUIDE OVERLAY
+       =========================================================================
+
+       Painted ON TOP of the assigned/unassigned rendering, never instead of it:
+       a lit cell still shows the user's glyph, and a dimmed one still shows it
+       too. The guide is a suggestion — the moment it hides someone's own work,
+       it has stopped being one.
+
+       Colours come from the persistent status family (`good` / `info` /
+       `disabled`), because a tier is a state that stays on the screen for as
+       long as the guide is on, not feedback about an action. `--status-good` is
+       deliberately never a `color:` here — at 2.74:1 on the light page it fails
+       AA as text (see `src/styles/__tests__/tokens.test.ts`); as a 2 px ring
+       around a cell it is a non-text indicator and reads clearly.
+
+       These blocks come AFTER `.assigned` / `.unassigned` on purpose: they carry
+       the same specificity, so source order is what lets the overlay win. */
+
+    &.guideCore {
+        background: var(--status-good-bg);
+        box-shadow: 0 0 0 2px var(--status-good);
+    }
+
+    &.guideFlavour {
+        background: var(--status-info-bg);
+        box-shadow: 0 0 0 2px var(--status-info);
+    }
+
+    /* A core sound the script has NOT got is the most useful thing on the
+       chart, so the unassigned dimming is lifted for both lit tiers. */
+    &.unassigned.guideCore,
+    &.unassigned.guideFlavour {
+        opacity: 1;
+    }
+
+    &.guideAvoid {
+        background: var(--status-disabled-bg);
+        opacity: 0.35;
+    }
+
+    /* …but never below legibility on a sound the user has already written a
+       grapheme for. Their work does not disappear because a preset disapproves. */
+    &.assigned.guideAvoid {
+        opacity: 0.7;
+    }
+
+    /* The vowel chart draws its cells inside a 48×48 SVG `<foreignObject>`,
+       which CLIPS anything painted outside the box — a `box-shadow` ring is
+       simply not there. An inset `outline` is drawn within the box and survives. */
+    &.vowel {
+        &.guideCore {
+            box-shadow: none;
+            outline: 2px solid var(--status-good);
+            outline-offset: -2px;
+        }
+
+        &.guideFlavour {
+            box-shadow: none;
+            outline: 2px solid var(--status-info);
+            outline-offset: -2px;
+        }
+    }
+
+    /* LAST rule in `.cell`: the keyboard focus ring has to beat the guide's
+       inset outline above, and equal specificity means the later rule wins. */
+    &.clickable:focus {
+        outline: 2px solid var(--interactive-hover);
+        outline-offset: 2px;
+    }
+
+    /* …and inset on the vowel variant, for the same clipping reason. An
+       outward-offset focus ring inside a `<foreignObject>` is invisible. */
+    &.vowel.clickable:focus {
+        outline-offset: -2px;
     }
 }
 

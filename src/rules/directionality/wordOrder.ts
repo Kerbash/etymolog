@@ -9,7 +9,7 @@ export const wordOrderRule: TypographyRule = {
         { value: 'ltr', label: 'Left to Right', description: 'Words flow left to right' },
         { value: 'rtl', label: 'Right to Left', description: 'Words flow right to left' },
         { value: 'ttb', label: 'Top to Bottom', description: 'Words flow top to bottom' },
-        { value: 'btu', label: 'Bottom to Up', description: 'Words flow bottom to top' },
+        { value: 'btt', label: 'Bottom to Top', description: 'Words flow bottom to top' },
     ],
     defaultValue: 'ltr',
     priority: 2,

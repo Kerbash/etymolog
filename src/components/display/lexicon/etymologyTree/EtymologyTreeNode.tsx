@@ -1,14 +1,29 @@
 /**
  * EtymologyTreeNode
- * ----------------
- * Recursive component for rendering a single node in the etymology tree.
+ * -----------------
+ * One node of the etymology tree, rendered recursively.
+ *
+ * Two changes worth knowing about:
+ *
+ *  1. the ancestry colour is a MODIFIER CLASS from `ancestryTypeStyles`, not an
+ *     inline `style={{ backgroundColor: … }}` — the map used to be duplicated
+ *     between this file and the legend, so the two could drift;
+ *  2. `node.truncated` is honoured. `getAncestryTree` marks a subtree it cut at
+ *     `maxDepth` (or a cycle guard) rather than returning it as a childless
+ *     node — without rendering that flag, a word whose ancestry runs deeper
+ *     than the limit LOOKS like a root, which is the opposite of true.
  */
 
-import { useState, useCallback } from 'react';
-import type { LexiconAncestryNode, AncestryType } from '../../../../db/types';
-import styles from './EtymologyTree.module.scss';
 import classNames from 'classnames';
+import { useCallback, useState } from 'react';
+
 import IconButton from 'cyber-components/interactable/buttons/iconButton/iconButton.tsx';
+
+import type { LexiconAncestryNode } from '../../../../db/types';
+import { lexiconDisplayName } from '../../../tabs/lexicon/lexiconIdentity';
+import { ancestryTypeClass } from './ancestryTypeStyles';
+
+import styles from './EtymologyTree.module.scss';
 
 interface EtymologyTreeNodeProps {
     node: LexiconAncestryNode;
@@ -19,16 +34,6 @@ interface EtymologyTreeNodeProps {
     currentWordId?: number;
 }
 
-// Color mapping for ancestry types
-const ANCESTRY_TYPE_COLORS: Record<AncestryType, string> = {
-    derived: 'var(--status-info)',
-    borrowed: 'var(--status-warning)',
-    compound: 'var(--status-good)',
-    blend: 'var(--color-primary)',
-    calque: 'var(--status-neutral, #888)',
-    other: 'var(--text-secondary)',
-};
-
 export default function EtymologyTreeNode({
     node,
     depth,
@@ -37,37 +42,34 @@ export default function EtymologyTreeNode({
     onNodeClick,
     currentWordId,
 }: EtymologyTreeNodeProps) {
-    const [isExpanded, setIsExpanded] = useState(depth < 2); // Auto-expand first 2 levels
+    const [isExpanded, setIsExpanded] = useState(depth < 2);
 
     const hasAncestors = node.ancestors && node.ancestors.length > 0;
     const canExpand = hasAncestors && depth < maxDepth;
     const isCurrent = node.entry.id === currentWordId;
+    const isClickable = Boolean(onNodeClick) && !isCurrent;
 
     const toggleExpand = useCallback((e: React.MouseEvent) => {
         e.stopPropagation();
-        setIsExpanded(prev => !prev);
+        setIsExpanded((prev) => !prev);
     }, []);
 
     const handleClick = useCallback(() => {
-        if (onNodeClick && !isCurrent) {
-            onNodeClick(node.entry.id);
-        }
-    }, [onNodeClick, node.entry.id, isCurrent]);
+        if (isClickable) onNodeClick?.(node.entry.id);
+    }, [isClickable, onNodeClick, node.entry.id]);
 
-    const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-        if ((e.key === 'Enter' || e.key === ' ') && onNodeClick && !isCurrent) {
-            e.preventDefault();
-            onNodeClick(node.entry.id);
-        }
-    }, [onNodeClick, node.entry.id, isCurrent]);
-
-    const ancestryColor = node.ancestry_type
-        ? ANCESTRY_TYPE_COLORS[node.ancestry_type]
-        : 'var(--border-primary)';
+    const handleKeyDown = useCallback(
+        (e: React.KeyboardEvent) => {
+            if ((e.key === 'Enter' || e.key === ' ') && isClickable) {
+                e.preventDefault();
+                onNodeClick?.(node.entry.id);
+            }
+        },
+        [isClickable, onNodeClick, node.entry.id],
+    );
 
     return (
         <div className={styles.nodeContainer}>
-            {/* Ancestors branch (displayed above/before the node) */}
             {canExpand && isExpanded && (
                 <div className={styles.ancestorsBranch}>
                     {node.ancestors.map((ancestor) => (
@@ -79,33 +81,28 @@ export default function EtymologyTreeNode({
                                 onNodeClick={onNodeClick}
                                 currentWordId={currentWordId}
                             />
-                            {/* Connector line */}
                             <div
-                                className={styles.connector}
-                                style={{
-                                    borderColor: ancestor.ancestry_type
-                                        ? ANCESTRY_TYPE_COLORS[ancestor.ancestry_type]
-                                        : 'var(--border-primary)',
-                                }}
+                                className={classNames(
+                                    styles.connector,
+                                    ancestryTypeClass(ancestor.ancestry_type),
+                                )}
                             />
                         </div>
                     ))}
                 </div>
             )}
 
-            {/* The node itself */}
             <div
                 className={classNames(styles.node, {
                     [styles.root]: isRoot,
                     [styles.current]: isCurrent,
-                    [styles.clickable]: onNodeClick && !isCurrent,
+                    [styles.clickable]: isClickable,
                 })}
                 onClick={handleClick}
                 onKeyDown={handleKeyDown}
-                role={onNodeClick && !isCurrent ? 'button' : undefined}
-                tabIndex={onNodeClick && !isCurrent ? 0 : undefined}
+                role={isClickable ? 'button' : undefined}
+                tabIndex={isClickable ? 0 : undefined}
             >
-                {/* Expand/collapse button */}
                 {canExpand && (
                     <IconButton
                         iconName={isExpanded ? 'chevron-up' : 'chevron-down'}
@@ -117,25 +114,37 @@ export default function EtymologyTreeNode({
                     />
                 )}
 
-                {/* Ancestry type badge (if not root) */}
                 {!isRoot && node.ancestry_type && (
                     <span
-                        className={styles.ancestryBadge}
-                        style={{ backgroundColor: ancestryColor }}
+                        className={classNames(
+                            styles.ancestryBadge,
+                            ancestryTypeClass(node.ancestry_type),
+                        )}
                     >
                         {node.ancestry_type}
                     </span>
                 )}
 
-                {/* Primary label: pronunciation (fallback to lemma) */}
-                <span className={styles.lemma}>{node.entry.pronunciation ?? node.entry.lemma}</span>
+                <span className={styles.lemma}>{lexiconDisplayName(node.entry)}</span>
 
-                {/* Pronunciation (secondary display) */}
                 {node.entry.pronunciation && (
                     <span className={styles.pronunciation}>/{node.entry.pronunciation}/</span>
                 )}
 
-                {/* Indicator for more ancestors at depth limit */}
+                {/* Cut by the depth limit: say so, rather than letting it read
+                    as a root that genuinely has no ancestors. */}
+                {node.truncated && (
+                    <span
+                        className={styles.truncatedBadge}
+                        title="This word has more ancestors than the tree is showing"
+                    >
+                        …
+                        <span className={styles.srOnly}>
+                            More ancestors not shown at this depth
+                        </span>
+                    </span>
+                )}
+
                 {hasAncestors && depth >= maxDepth && (
                     <span className={styles.moreIndicator}>+{node.ancestors.length}</span>
                 )}

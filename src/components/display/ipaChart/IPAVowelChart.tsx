@@ -38,6 +38,8 @@ export default function IPAVowelChart({
     onCellClick,
     isLoading = false,
     className,
+    guide = null,
+    guideLabel,
 }: IPAVowelChartProps) {
     const getGrapheme = useCallback(
         (ipa: string) => phonemeMap.get(ipa) ?? null,
@@ -109,6 +111,8 @@ export default function IPAVowelChart({
                                 isLoading={isLoading}
                                 size="vowel"
                                 description={vowel.name}
+                                guide={guide?.get(vowel.ipa) ?? null}
+                                guideLabel={guideLabel}
                             />
                         </foreignObject>
                     </g>
@@ -131,7 +135,10 @@ export default function IPAVowelChart({
         }
 
         return cells;
-    }, [vowelsByPosition, getGrapheme, onCellClick, isLoading]);
+        // `guide`/`guideLabel` belong here for the same reason as in the
+        // consonant chart: the cells are memoised, so a flavour change that is
+        // not a dependency simply never reaches the trapezoid.
+    }, [vowelsByPosition, getGrapheme, onCellClick, isLoading, guide, guideLabel]);
 
     return (
         <div className={classNames(styles.vowelChart, className)}>
@@ -153,7 +160,7 @@ export default function IPAVowelChart({
                         >
                             <polygon
                                 points="0 0, 5 1.75, 0 3.5"
-                                fill="var(--text-muted, #666)"
+                                fill="var(--text-primary-muted)"
                             />
                         </marker>
                     </defs>

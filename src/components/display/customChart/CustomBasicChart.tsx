@@ -85,7 +85,11 @@ export default function CustomBasicChart({
                                     </td>
                                 ))}
                             </tr>
-                            <tr className={styles.graphemeRow}>
+                            {/* No row class: every cell is fully styled by
+                                `.syllableCell`/`.assigned` plus the shared
+                                `.table td` border, exactly as in
+                                CustomSyllabaryChart. */}
+                            <tr>
                                 {chunk.map(ipa => {
                                     const grapheme = phonemeMap.get(ipa) ?? null;
                                     return (

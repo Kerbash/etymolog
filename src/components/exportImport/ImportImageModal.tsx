@@ -1,9 +1,6 @@
-import { useState, useEffect } from 'react';
-import classNames from 'classnames';
+import { useState, useId } from 'react';
 import Modal from 'cyber-components/container/modal/modal.tsx';
-import Button from 'cyber-components/interactable/buttons/button/button.tsx';
-import { buttonStyles } from 'cyber-components/interactable/buttons/button/button.tsx';
-import { flex, sizing } from 'utils-styles';
+import { DialogPanel, FormActionBar } from '../shared';
 import styles from './exportImport.module.scss';
 
 interface ImportImageModalProps {
@@ -12,16 +9,35 @@ interface ImportImageModalProps {
     onImport: (file: File) => void;
 }
 
+/**
+ * The modal shell. The FORM is a separate component mounted only while the
+ * modal is open, so the previously-picked file cannot survive into the next
+ * open and no effect has to clear it (`react-hooks/set-state-in-effect`).
+ */
 export default function ImportImageModal({ isOpen, setIsOpen, onImport }: ImportImageModalProps) {
+    return (
+        <Modal isOpen={isOpen} setIsOpen={setIsOpen}>
+            <DialogPanel size="sm" title="Import from Image">
+                {isOpen && (
+                    <ImportImageForm
+                        onImport={onImport}
+                        onClose={() => setIsOpen(false)}
+                    />
+                )}
+            </DialogPanel>
+        </Modal>
+    );
+}
+
+interface ImportImageFormProps {
+    onImport: (file: File) => void;
+    onClose: () => void;
+}
+
+function ImportImageForm({ onImport, onClose }: ImportImageFormProps) {
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [error, setError] = useState('');
-
-    useEffect(() => {
-        if (isOpen) {
-            setSelectedFile(null);
-            setError('');
-        }
-    }, [isOpen]);
+    const fileInputId = useId();
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setError('');
@@ -37,44 +53,29 @@ export default function ImportImageModal({ isOpen, setIsOpen, onImport }: Import
             return;
         }
         onImport(selectedFile);
-        setIsOpen(false);
+        onClose();
     };
 
     return (
-        <Modal isOpen={isOpen} setIsOpen={setIsOpen}>
-            <form
-                onSubmit={handleSubmit}
-                className={classNames(styles.modalContent, flex.flexColumn, flex.flexGapM)}
-            >
-                <h2 style={{ margin: 0 }}>Import from Image</h2>
+        <form onSubmit={handleSubmit} className={styles.form}>
+            {/* The file input was unlabelled — see ImportJsonModal. */}
+            <label htmlFor={fileInputId}>Etymolog PNG export</label>
+            <input
+                id={fileInputId}
+                type="file"
+                accept=".png"
+                onChange={handleFileChange}
+                className={styles.fileInput}
+            />
 
-                <input
-                    type="file"
-                    accept=".png"
-                    onChange={handleFileChange}
-                    className={styles.fileInput}
-                />
+            {selectedFile && <p className={styles.fileName}>Selected: {selectedFile.name}</p>}
+            {error && <p className={styles.errorMessage}>{error}</p>}
 
-                {selectedFile && <p className={styles.fileName}>Selected: {selectedFile.name}</p>}
-                {error && <p className={styles.errorMessage}>{error}</p>}
-
-                <div className={classNames(flex.flexRow, flex.justifyContentEnd, flex.flexGapS)}>
-                    <Button
-                        type="button"
-                        className={buttonStyles.secondary}
-                        onClick={() => setIsOpen(false)}
-                    >
-                        Cancel
-                    </Button>
-                    <Button
-                        type="submit"
-                        className={buttonStyles.primary}
-                        disabled={!selectedFile}
-                    >
-                        Import
-                    </Button>
-                </div>
-            </form>
-        </Modal>
+            <FormActionBar
+                onCancel={onClose}
+                submitLabel="Import"
+                disabled={!selectedFile}
+            />
+        </form>
     );
 }

@@ -1,0 +1,29 @@
+// Doubled class on purpose: cyber's `backgroundComponent.module.scss` declares
+// `height: 100%; overflow-y: auto; overscroll-behavior: none` at the same
+// specificity, and which one wins would otherwise depend on stylesheet
+// insertion order. `.background.background` beats it deterministically (same
+// trick AppNav uses against BasicBody's `overflow: auto`).
+//
+// WHY this override exists — the wheel-scroll bug. The shell scrolls the
+// DOCUMENT: the scrollbar belongs to <html>. With cyber's defaults this element
+// is ALSO a scroll container (`overflow-y: auto`) that can never actually
+// scroll (its height is its content height), and `overscroll-behavior: none`
+// forbids scroll chaining out of it. So a wheel over the page latched onto this
+// dead scroller and stopped there, while a wheel directly over the scrollbar —
+// which is <html>'s, outside this box — worked. Users had to drag the thumb.
+// The same bogus scroll container was what the sticky header anchored to, so
+// it scrolled away with the page instead of sticking to the viewport.
+//
+// `overflow: visible` makes this a plain block again: the wheel falls through
+// to the document, `position: sticky` in the header resolves against the
+// viewport, and nothing here can clip a dropdown drawn past its edge.
+.background.background {
+    // A FLOOR, not a fixed height — see the component's doc comment.
+    min-height: 100dvh;
+    height: auto;
+    width: 100%;
+
+    overflow: visible;
+    overscroll-behavior: auto;
+}
+

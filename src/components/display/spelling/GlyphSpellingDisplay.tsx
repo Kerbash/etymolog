@@ -11,13 +11,24 @@
 import { useMemo, forwardRef, useImperativeHandle, useRef } from 'react';
 import classNames from 'classnames';
 
-import type { GlyphSpellingDisplayProps, GlyphSpellingDisplayRef } from './types';
+import type {
+    GlyphSpellingDisplayProps,
+    GlyphSpellingDisplayRef,
+    LayoutStrategyConfig,
+} from './types';
 import { useNormalizedGlyphs } from './hooks/useNormalizedGlyphs';
 import { useGlyphPositions } from './hooks/useGlyphPositions';
 import { createComposedBlockStrategy } from './strategies';
 import { GlyphSpellingCore } from './GlyphSpellingCore';
 import { InteractiveGlyphDisplay } from './InteractiveGlyphDisplay';
 import styles from './GlyphSpellingDisplay.module.scss';
+
+/**
+ * The `overflow` prop's CSS values. Module scope, not a fresh object per
+ * render: as a local it was a new identity every render and therefore a
+ * dependency the container-style memo could never satisfy.
+ */
+const OVERFLOW_CSS = { clip: 'hidden', scroll: 'auto', visible: 'visible' } as const;
 
 /**
  * GlyphSpellingDisplay - Unified glyph sequence renderer.
@@ -87,8 +98,6 @@ const GlyphSpellingDisplay = forwardRef<GlyphSpellingDisplayRef, GlyphSpellingDi
             glyphEmPx,
             zoom = 1,
             writingSystem,
-            wordBoundaries,
-            lineBreaks,
         },
         ref
     ) {
@@ -106,43 +115,50 @@ const GlyphSpellingDisplay = forwardRef<GlyphSpellingDisplayRef, GlyphSpellingDi
         // Normalize input data to RenderableGlyph[]
         const normalizedGlyphs = useNormalizedGlyphs(glyphs, normalizationContext);
 
-        // If canvas.width is set and using block strategy, use it for wrapping
-        const effectiveConfig = useMemo(() => {
-            const base = (typeof config === 'string') ? {} : (config ?? {});
-            const merged = { ...base } as Partial<typeof base & import('./types').LayoutStrategyConfig>;
+        // If canvas.width is set and using block strategy, use it for wrapping.
+        //
+        // `canvasWidth`/`canvasHeight` are read out of the object FIRST rather
+        // than dereferenced inside the memo: `canvas?.width` as a dependency is
+        // an optional-chained member expression, which the React compiler
+        // cannot match against the body and therefore refuses to preserve the
+        // memoization at all.
+        const canvasWidth = canvas?.width;
+        const canvasHeight = canvas?.height;
 
-            if (canvas?.width && (strategy === 'block' || strategy === 'composed-block' || !strategy)) {
-                (merged as any).maxWidth = canvas.width;
-            }
+        const effectiveConfig = useMemo<Partial<LayoutStrategyConfig>>(() => {
+            // A preset NAME carries no overridable fields, so the merge starts
+            // empty for one — same behaviour as before, now stated in the type.
+            const merged: Partial<LayoutStrategyConfig> =
+                typeof config === 'string' ? {} : { ...(config ?? {}) };
 
-            if (canvas?.height && (strategy === 'block' || strategy === 'composed-block' || !strategy)) {
-                (merged as any).maxHeight = canvas.height;
-            }
+            const wraps = strategy === 'block' || strategy === 'composed-block' || !strategy;
+            if (canvasWidth && wraps) merged.maxWidth = canvasWidth;
+            if (canvasHeight && wraps) merged.maxHeight = canvasHeight;
 
-            // If glyphEmPx is provided, override glyph sizes
+            // `glyphEmPx` overrides the glyph box so 1em === glyphEmPx.
             if (typeof glyphEmPx === 'number' && glyphEmPx > 0) {
-                (merged as any).glyphWidth = glyphEmPx;
-                (merged as any).glyphHeight = glyphEmPx;
+                merged.glyphWidth = glyphEmPx;
+                merged.glyphHeight = glyphEmPx;
             }
 
-            return merged as Partial<import('./types').LayoutStrategyConfig> | import('./types').LayoutPreset;
-        }, [config, canvas?.width, canvas?.height, strategy, glyphEmPx]);
+            return merged;
+        }, [config, canvasWidth, canvasHeight, strategy, glyphEmPx]);
 
         // Use block strategy by default if canvas width is set for wrapping
         const effectiveStrategy = useMemo(() => {
-            if (canvas?.width && strategy === 'ltr') {
+            if (canvasWidth && strategy === 'ltr') {
                 return 'block';
             }
             return strategy;
-        }, [strategy, canvas?.width]);
+        }, [strategy, canvasWidth]);
 
         // Create composed strategy when writing system settings are provided
         const resolvedStrategy = useMemo(() => {
             if (writingSystem && (effectiveStrategy === 'block' || effectiveStrategy === 'composed-block')) {
-                return createComposedBlockStrategy(writingSystem, wordBoundaries, lineBreaks);
+                return createComposedBlockStrategy(writingSystem);
             }
             return effectiveStrategy;
-        }, [writingSystem, wordBoundaries, lineBreaks, effectiveStrategy]);
+        }, [writingSystem, effectiveStrategy]);
 
         // Calculate positions using the selected strategy
         const { positions, bounds } = useGlyphPositions(normalizedGlyphs, resolvedStrategy, effectiveConfig);
@@ -165,14 +181,13 @@ const GlyphSpellingDisplay = forwardRef<GlyphSpellingDisplayRef, GlyphSpellingDi
         }), [bounds]);
 
         // Static mode container style - MUST be before conditional returns to satisfy hooks rules
-        const overflowMap = { clip: 'hidden', scroll: 'auto', visible: 'visible' } as const;
         const containerStyle = useMemo<React.CSSProperties>(
             () => ({
                 ...style,
                 // Scale container dimensions by zoom factor
                 width: typeof width === 'number' ? width * zoom : (width ?? bounds.width * zoom),
                 height: typeof height === 'number' ? height * zoom : (height ?? bounds.height * zoom),
-                overflow: overflowMap[overflow],
+                overflow: OVERFLOW_CSS[overflow],
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',

@@ -1,10 +1,23 @@
-@import '@styles/modal.module.scss';
+// The panel surface comes from <DialogPanel>; this file keeps only the
+// chart-builder's own field/step chrome.
 
-.modalContent {
-    @extend .modalContentTemplate;
-    padding: 1.5rem;
-    min-width: 400px;
-    max-width: 550px;
+.textInput {
+    padding: 0.5em;
+    font-size: 1rem;
+
+    background: var(--surface-raised);
+    color: var(--text-primary);
+    border: var(--border-width) solid var(--border-primary);
+    border-radius: var(--radius-control);
+    outline: none;
+
+    /* `outline: none` above kills the UA ring AND, being a later-injected
+       module rule of equal specificity, the app-wide `:focus-visible` ring in
+       index.css. This puts one back — same token, higher specificity. */
+    &:focus-visible {
+        outline: 2px solid var(--focus-ring);
+        outline-offset: 2px;
+    }
 }
 
 .stepDescription {
@@ -19,7 +32,7 @@
     gap: 0.5rem;
     padding: 1rem;
     border: 1px solid var(--border-primary);
-    border-radius: 8px;
+    border-radius: var(--radius-surface);
     background: var(--surface-raised);
     color: var(--text-primary);
     cursor: pointer;

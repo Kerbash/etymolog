@@ -3,7 +3,16 @@
     "baseUrl": ".",
     "paths": {
       "@src/*": ["src/*"],
-      "@styles/*": ["src/styles/*"]
+      "@styles/*": ["src/styles/*"],
+      // Mirrors the resolve.alias in vite.config.ts — see the long comment
+      // there. In a worktree, node_modules/cyber-components is a junction to
+      // the MAIN repo's copy, so without these the typechecker validates this
+      // app against a DIFFERENT checkout of the package than the one being
+      // edited (and passes, or fails, for reasons invisible in the diff).
+      "cyber-components/*": ["../../packages/cyber-components/*"],
+      "smart-form/*": ["../../packages/smart-form/*"],
+      "utils-styles": ["../../packages/utils-styles"],
+      "utils-func/*": ["../../packages/utils-func/*"]
     },
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
     "target": "ES2022",
@@ -15,6 +24,11 @@
 
     /* Bundler mode */
     "moduleResolution": "bundler",
+    // src/config/version.ts imports `version` from package.json — the single
+    // source of the app's semver (see VERSIONING.md). Vite handles JSON imports
+    // natively and tree-shakes to just the named export, so the rest of the
+    // manifest never reaches the bundle.
+    "resolveJsonModule": true,
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",

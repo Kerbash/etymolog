@@ -34,7 +34,7 @@ export function ScaledGlyphSpellingDisplay({
             if (!el) return;
 
             // Try ResizeObserver-like contentRect via getBoundingClientRect
-            let rect = el.getBoundingClientRect();
+            const rect = el.getBoundingClientRect();
             let width = rect.width;
             let height = rect.height;
 

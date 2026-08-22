@@ -58,7 +58,7 @@ const FOOTER_SIZE = 12;
 export function encodeToPixels(
     compressedData: Uint8Array,
     crc: number
-): { pixels: Uint8ClampedArray; width: number; height: number } {
+): { pixels: Uint8ClampedArray<ArrayBuffer>; width: number; height: number } {
     const totalBytes = HEADER_SIZE + compressedData.length + FOOTER_SIZE;
 
     // Build byte stream
@@ -120,7 +120,7 @@ export function decodeFromPixels(
     pixels: Uint8ClampedArray,
     width: number,
     height: number
-): { compressedData: Uint8Array; crc: number } {
+): { compressedData: Uint8Array<ArrayBuffer>; crc: number } {
     // Extract byte stream from RGB channels (skip alpha)
     const totalPixels = width * height;
     const stream = new Uint8Array(totalPixels * 3);

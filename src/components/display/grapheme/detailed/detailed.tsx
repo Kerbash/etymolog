@@ -1,6 +1,6 @@
 import type { GraphemeComplete } from '../../../../db/types.ts';
 import { GlyphSpellingDisplay } from '../../spelling';
-import './detailed.css';
+import styles from './detailed.module.scss';
 
 interface DetailedGraphemeDisplayProps {
     graphemeData: GraphemeComplete;
@@ -8,9 +8,9 @@ interface DetailedGraphemeDisplayProps {
 
 export default function DetailedGraphemeDisplay({ graphemeData }: DetailedGraphemeDisplayProps) {
     return (
-        <div className="detailed-grapheme-display">
-            <div className="detailed-grapheme-left">
-                <div className="detailed-grapheme-svg">
+        <div className={styles.display}>
+            <div className={styles.left}>
+                <div className={styles.svg}>
                     <GlyphSpellingDisplay
                         glyphs={graphemeData.glyphs}
                         strategy="ltr"
@@ -18,29 +18,29 @@ export default function DetailedGraphemeDisplay({ graphemeData }: DetailedGraphe
                         emptyContent={<span>No glyphs</span>}
                     />
                 </div>
-                <h2 className="detailed-grapheme-name">{graphemeData.name}</h2>
+                <h2 className={styles.name}>{graphemeData.name}</h2>
                 {graphemeData.glyphs.length > 1 && (
-                    <span className="glyph-count">{graphemeData.glyphs.length} glyphs</span>
+                    <span className={styles.glyphCount}>{graphemeData.glyphs.length} glyphs</span>
                 )}
             </div>
 
-            <div className="detailed-grapheme-right">
-                <h3 className="pronunciation-header">Pronunciations</h3>
-                <div className="pronunciation-container">
+            <div className={styles.right}>
+                <h3 className={styles.pronunciationHeader}>Pronunciations</h3>
+                <div className={styles.pronunciationList}>
                     {graphemeData.phonemes.length > 0 ? (
                         graphemeData.phonemes.map((phoneme) => (
-                            <div key={phoneme.id} className="pronunciation-item">
-                                <span className="phoneme-symbol">/{phoneme.phoneme}/</span>
+                            <div key={phoneme.id} className={styles.pronunciationItem}>
+                                <span className={styles.phonemeSymbol}>/{phoneme.phoneme}/</span>
                                 {phoneme.context && (
-                                    <span className="phoneme-context">{phoneme.context}</span>
+                                    <span className={styles.phonemeContext}>{phoneme.context}</span>
                                 )}
                                 {phoneme.use_in_auto_spelling && (
-                                    <span className="auto-spelling-badge">Auto</span>
+                                    <span className={styles.autoSpellingBadge}>Auto</span>
                                 )}
                             </div>
                         ))
                     ) : (
-                        <p className="no-phonemes">No pronunciations defined</p>
+                        <p className={styles.noPhonemes}>No pronunciations defined</p>
                     )}
                 </div>
             </div>

@@ -8,54 +8,75 @@
  * @module display/customChart/CreateChartModal
  */
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import classNames from 'classnames';
 import Modal from 'cyber-components/container/modal/modal.tsx';
-import Button, { buttonStyles } from 'cyber-components/interactable/buttons/button/button.tsx';
+import Button from 'cyber-components/interactable/buttons/button';
+import { buttonStyles } from 'cyber-components/interactable/buttons/button';
 import { graphic, flex } from 'utils-styles';
 import type { CreateChartModalProps } from './types';
 import type { CustomChartDefinition } from '../../../db/api/types';
+import { DialogPanel } from '../../shared';
 import styles from './CreateChartModal.module.scss';
 
 type ChartType = 'basic' | 'syllabary';
 
+/**
+ * The modal shell. The FORM is a separate component mounted only while the
+ * modal is open and keyed by what it is editing, so its state initialises from
+ * `editingChart` on mount instead of being reset by an effect.
+ *
+ * The effect it replaces fired six `setState` calls on open — a cascade of
+ * re-renders React's `set-state-in-effect` rule exists to flag — and left a
+ * real bug behind it: the state was only reset while `isOpen` was true, so
+ * opening "Create" straight after "Edit" showed the previous chart's values for
+ * one frame.
+ */
 export default function CreateChartModal({
     isOpen,
     setIsOpen,
     editingChart,
     onSubmit,
 }: CreateChartModalProps) {
-    const [step, setStep] = useState<1 | 2>(1);
-    const [chartType, setChartType] = useState<ChartType>('basic');
-    const [name, setName] = useState('');
-    const [ipaInput, setIpaInput] = useState('');
-    const [xAxisInput, setXAxisInput] = useState('');
-    const [yAxisInput, setYAxisInput] = useState('');
+    return (
+        <Modal isOpen={isOpen} setIsOpen={setIsOpen}>
+            <DialogPanel size="md">
+                {isOpen && (
+                    <ChartForm
+                        key={editingChart?.id ?? 'new'}
+                        editingChart={editingChart}
+                        onSubmit={onSubmit}
+                        onClose={() => setIsOpen(false)}
+                    />
+                )}
+            </DialogPanel>
+        </Modal>
+    );
+}
 
+interface ChartFormProps {
+    editingChart: CustomChartDefinition | null;
+    onSubmit: (chart: CustomChartDefinition) => void;
+    onClose: () => void;
+}
+
+function ChartForm({ editingChart, onSubmit, onClose }: ChartFormProps) {
     const isEditing = editingChart !== null;
 
-    useEffect(() => {
-        if (!isOpen) return;
-
-        if (editingChart) {
-            setStep(2);
-            setChartType(editingChart.type);
-            setName(editingChart.name);
-            if (editingChart.type === 'basic') {
-                setIpaInput(editingChart.ipaCharacters.join(' '));
-            } else {
-                setXAxisInput(editingChart.xAxis.join(' '));
-                setYAxisInput(editingChart.yAxis.join(' '));
-            }
-        } else {
-            setStep(1);
-            setChartType('basic');
-            setName('');
-            setIpaInput('');
-            setXAxisInput('');
-            setYAxisInput('');
-        }
-    }, [isOpen, editingChart]);
+    // Editing skips the type step — the type of an existing chart is not a
+    // choice, it is a fact about it.
+    const [step, setStep] = useState<1 | 2>(isEditing ? 2 : 1);
+    const [chartType, setChartType] = useState<ChartType>(editingChart?.type ?? 'basic');
+    const [name, setName] = useState(editingChart?.name ?? '');
+    const [ipaInput, setIpaInput] = useState(
+        editingChart?.type === 'basic' ? editingChart.ipaCharacters.join(' ') : '',
+    );
+    const [xAxisInput, setXAxisInput] = useState(
+        editingChart?.type === 'syllabary' ? editingChart.xAxis.join(' ') : '',
+    );
+    const [yAxisInput, setYAxisInput] = useState(
+        editingChart?.type === 'syllabary' ? editingChart.yAxis.join(' ') : '',
+    );
 
     const handleTypeSelect = (type: ChartType) => {
         setChartType(type);
@@ -97,7 +118,7 @@ export default function CreateChartModal({
         }
 
         onSubmit(chart);
-        setIsOpen(false);
+        onClose();
     };
 
     const isValid = (() => {
@@ -111,20 +132,9 @@ export default function CreateChartModal({
         );
     })();
 
-    const inputStyle: React.CSSProperties = {
-        padding: '0.5em',
-        fontSize: '1rem',
-        background: 'var(--surface-raised)',
-        color: 'var(--text-primary)',
-        border: '1px solid var(--border-primary)',
-        borderRadius: '4px',
-        outline: 'none',
-    };
-
     return (
-        <Modal isOpen={isOpen} setIsOpen={setIsOpen}>
-            <div className={styles.modalContent}>
-                {step === 1 && !isEditing ? (
+        <>
+            {step === 1 && !isEditing ? (
                     <div className={classNames(flex.flexColumn, flex.flexGapM)}>
                         <h2 className={graphic.underlineHighlightColorPrimary}>
                             Create Custom Chart
@@ -168,7 +178,7 @@ export default function CreateChartModal({
                                 onChange={(e) => setName(e.target.value)}
                                 placeholder="Enter chart name..."
                                 autoFocus
-                                style={inputStyle}
+                                className={styles.textInput}
                             />
                         </label>
 
@@ -180,7 +190,7 @@ export default function CreateChartModal({
                                     value={ipaInput}
                                     onChange={(e) => setIpaInput(e.target.value)}
                                     placeholder="e.g. p t k m n ŋ"
-                                    style={inputStyle}
+                                    className={styles.textInput}
                                 />
                             </label>
                         ) : (
@@ -192,7 +202,7 @@ export default function CreateChartModal({
                                         value={xAxisInput}
                                         onChange={(e) => setXAxisInput(e.target.value)}
                                         placeholder="e.g. a e i o u"
-                                        style={inputStyle}
+                                        className={styles.textInput}
                                     />
                                 </label>
                                 <label className={styles.fieldLabel}>
@@ -202,7 +212,7 @@ export default function CreateChartModal({
                                         value={yAxisInput}
                                         onChange={(e) => setYAxisInput(e.target.value)}
                                         placeholder="e.g. p t k s m n"
-                                        style={inputStyle}
+                                        className={styles.textInput}
                                     />
                                 </label>
                             </>
@@ -221,7 +231,7 @@ export default function CreateChartModal({
                             <Button
                                 type="button"
                                 className={buttonStyles.secondary}
-                                onClick={() => setIsOpen(false)}
+                                onClick={onClose}
                             >
                                 Cancel
                             </Button>
@@ -233,9 +243,8 @@ export default function CreateChartModal({
                                 {isEditing ? 'Save' : 'Create'}
                             </Button>
                         </div>
-                    </form>
-                )}
-            </div>
-        </Modal>
+                </form>
+            )}
+        </>
     );
 }

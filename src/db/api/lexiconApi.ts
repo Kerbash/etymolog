@@ -116,6 +116,12 @@ function createLexicon(request: CreateLexiconInput): ApiResponse<LexiconComplete
             meaning: request.meaning?.trim(),
             part_of_speech: request.part_of_speech?.trim(),
             notes: request.notes?.trim(),
+            meanings: request.meanings?.map(m => ({
+                ...m,
+                meaning: m.meaning.trim(),
+                part_of_speech: m.part_of_speech?.trim(),
+                usage_notes: m.usage_notes?.trim(),
+            })),
         });
 
         return successResponse(lexicon);
@@ -297,6 +303,12 @@ function updateLexicon(id: number, request: UpdateLexiconInput): ApiResponse<Lex
             meaning: request.meaning?.trim(),
             part_of_speech: request.part_of_speech?.trim(),
             notes: request.notes?.trim(),
+            meanings: request.meanings?.map(m => ({
+                ...m,
+                meaning: m.meaning.trim(),
+                part_of_speech: m.part_of_speech?.trim(),
+                usage_notes: m.usage_notes?.trim(),
+            })),
         });
 
         if (!lexicon) {

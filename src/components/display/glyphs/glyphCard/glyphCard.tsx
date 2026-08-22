@@ -1,11 +1,13 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import type { GlyphWithUsage } from '../../../../db/types';
+import { sanitizeSvg } from '../../../../db/utils/sanitize';
 import classNames from 'classnames';
 import {flex, sizing} from 'utils-styles';
 import HoverToolTip from 'cyber-components/interactable/information/hoverToolTip/hoverToolTip';
 import IconButton from 'cyber-components/interactable/buttons/iconButton/iconButton';
 import styles from './glyphCard.module.scss';
+import { ROUTES, resolveUrl } from '../../../../url_mapping';
 
 /**
  * Interaction mode for GlyphCard:
@@ -51,6 +53,8 @@ export default function GlyphCard({
     // Determine actual interaction mode (support legacy disableLink prop)
     const actualMode: GlyphCardInteractionMode = interactionMode ?? (disableLink ? 'none' : 'route');
 
+    const sanitizedSvg = useMemo(() => sanitizeSvg(glyph.svg_data), [glyph.svg_data]);
+
     const cardContent = (
         <div className={classNames(flex.flexColumn, styles.container)}>
             {!hideDelete && onDelete && (
@@ -73,7 +77,7 @@ export default function GlyphCard({
             <div className={styles.svgWrapper}>
                 <div
                     className={styles.svgContainer}
-                    dangerouslySetInnerHTML={{ __html: glyph.svg_data }}
+                    dangerouslySetInnerHTML={{ __html: sanitizedSvg }}
                 />
             </div>
         </div>
@@ -116,7 +120,7 @@ export default function GlyphCard({
     return (
         <HoverToolTip content={usageText} className={sizing.fitContent}>
             <Link
-                to={`/script-maker/glyphs/db/${glyph.id}`}
+                to={resolveUrl(ROUTES.glyphEdit, { id: glyph.id })}
                 className={styles.cardLink}
             >
                 {cardContent}

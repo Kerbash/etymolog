@@ -19,9 +19,22 @@ declare module 'sql.js' {
         [key: string]: number | string | Uint8Array | null;
     }
 
+    export type SqlValue = number | string | Uint8Array | null;
+
+    export interface Statement {
+        bind(params?: SqlValue[] | BindParams): boolean;
+        step(): boolean;
+        get(params?: SqlValue[] | BindParams): SqlValue[];
+        getAsObject(params?: SqlValue[] | BindParams): Record<string, SqlValue>;
+        run(params?: SqlValue[] | BindParams): void;
+        reset(): void;
+        free(): boolean;
+    }
+
     export interface Database {
-        run(sql: string, params?: (number | string | null)[]): Database;
-        exec(sql: string, params?: (number | string | null)[]): QueryExecResult[];
+        run(sql: string, params?: SqlValue[] | BindParams): Database;
+        exec(sql: string, params?: SqlValue[] | BindParams): QueryExecResult[];
+        prepare(sql: string, params?: SqlValue[] | BindParams): Statement;
         export(): Uint8Array;
         close(): void;
         getRowsModified(): number;

@@ -1,13 +1,15 @@
 /**
  * Phrase Translation Service
  *
- * Translates English phrases to the constructed language by:
- * 1. Tokenizing the phrase into words
- * 2. Looking up each word in the lexicon
- * 3. Using autospeller for words not found in lexicon
- * 4. Combining spellings with word separators
+ * Translates English phrases into the constructed script:
+ *   1. tokenize into words, punctuation marks and line breaks
+ *   2. translate each word — lexicon spelling when the lemma is known,
+ *      otherwise the auto-speller over the word's letters (real graphemes
+ *      where a phoneme matches, virtual IPA glyphs elsewhere)
+ *   3. combine with the configured separators and punctuation
  *
- * Note: Phrase translations are ephemeral (not persisted to database).
+ * Every synthesised entry carries a `role` so the layout engine can split
+ * words and lines without index bookkeeping. Translations are ephemeral.
  */
 
 import type {
@@ -17,24 +19,23 @@ import type {
     LexiconComplete,
     SpellingDisplayEntry,
     GraphemeComplete,
+    Grapheme,
 } from './types';
 import type { PunctuationSettings, PunctuationConfig } from './api/types';
+import { PUNCTUATION_KEY_BY_CHARACTER } from './api/types';
 import { generateSpellingWithFallback } from './autoSpellService';
 
 /**
- * Sentinel value used in the word list to represent an explicit line break.
- * When the tokenizer encounters a newline in the input, it inserts this
- * marker so downstream code (combiner, layout strategy) can force a new line.
+ * Sentinel in the token list for an explicit line break.
  */
 export const LINE_BREAK_SENTINEL = '\n';
 
+/** Characters split off a word's edges as punctuation tokens. */
+const PUNCTUATION_CHARS = new Set(Object.keys(PUNCTUATION_KEY_BY_CHARACTER));
+
 /**
- * Split phrase into words, handling punctuation and whitespace.
- * Newlines are preserved as LINE_BREAK_SENTINEL entries so the
- * layout engine can insert explicit line breaks.
- *
- * @param phrase - The input phrase to tokenize
- * @returns Array of PhraseWord objects with original, normalized, and position
+ * Split phrase into tokens: words, punctuation marks (peeled off word edges),
+ * and line-break sentinels.
  */
 export function tokenizePhrase(phrase: string): PhraseWord[] {
     if (!phrase || !phrase.trim()) {
@@ -43,73 +44,81 @@ export function tokenizePhrase(phrase: string): PhraseWord[] {
 
     const result: PhraseWord[] = [];
     let position = 0;
+    const push = (text: string, kind: PhraseWord['kind'], punctuationKey?: PhraseWord['punctuationKey']) => {
+        result.push({
+            originalWord: text,
+            normalizedWord: text.toLowerCase().trim(),
+            position: position++,
+            kind,
+            ...(punctuationKey ? { punctuationKey } : {}),
+        });
+    };
+    // A straight quote opens at the start of a word and closes at its end.
+    const keyFor = (mark: string, edge: 'leading' | 'trailing') =>
+        mark === '"' ? (edge === 'leading' ? 'quotationOpen' : 'quotationClose') : PUNCTUATION_KEY_BY_CHARACTER[mark];
 
-    // Split on newlines first to preserve line breaks
     const lines = phrase.split(/\n/);
+    lines.forEach((line, lineIdx) => {
+        for (const raw of line.split(/[ \t]+/).filter(w => w.length > 0)) {
+            // Leading punctuation (opening quotes), the word, trailing punctuation.
+            let start = 0;
+            let end = raw.length;
+            const leading: string[] = [];
+            const trailing: string[] = [];
+            while (start < end && PUNCTUATION_CHARS.has(raw[start])) leading.push(raw[start++]);
+            while (end > start && PUNCTUATION_CHARS.has(raw[end - 1])) trailing.unshift(raw[--end]);
+            // Collapse "..." into a single ellipsis token.
+            const collapsed = (marks: string[]) => marks.join('').replace(/\.{3}/g, '…').split('');
 
-    for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-        const line = lines[lineIdx];
-
-        // Split each line on horizontal whitespace
-        const rawWords = line.split(/[ \t]+/).filter(word => word.length > 0);
-
-        for (const word of rawWords) {
-            result.push({
-                originalWord: word,
-                normalizedWord: word.toLowerCase().trim(),
-                position: position++,
-            });
+            for (const mark of collapsed(leading)) push(mark, 'punctuation', keyFor(mark, 'leading'));
+            if (end > start) push(raw.slice(start, end), 'word');
+            for (const mark of collapsed(trailing)) push(mark, 'punctuation', keyFor(mark, 'trailing'));
         }
-
-        // Insert a line-break sentinel between lines (not after the last line)
         if (lineIdx < lines.length - 1) {
-            result.push({
-                originalWord: LINE_BREAK_SENTINEL,
-                normalizedWord: LINE_BREAK_SENTINEL,
-                position: position++,
-            });
+            push(LINE_BREAK_SENTINEL, 'line-break');
         }
-    }
+    });
 
     return result;
 }
 
 /**
- * Lookup a word in the lexicon by lemma (case-insensitive).
- * Returns the first match found.
- *
- * @param normalizedWord - The word to search for (lowercase)
- * @param lexiconEntries - All lexicon entries to search
- * @returns LexiconComplete entry if found, null otherwise
+ * Lookup a word in the lexicon by lemma (case-insensitive). First match wins.
  */
 export function lookupWord(
     normalizedWord: string,
     lexiconEntries: LexiconComplete[]
 ): LexiconComplete | null {
-    for (const entry of lexiconEntries) {
-        if (entry.lemma.toLowerCase() === normalizedWord) {
-            return entry;
-        }
-    }
-    return null;
+    const target = normalizedWord.toLowerCase();
+    return lexiconEntries.find(entry => entry.lemma.toLowerCase() === target) ?? null;
+}
+
+function toGraphemeRef(grapheme: GraphemeComplete): Grapheme {
+    return {
+        id: grapheme.id,
+        name: grapheme.name,
+        category: grapheme.category,
+        notes: grapheme.notes,
+        created_at: grapheme.created_at,
+        updated_at: grapheme.updated_at,
+    };
 }
 
 /**
- * Translate a single word using lexicon or autospeller.
+ * Translate a single word using the lexicon or the auto-speller.
  *
- * @param word - The PhraseWord to translate
- * @param lexiconEntries - All lexicon entries to search
- * @returns PhraseWordTranslation with spelling and metadata
+ * Auto-spelled words emit a REAL grapheme entry wherever a phoneme matched
+ * (resolved through `graphemeMap`) and a virtual IPA entry for the characters
+ * in between. Each entry covers the span the speller consumed, so multi-letter
+ * matches no longer shift the remainder of the word.
  */
 export function translateWord(
     word: PhraseWord,
-    lexiconEntries: LexiconComplete[]
+    lexiconEntries: LexiconComplete[],
+    graphemeMap?: Map<number, GraphemeComplete>
 ): PhraseWordTranslation {
-    // First try to find in lexicon
     const lexiconEntry = lookupWord(word.normalizedWord, lexiconEntries);
-
     if (lexiconEntry) {
-        // Found in lexicon - use its spelling
         return {
             word,
             type: 'lexicon',
@@ -119,118 +128,59 @@ export function translateWord(
         };
     }
 
-    // Not found - use autospeller
-    // Pass the original word as the "pronunciation" for character-by-character matching
-    const autoSpellResult = generateSpellingWithFallback(word.originalWord);
-
-    // Convert AutoSpellResultExtended to SpellingDisplayEntry[]
-    const spellingDisplay: SpellingDisplayEntry[] = autoSpellResult.spelling.map((entry, index) => {
-        if (entry.isVirtual && entry.ipaCharacter) {
-            return {
-                type: 'ipa' as const,
-                position: index,
-                ipaCharacter: entry.ipaCharacter,
-            };
-        } else {
-            // This would be a real grapheme if it exists
-            // For autospell with English text, most will be virtual
-            return {
-                type: 'ipa' as const,
-                position: index,
-                ipaCharacter: word.originalWord[index] || '?',
-            };
+    const autoSpell = generateSpellingWithFallback(word.originalWord);
+    let hasVirtualGlyphs = false;
+    const spellingDisplay: SpellingDisplayEntry[] = autoSpell.spelling.map((entry, index) => {
+        const segment = autoSpell.segments[index] ?? entry.ipaCharacter ?? '?';
+        if (!entry.isVirtual) {
+            const grapheme = graphemeMap?.get(entry.grapheme_id);
+            if (grapheme) {
+                return { type: 'grapheme' as const, position: index, grapheme: toGraphemeRef(grapheme) };
+            }
         }
+        hasVirtualGlyphs = true;
+        return { type: 'ipa' as const, position: index, ipaCharacter: segment };
     });
 
-    return {
-        word,
-        type: 'autospell',
-        spellingDisplay,
-        hasVirtualGlyphs: autoSpellResult.hasVirtualGlyphs,
-    };
+    return { word, type: 'autospell', spellingDisplay, hasVirtualGlyphs };
+}
+
+function configuredEntry(
+    fallbackCharacter: string,
+    role: NonNullable<SpellingDisplayEntry['role']>,
+    config?: PunctuationConfig,
+    grapheme?: GraphemeComplete | null
+): SpellingDisplayEntry | null {
+    if (config?.useNoGlyph) {
+        return null;
+    }
+    if (config?.graphemeId != null && grapheme) {
+        return { type: 'grapheme', position: 0, grapheme: toGraphemeRef(grapheme), role };
+    }
+    return { type: 'ipa', position: 0, ipaCharacter: fallbackCharacter, role };
 }
 
 /**
- * Create a virtual space glyph entry for word separation.
- * This renders as a dashed box in the display.
- *
- * @param config - Optional punctuation config for word separator
- * @param grapheme - Optional grapheme to use if config specifies graphemeId
- * @returns SpellingDisplayEntry representing a space, or null if useNoGlyph is true
+ * The word-separator entry (a virtual space, or the configured grapheme), or
+ * `null` when separators are hidden.
  */
 export function createSpaceSeparator(
     config?: PunctuationConfig,
     grapheme?: GraphemeComplete | null
 ): SpellingDisplayEntry | null {
-    // If configured to hide, return null
-    if (config?.useNoGlyph) {
-        return null;
-    }
-
-    // If a grapheme is assigned and available, use it
-    if (config?.graphemeId !== null && grapheme) {
-        return {
-            type: 'grapheme',
-            position: 0, // Position will be set when combining
-            grapheme: {
-                id: grapheme.id,
-                name: grapheme.name,
-                category: grapheme.category,
-                notes: grapheme.notes,
-                created_at: grapheme.created_at,
-                updated_at: grapheme.updated_at,
-            },
-        };
-    }
-
-    // Default: return virtual space
-    return {
-        type: 'ipa',
-        position: 0, // Position will be set when combining
-        ipaCharacter: ' ',
-    };
+    return configuredEntry(' ', 'word-separator', config, grapheme);
 }
 
 /**
- * Create a punctuation entry based on settings.
- *
- * @param character - The punctuation character (e.g., '.', '?', '!')
- * @param config - Punctuation configuration from settings
- * @param grapheme - Optional grapheme to use if config specifies graphemeId
- * @returns SpellingDisplayEntry for the punctuation, or null if useNoGlyph is true
+ * A punctuation entry for `character` (virtual, or the configured grapheme),
+ * or `null` when that mark is hidden.
  */
 export function createPunctuationEntry(
     character: string,
     config?: PunctuationConfig,
     grapheme?: GraphemeComplete | null
 ): SpellingDisplayEntry | null {
-    // If configured to hide, return null
-    if (config?.useNoGlyph) {
-        return null;
-    }
-
-    // If a grapheme is assigned and available, use it
-    if (config?.graphemeId !== null && grapheme) {
-        return {
-            type: 'grapheme',
-            position: 0, // Position will be set when combining
-            grapheme: {
-                id: grapheme.id,
-                name: grapheme.name,
-                category: grapheme.category,
-                notes: grapheme.notes,
-                created_at: grapheme.created_at,
-                updated_at: grapheme.updated_at,
-            },
-        };
-    }
-
-    // Default: return virtual punctuation
-    return {
-        type: 'ipa',
-        position: 0,
-        ipaCharacter: character,
-    };
+    return configuredEntry(character, 'punctuation', config, grapheme);
 }
 
 /**
@@ -239,22 +189,14 @@ export function createPunctuationEntry(
 export interface TranslationConfig {
     /** Punctuation settings from global settings */
     punctuationSettings?: PunctuationSettings;
-    /** Map of grapheme IDs to GraphemeComplete for punctuation */
+    /** Graphemes by id — resolves configured separators/punctuation AND auto-spell matches */
+    graphemeMap?: Map<number, GraphemeComplete>;
+    /** @deprecated alias of `graphemeMap` */
     punctuationGraphemes?: Map<number, GraphemeComplete>;
 }
 
 /**
  * Translate an entire phrase to conlang spelling.
- *
- * Algorithm:
- * 1. Tokenize phrase into words
- * 2. For each word: lookup in lexicon or use autospeller
- * 3. Combine spellings with space separators between words
- *
- * @param phrase - The English phrase to translate
- * @param lexiconEntries - All lexicon entries to search
- * @param config - Optional translation configuration for punctuation
- * @returns PhraseTranslationResult with full translation data
  */
 export function translatePhrase(
     phrase: string,
@@ -263,71 +205,60 @@ export function translatePhrase(
 ): PhraseTranslationResult {
     const originalPhrase = phrase;
     const normalizedPhrase = phrase.trim();
+    const graphemeMap = config?.graphemeMap ?? config?.punctuationGraphemes;
+    const punctuation = config?.punctuationSettings;
 
-    // Tokenize
-    const words = tokenizePhrase(normalizedPhrase);
-
-    // Separate real words from line-break sentinels
-    const realWords = words.filter(w => w.originalWord !== LINE_BREAK_SENTINEL);
-
-    // Translate each real word
-    const wordTranslations: PhraseWordTranslation[] = realWords.map(word =>
-        translateWord(word, lexiconEntries)
-    );
-
-    // Get word separator configuration
-    const wordSeparatorConfig = config?.punctuationSettings?.wordSeparator;
-    const wordSeparatorGrapheme = wordSeparatorConfig?.graphemeId !== null && wordSeparatorConfig?.graphemeId !== undefined
-        ? config?.punctuationGraphemes?.get(wordSeparatorConfig.graphemeId)
-        : null;
-
-    // Combine spellings with space separators and line breaks
-    // Walk the original token list (which includes sentinels) to preserve order
+    const tokens = tokenizePhrase(normalizedPhrase);
+    const wordTranslations: PhraseWordTranslation[] = [];
     const combinedSpelling: SpellingDisplayEntry[] = [];
-    let globalPosition = 0;
     let hasVirtualGlyphs = false;
-    let realWordIndex = 0;
-    let needsSeparator = false; // track whether a space separator is needed before the next word
+    let needsSeparator = false;
 
-    for (let i = 0; i < words.length; i++) {
-        const token = words[i];
+    const graphemeFor = (cfg?: PunctuationConfig) =>
+        cfg?.graphemeId != null ? graphemeMap?.get(cfg.graphemeId) ?? null : null;
 
-        if (token.originalWord === LINE_BREAK_SENTINEL) {
-            // Emit a line-break entry (IPA '\n')
-            combinedSpelling.push({
-                type: 'ipa',
-                position: globalPosition++,
-                ipaCharacter: '\n',
-            });
-            needsSeparator = false; // no space separator needed after a line break
+    const append = (entry: SpellingDisplayEntry | null) => {
+        if (entry) {
+            combinedSpelling.push({ ...entry, position: combinedSpelling.length });
+        }
+    };
+
+    for (const token of tokens) {
+        if (token.kind === 'line-break') {
+            append({ type: 'ipa', position: 0, ipaCharacter: LINE_BREAK_SENTINEL, role: 'line-break' });
+            needsSeparator = false;
             continue;
         }
 
-        // It's a real word — insert space separator before it if needed
-        if (needsSeparator) {
-            const spaceSeparator = createSpaceSeparator(wordSeparatorConfig, wordSeparatorGrapheme);
-            if (spaceSeparator !== null) {
-                combinedSpelling.push({
-                    ...spaceSeparator,
-                    position: globalPosition++,
-                });
+        if (token.kind === 'punctuation') {
+            const key = token.punctuationKey ?? PUNCTUATION_KEY_BY_CHARACTER[token.originalWord];
+            const cfg = key ? punctuation?.[key] : undefined;
+            // Opening quotes attach to the FOLLOWING word: separated from what
+            // came before, glued to what comes next. Everything else attaches
+            // to the preceding word.
+            const opensWord = key === 'quotationOpen';
+            if (opensWord && needsSeparator) {
+                const sepCfg = punctuation?.wordSeparator;
+                append(createSpaceSeparator(sepCfg, graphemeFor(sepCfg)));
             }
+            append(createPunctuationEntry(token.originalWord, cfg, graphemeFor(cfg)));
+            needsSeparator = !opensWord;
+            continue;
         }
 
-        const translation = wordTranslations[realWordIndex++];
+        if (needsSeparator) {
+            const cfg = punctuation?.wordSeparator;
+            append(createSpaceSeparator(cfg, graphemeFor(cfg)));
+        }
 
-        // Add word's spelling
+        const translation = translateWord(token, lexiconEntries, graphemeMap);
+        wordTranslations.push(translation);
         for (const entry of translation.spellingDisplay) {
-            combinedSpelling.push({
-                ...entry,
-                position: globalPosition++,
-            });
+            append(entry);
         }
-
         if (translation.hasVirtualGlyphs) {
             hasVirtualGlyphs = true;
         }
-
         needsSeparator = true;
     }
 

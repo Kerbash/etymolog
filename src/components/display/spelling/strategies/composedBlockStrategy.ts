@@ -1,10 +1,17 @@
 /**
  * Composed Block Layout Strategy
  *
- * Writing-system-aware layout that composes layout at 3 levels:
- * 1. Glyphs within words (glyphDirection)
- * 2. Words within lines (wordOrder)
- * 3. Lines/columns wrapping (lineProgression)
+ * Writing-system-aware layout composed at three levels:
+ *   1. glyphs within a word   (glyphDirection)
+ *   2. words within a line    (wordOrder)
+ *   3. lines within the block (lineProgression)
+ *
+ * Word and line boundaries come from the glyphs themselves — `role` on a
+ * `RenderableGlyph` is `'word-separator'`, `'line-break'` or `'punctuation'`
+ * — not from index arrays supplied by the caller. The translator used to pass
+ * indices computed over spelling ENTRIES while this strategy indexed GLYPHS
+ * (a grapheme expands to several), so every break after a multi-glyph
+ * grapheme landed in the wrong place.
  *
  * @module display/spelling/strategies/composedBlockStrategy
  */
@@ -19,77 +26,52 @@ import type {
 import type { WritingSystemSettings } from '../../../../db/api/types';
 import { emptyBounds, calculateBounds } from '../utils/bounds';
 
-/**
- * Check if a direction is horizontal.
- */
 function isHorizontal(dir: string): boolean {
     return dir === 'ltr' || dir === 'rtl';
 }
 
-/**
- * Check if a direction is reversed (rtl or btu).
- */
+/** rtl and btt run against the positive axis. */
 function isReversed(dir: string): boolean {
-    return dir === 'rtl' || dir === 'btu';
+    return dir === 'rtl' || dir === 'btt';
 }
 
-/**
- * A word group with metadata about what kind of separator it is.
- */
+/** A run of glyphs laid out together: a word, a separator, or a line break. */
 interface WordGroup {
     glyphs: RenderableGlyph[];
-    /** True if this group is a line-break separator */
     isLineBreak: boolean;
 }
 
 /**
- * Split glyphs into word groups using word boundary and line-break indices.
+ * Group glyphs into words. Separators and punctuation become their own
+ * single-glyph groups so they participate in wrapping; line breaks become
+ * markers that flush the current line and are not positioned.
  */
-function splitIntoWords(
-    glyphs: RenderableGlyph[],
-    wordBoundaries?: number[],
-    lineBreaks?: number[]
-): WordGroup[] {
-    const boundarySet = new Set(wordBoundaries ?? []);
-    const lineBreakSet = new Set(lineBreaks ?? []);
-
-    if (boundarySet.size === 0 && lineBreakSet.size === 0) {
-        return [{ glyphs, isLineBreak: false }];
-    }
-
+export function splitIntoWords(glyphs: RenderableGlyph[]): WordGroup[] {
     const groups: WordGroup[] = [];
-    let currentWord: RenderableGlyph[] = [];
+    let current: RenderableGlyph[] = [];
+    const flush = () => {
+        if (current.length > 0) {
+            groups.push({ glyphs: current, isLineBreak: false });
+            current = [];
+        }
+    };
 
-    for (let i = 0; i < glyphs.length; i++) {
-        if (lineBreakSet.has(i)) {
-            // Push current word, then a line-break marker
-            if (currentWord.length > 0) {
-                groups.push({ glyphs: currentWord, isLineBreak: false });
-                currentWord = [];
-            }
-            groups.push({ glyphs: [glyphs[i]], isLineBreak: true });
-        } else if (boundarySet.has(i)) {
-            // Push current word, then the word separator
-            if (currentWord.length > 0) {
-                groups.push({ glyphs: currentWord, isLineBreak: false });
-                currentWord = [];
-            }
-            groups.push({ glyphs: [glyphs[i]], isLineBreak: false });
+    for (const glyph of glyphs) {
+        if (glyph.role === 'line-break') {
+            flush();
+            groups.push({ glyphs: [glyph], isLineBreak: true });
+        } else if (glyph.role === 'word-separator' || glyph.role === 'punctuation') {
+            flush();
+            groups.push({ glyphs: [glyph], isLineBreak: false });
         } else {
-            currentWord.push(glyphs[i]);
+            current.push(glyph);
         }
     }
-
-    if (currentWord.length > 0) {
-        groups.push({ glyphs: currentWord, isLineBreak: false });
-    }
-
+    flush();
     return groups;
 }
 
-/**
- * Measure the size of a word laid out according to glyphDirection.
- */
+/** Size of a word laid out along glyphDirection. */
 function measureWord(
     glyphCount: number,
     glyphDirection: string,
@@ -98,28 +80,30 @@ function measureWord(
     spacing: number
 ): { width: number; height: number } {
     if (glyphCount === 0) return { width: 0, height: 0 };
-
     if (isHorizontal(glyphDirection)) {
-        return {
-            width: glyphCount * glyphWidth + (glyphCount - 1) * spacing,
-            height: glyphHeight,
-        };
-    } else {
-        return {
-            width: glyphWidth,
-            height: glyphCount * glyphHeight + (glyphCount - 1) * spacing,
-        };
+        return { width: glyphCount * glyphWidth + (glyphCount - 1) * spacing, height: glyphHeight };
     }
+    return { width: glyphWidth, height: glyphCount * glyphHeight + (glyphCount - 1) * spacing };
+}
+
+/**
+ * Break an over-long word into pieces that each fit the line
+ * (`wordWrap: 'glyph'`). Returns the word unchanged when it fits.
+ */
+function chunkWord(word: RenderableGlyph[], maxGlyphsPerLine: number): RenderableGlyph[][] {
+    if (!Number.isFinite(maxGlyphsPerLine) || word.length <= maxGlyphsPerLine) return [word];
+    const size = Math.max(1, Math.floor(maxGlyphsPerLine));
+    const pieces: RenderableGlyph[][] = [];
+    for (let i = 0; i < word.length; i += size) {
+        pieces.push(word.slice(i, i + size));
+    }
+    return pieces;
 }
 
 /**
  * Create a composed block strategy from writing system settings.
  */
-export function createComposedBlockStrategy(
-    writingSystem: WritingSystemSettings,
-    wordBoundaries?: number[],
-    lineBreaks?: number[]
-): LayoutStrategy {
+export function createComposedBlockStrategy(writingSystem: WritingSystemSettings): LayoutStrategy {
     return {
         name: 'composed-block',
 
@@ -129,108 +113,75 @@ export function createComposedBlockStrategy(
             }
 
             const { glyphWidth, glyphHeight, spacing, padding, maxWidth, maxHeight } = config;
-            const { glyphDirection, wordOrder, lineProgression, baselineAlignment } = writingSystem;
+            const { glyphDirection, wordOrder, lineProgression, baselineAlignment, wordWrap } = writingSystem;
 
-            // Split into word groups (with line-break metadata)
-            const wordGroups = splitIntoWords(glyphs, wordBoundaries, lineBreaks);
-
-            // Determine primary axis for word flow and secondary axis for wrapping
             const wordFlowHorizontal = isHorizontal(wordOrder);
             const lineFlowHorizontal = isHorizontal(lineProgression);
+            const glyphFlowHorizontal = isHorizontal(glyphDirection);
 
-            // Maximum extent for wrapping
-            const maxPrimaryExtent = wordFlowHorizontal
-                ? (maxWidth ? maxWidth - padding * 2 : Infinity)
-                : (maxHeight ? maxHeight - padding * 2 : Infinity);
+            // Extent available along the word-flow axis before wrapping.
+            const maxPrimaryExtent = wordWrap === 'none'
+                ? Infinity
+                : wordFlowHorizontal
+                    ? (maxWidth ? maxWidth - padding * 2 : Infinity)
+                    : (maxHeight ? maxHeight - padding * 2 : Infinity);
 
-            // === DEBUG ===
-            console.group('[composedBlockStrategy DEBUG]');
-            console.log('config:', { glyphWidth, glyphHeight, spacing, padding, maxWidth, maxHeight });
-            console.log('writingSystem:', { glyphDirection, wordOrder, lineProgression, baselineAlignment });
-            console.log('wordBoundaries:', wordBoundaries);
-            console.log('lineBreaks:', lineBreaks);
-            console.log('total glyphs:', glyphs.length);
-            console.log('wordGroups:', wordGroups.length,
-                'groups:', wordGroups.map(g => ({ len: g.glyphs.length, isLineBreak: g.isLineBreak })));
-            console.log('wordFlowHorizontal:', wordFlowHorizontal, 'lineFlowHorizontal:', lineFlowHorizontal);
-            console.log('maxPrimaryExtent:', maxPrimaryExtent);
-            console.groupEnd();
-            // === END DEBUG ===
+            // For glyph-level wrapping: how many glyphs of a word fit on one line.
+            // Only meaningful when glyphs run along the same axis as words.
+            const glyphExtent = glyphFlowHorizontal ? glyphWidth : glyphHeight;
+            const maxGlyphsPerLine = wordWrap === 'glyph' && glyphFlowHorizontal === wordFlowHorizontal
+                ? Math.floor((maxPrimaryExtent + spacing) / (glyphExtent + spacing))
+                : Infinity;
 
-            // Group words into lines, breaking on explicit line breaks and overflow
+            // Group into lines, breaking on explicit line breaks and overflow.
             type Line = { words: RenderableGlyph[][]; sizes: { width: number; height: number }[] };
             const lines: Line[] = [];
             let currentLine: Line = { words: [], sizes: [] };
             let currentLineExtent = 0;
 
-            for (const group of wordGroups) {
-                // Explicit line break — flush current line and skip the '\n' glyph
+            const startNewLine = () => {
+                if (currentLine.words.length > 0) lines.push(currentLine);
+                currentLine = { words: [], sizes: [] };
+                currentLineExtent = 0;
+            };
+
+            for (const group of splitIntoWords(glyphs)) {
                 if (group.isLineBreak) {
-                    if (currentLine.words.length > 0) {
-                        lines.push(currentLine);
-                    }
-                    currentLine = { words: [], sizes: [] };
-                    currentLineExtent = 0;
+                    startNewLine();
                     continue;
                 }
 
-                const wordSize = measureWord(group.glyphs.length, glyphDirection, glyphWidth, glyphHeight, spacing);
-                const wordExtent = wordFlowHorizontal ? wordSize.width : wordSize.height;
-                const wordSpacing = currentLine.words.length > 0 ? spacing : 0;
+                for (const piece of chunkWord(group.glyphs, maxGlyphsPerLine)) {
+                    const wordSize = measureWord(piece.length, glyphDirection, glyphWidth, glyphHeight, spacing);
+                    const wordExtent = wordFlowHorizontal ? wordSize.width : wordSize.height;
+                    const gap = currentLine.words.length > 0 ? spacing : 0;
 
-                // Check if adding this word exceeds the line
-                const wouldOverflow = currentLineExtent + wordSpacing + wordExtent > maxPrimaryExtent;
+                    if (currentLine.words.length > 0 && currentLineExtent + gap + wordExtent > maxPrimaryExtent) {
+                        startNewLine();
+                    }
 
-                if (writingSystem.wordWrap !== 'none' && wouldOverflow && currentLine.words.length > 0) {
-                    lines.push(currentLine);
-                    currentLine = { words: [], sizes: [] };
-                    currentLineExtent = 0;
+                    currentLine.words.push(piece);
+                    currentLine.sizes.push(wordSize);
+                    currentLineExtent += (currentLine.words.length > 1 ? spacing : 0) + wordExtent;
                 }
-
-                currentLine.words.push(group.glyphs);
-                currentLine.sizes.push(wordSize);
-                currentLineExtent += (currentLine.words.length > 1 ? spacing : 0) + wordExtent;
             }
+            startNewLine();
 
-            if (currentLine.words.length > 0) {
-                lines.push(currentLine);
-            }
-
-            // === DEBUG ===
-            console.log('[composedBlockStrategy] lines created:', lines.length,
-                'words per line:', lines.map(l => l.words.length));
-            // === END DEBUG ===
-
-            // Position all glyphs
-            //
-            // Each glyph position is built from three additive components:
-            //   1. lineOffset   → along the lineProgression axis
-            //   2. wordOffset   → along the wordOrder axis
-            //   3. glyphOffset  → along the glyphDirection axis
-            //
-            // Each component contributes to X or Y depending on whether
-            // its controlling direction is horizontal or vertical.
-            // Reversed line progression uses a negative sign so that
-            // BTU lines go upward and RTL lines go leftward.
-
+            // Position every glyph: line offset along lineProgression, word offset
+            // along wordOrder, glyph offset along glyphDirection. Reversed
+            // directions accumulate negatively so rtl/btt grow the other way.
             const positions: PositionedGlyph[] = [];
             let globalIndex = 0;
-
-            const lineProgressionSign = isReversed(lineProgression) ? -1 : 1;
-
+            const lineSign = isReversed(lineProgression) ? -1 : 1;
             let lineOffset = 0;
 
             for (const line of lines) {
-                // Calculate line cross-axis size (for alignment)
                 let lineCrossSize = 0;
                 for (const size of line.sizes) {
-                    const cross = wordFlowHorizontal ? size.height : size.width;
-                    lineCrossSize = Math.max(lineCrossSize, cross);
+                    lineCrossSize = Math.max(lineCrossSize, wordFlowHorizontal ? size.height : size.width);
                 }
 
                 let wordOffset = 0;
-
-                // If word order is reversed, iterate words in reverse display order
                 const wordIndices = isReversed(wordOrder)
                     ? line.words.map((_, i) => line.words.length - 1 - i)
                     : line.words.map((_, i) => i);
@@ -238,86 +189,42 @@ export function createComposedBlockStrategy(
                 for (const wi of wordIndices) {
                     const word = line.words[wi];
                     const wordSize = line.sizes[wi];
-
                     const glyphIndices = isReversed(glyphDirection)
                         ? word.map((_, i) => word.length - 1 - i)
                         : word.map((_, i) => i);
 
                     let glyphOffset = 0;
-
                     for (const gi of glyphIndices) {
-                        const glyph = word[gi];
-
-                        // Start with padding on both axes
                         let x = padding;
                         let y = padding;
 
-                        // 1. Line offset → goes along lineProgression axis
-                        const lineContribution = lineOffset * lineProgressionSign;
-                        if (lineFlowHorizontal) {
-                            x += lineContribution;
-                        } else {
-                            y += lineContribution;
-                        }
+                        const lineContribution = lineOffset * lineSign;
+                        if (lineFlowHorizontal) x += lineContribution; else y += lineContribution;
+                        if (wordFlowHorizontal) x += wordOffset; else y += wordOffset;
+                        if (glyphFlowHorizontal) x += glyphOffset; else y += glyphOffset;
 
-                        // 2. Word offset → goes along wordOrder axis
-                        if (wordFlowHorizontal) {
-                            x += wordOffset;
-                        } else {
-                            y += wordOffset;
-                        }
-
-                        // 3. Glyph offset → goes along glyphDirection axis
-                        if (isHorizontal(glyphDirection)) {
-                            x += glyphOffset;
-                        } else {
-                            y += glyphOffset;
-                        }
-
-                        // Apply baseline alignment along the word flow cross-axis
+                        // Baseline alignment along the word-flow cross-axis.
                         if (wordFlowHorizontal) {
                             const cross = wordSize.height;
-                            if (baselineAlignment === 'center') {
-                                y += (lineCrossSize - cross) / 2;
-                            } else if (baselineAlignment === 'bottom') {
-                                y += lineCrossSize - cross;
-                            }
+                            if (baselineAlignment === 'center') y += (lineCrossSize - cross) / 2;
+                            else if (baselineAlignment === 'bottom') y += lineCrossSize - cross;
                         } else {
                             const cross = wordSize.width;
-                            if (baselineAlignment === 'center') {
-                                x += (lineCrossSize - cross) / 2;
-                            } else if (baselineAlignment === 'bottom') {
-                                x += lineCrossSize - cross;
-                            }
+                            if (baselineAlignment === 'center') x += (lineCrossSize - cross) / 2;
+                            else if (baselineAlignment === 'bottom') x += lineCrossSize - cross;
                         }
 
-                        positions.push({
-                            glyph,
-                            index: globalIndex++,
-                            x,
-                            y,
-                            width: glyphWidth,
-                            height: glyphHeight,
-                        });
-
-                        if (isHorizontal(glyphDirection)) {
-                            glyphOffset += glyphWidth + spacing;
-                        } else {
-                            glyphOffset += glyphHeight + spacing;
-                        }
+                        positions.push({ glyph: word[gi], index: globalIndex++, x, y, width: glyphWidth, height: glyphHeight });
+                        glyphOffset += (glyphFlowHorizontal ? glyphWidth : glyphHeight) + spacing;
                     }
 
-                    const wordExtent = wordFlowHorizontal ? wordSize.width : wordSize.height;
-                    wordOffset += wordExtent + spacing;
+                    wordOffset += (wordFlowHorizontal ? wordSize.width : wordSize.height) + spacing;
                 }
 
                 lineOffset += lineCrossSize + spacing;
             }
 
-            return {
-                positions,
-                bounds: calculateBounds(positions, config),
-            };
+            return { positions, bounds: calculateBounds(positions, config) };
         },
     };
 }

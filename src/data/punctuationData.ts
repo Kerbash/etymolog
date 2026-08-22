@@ -181,7 +181,10 @@ export const PUNCTUATION_MARKS: PunctuationMark[] = [
     // Quotation marks
     {
         key: 'quotationOpen',
-        symbol: '"',
+        // The curly marks, not two identical straight quotes: the open and
+        // close rows are separate settings and rendered identically before,
+        // so there was no way to tell which row you were configuring.
+        symbol: '“',
         label: 'Opening Quote',
         description: 'Opens quoted speech or text',
         category: 'quotation',
@@ -190,7 +193,7 @@ export const PUNCTUATION_MARKS: PunctuationMark[] = [
     },
     {
         key: 'quotationClose',
-        symbol: '"',
+        symbol: '”',
         label: 'Closing Quote',
         description: 'Closes quoted speech or text',
         category: 'quotation',

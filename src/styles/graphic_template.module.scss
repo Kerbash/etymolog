@@ -1,0 +1,91 @@
+/*
+ * Etymolog app-level style templates (the `graphic_template` convention from
+ * CLAUDE.md → "Layout & Spacing").
+ *
+ * These are the five container/row shapes that were being re-declared per file
+ * — `.container` in 11 stylesheets, `.infoSection` in 3, a hand-inlined
+ * dropdown-link `CSSProperties` object in one TSX and a byte-similar `.menuItem`
+ * in another. Import once:
+ *
+ *     import graphic_template from '@styles/graphic_template.module.scss';
+ *     <section className={graphic_template.pageSection}>
+ *
+ * Tokens only. Nothing here may hardcode a colour, radius or shadow.
+ */
+
+/* A content card: the default surface for a panel the user reads or edits. */
+.surfaceCard {
+    padding: var(--surface-padding);
+
+    background: var(--surface-base);
+    border: var(--border-width) solid var(--border-secondary);
+    border-radius: var(--radius-surface);
+    box-shadow: var(--shadow-surface);
+    color: var(--text-primary);
+}
+
+/* A raised surface: small floating chrome (a popover body, an inline editor
+   that has to read against arbitrary content underneath it). */
+.surfaceRaised {
+    padding: var(--surface-padding);
+
+    background: var(--surface-raised);
+    border: var(--border-width) solid var(--border-secondary);
+    border-radius: var(--radius-surface);
+    box-shadow: var(--shadow-raised);
+    color: var(--text-primary);
+}
+
+/* The "this deletes things" block at the bottom of an edit page. Persistent
+   state, so it uses the PERSISTENT status family (--status-bad), not the
+   transient --status-error one: the framing is permanent, not feedback. */
+.dangerZone {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+
+    padding: var(--surface-padding);
+
+    background: var(--status-bad-bg);
+    border: var(--border-width) solid var(--status-bad);
+    border-radius: var(--radius-surface);
+}
+
+/* A titled section within a page, with the standard vertical rhythm. */
+.pageSection {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: var(--section-gap);
+}
+
+/* One row of a dropdown menu. Works for both a <button> and a react-router
+   <Link>, which is why it resets `text-decoration` and `color` as well as the
+   button chrome — the two call sites use one element each. */
+.menuItem {
+    display: block;
+    width: 100%;
+    padding: 0.75rem 1rem;
+
+    font-size: 0.9rem;
+    text-align: left;
+    white-space: nowrap;
+    text-decoration: none;
+
+    color: var(--text-primary);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: background 0.2s ease;
+
+    &:hover:not(:disabled) {
+        background: var(--surface-hover);
+    }
+
+    &:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+}

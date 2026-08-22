@@ -1,0 +1,68 @@
+/**
+ * IPAExtraSoundsChart Component Styles
+ *
+ * A strip, not a grid: four labelled rows of cells that wrap. The groups have
+ * no shared axis, so there is nothing for a table to line up.
+ */
+
+.extraChart {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.chartTitle {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.groups {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+/* Label column then cells, so the four group names share one left edge and the
+   rows read as a list. Below 40rem the label goes above its own row. */
+.group {
+    display: grid;
+    grid-template-columns: 7rem 1fr;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem;
+    border: var(--border-width) solid var(--border-primary);
+    border-radius: var(--radius-surface);
+    background: var(--surface-raised);
+
+    @media (max-width: 40rem) {
+        grid-template-columns: 1fr;
+    }
+}
+
+.groupLabel {
+    margin: 0;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.groupCells {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px;
+
+    /* `IPAChartCell` wraps itself in a tooltip host sized `width: 100%;
+       height: 100%` — right for a table cell, which is the only place the two
+       big charts put one, and fatal here: as a flex item it takes the whole
+       line and every sound lands on a row of its own (a 1 500px strip for
+       twenty-eight cells). Sized to its content instead; the cell's own
+       `size="small"` box is what decides how big it is. */
+    > * {
+        flex: 0 0 auto;
+        width: auto;
+        height: auto;
+    }
+}

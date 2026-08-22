@@ -1,64 +1,32 @@
-.viewPage {
-    padding: 1rem;
-    gap: 1rem;
-}
-
-.header {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    margin-bottom: 1rem;
-}
-
-.title {
-    margin: 0;
-    font-size: 1.5rem;
-    color: var(--text-primary);
-    flex: 1;
-}
-
-.headerActions {
-    display: flex;
-    gap: 0.5rem;
-}
+/**
+ * LexiconViewPage — three stacked sections under the shared `PageHeader`.
+ *
+ * Trimmed to what the page still owns. Everything that went: the page padding
+ * (the shell's `BasicBody` supplies the gutters), the hand-built header row,
+ * `.loading` / `.error` / `.notFound` (now `LoadingState` and `EmptyState`), the
+ * whole in-page edit-mode block, and the delete modal — including its
+ * `.deleteWarning` box, which was a duplicate of the same warning in
+ * `LexiconGallery`'s own copy of the same modal.
+ */
 
 .content {
-    flex: 1;
-    overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
+    gap: var(--section-gap);
+    width: 100%;
+    min-width: 0;
 }
 
-.formContainer {
-    display: flex;
-    flex-direction: column;
-    padding: 0.5em;
-}
+.section {
+    padding: var(--surface-padding);
 
-.editActions {
-    display: flex;
-    gap: 1rem;
-    justify-content: flex-end;
-    padding-top: 1.5rem;
-    margin-top: 1.5rem;
-    border-top: 1px solid var(--border-primary);
-}
-
-.displaySection {
-    // Detailed display styling handled by component
-}
-
-.etymologySection,
-.descendantsSection {
-    padding: 1rem;
     background: var(--surface-raised);
-    border-radius: 8px;
-    border: 1px solid var(--border-primary);
+    border: var(--border-width) solid var(--border-primary);
+    border-radius: var(--radius-surface);
 }
 
 .sectionTitle {
-    margin: 0 0 1rem 0;
+    margin: 0 0 1rem;
     font-size: 1.125rem;
     color: var(--text-primary);
 }
@@ -67,6 +35,9 @@
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
 }
 
 .descendantItem {
@@ -74,69 +45,33 @@
     align-items: center;
     gap: 0.75rem;
     padding: 0.5rem 0.75rem;
-    background: var(--surface-base);
-    border-radius: 4px;
-    text-decoration: none;
-    color: inherit;
-    transition: background 0.2s ease;
 
-    &:hover {
-        background: var(--bg-tertiary);
-    }
+    color: inherit;
+    text-decoration: none;
+
+    background: var(--surface-base);
+    border-radius: var(--radius-chip);
+    transition: background 0.2s ease;
+}
+
+.descendantItem:hover {
+    background: var(--surface-hover);
+}
+
+.descendantItem:focus-visible {
+    outline: var(--border-width-strong) solid var(--focus-ring);
+    outline-offset: 2px;
 }
 
 .descendantType {
-    font-size: 0.8125rem;
-    color: var(--text-secondary);
-    font-style: italic;
     min-width: 70px;
+
+    font-size: 0.8125rem;
+    font-style: italic;
+    color: var(--text-secondary);
 }
 
 .descendantLemma {
     font-weight: 500;
     color: var(--text-primary);
-}
-
-.loading {
-    padding: 2rem;
-    text-align: center;
-    color: var(--text-secondary);
-}
-
-.error,
-.notFound {
-    padding: 2rem;
-    color: var(--status-bad);
-
-    a {
-        color: var(--color-primary);
-        margin-top: 1rem;
-        display: inline-block;
-    }
-}
-
-/* Delete Modal */
-.deleteModal {
-    padding: 1rem;
-    min-width: 320px;
-
-    h2 {
-        margin-top: 0;
-    }
-}
-
-.deleteWarning {
-    padding: 0.75rem;
-    background: var(--status-warning-bg, #fef3cd);
-    border: 1px solid var(--status-warning, #ffc107);
-    border-radius: 4px;
-    margin-bottom: 1rem;
-    font-size: 0.875rem;
-}
-
-.deleteActions {
-    display: flex;
-    gap: 0.5rem;
-    justify-content: flex-end;
-    margin-top: 1rem;
 }
