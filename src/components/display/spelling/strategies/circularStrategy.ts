@@ -14,12 +14,14 @@ import type {
     PositionedGlyph,
 } from '../types';
 import { emptyBounds, calculateBounds } from '../utils/bounds';
+import { cellGeometry } from '../utils/cell';
 
 /**
  * Circular layout strategy.
  *
  * Glyphs are arranged in a circle. The first glyph is at the top (12 o'clock),
- * and subsequent glyphs are placed clockwise around the circle.
+ * and subsequent glyphs are placed clockwise around the circle. The ring is
+ * sized so the CELLS do not overlap — the margins may, as everywhere else.
  *
  * For a single glyph, it's placed at the center.
  * For two glyphs, they're placed horizontally.
@@ -38,6 +40,7 @@ export const circularStrategy: LayoutStrategy = {
         }
 
         const { glyphWidth, glyphHeight, spacing, padding } = config;
+        const { cellWidth, cellHeight, stepX } = cellGeometry(config);
 
         // Single glyph: center it
         if (glyphs.length === 1) {
@@ -69,7 +72,7 @@ export const circularStrategy: LayoutStrategy = {
                 {
                     glyph: glyphs[1],
                     index: 1,
-                    x: padding + glyphWidth + spacing,
+                    x: padding + stepX,
                     y: padding,
                     width: glyphWidth,
                     height: glyphHeight,
@@ -82,10 +85,10 @@ export const circularStrategy: LayoutStrategy = {
         }
 
         // Calculate radius based on number of glyphs
-        // Ensure glyphs don't overlap by using circumference
-        const glyphDiagonal = Math.sqrt(glyphWidth * glyphWidth + glyphHeight * glyphHeight);
-        const minCircumference = glyphs.length * (glyphDiagonal + spacing);
-        const radius = Math.max(glyphDiagonal, minCircumference / (2 * Math.PI));
+        // Ensure cells don't overlap by using circumference
+        const cellDiagonal = Math.sqrt(cellWidth * cellWidth + cellHeight * cellHeight);
+        const minCircumference = glyphs.length * (cellDiagonal + spacing);
+        const radius = Math.max(cellDiagonal, minCircumference / (2 * Math.PI));
 
         // Calculate center position
         const centerX = padding + radius + glyphWidth / 2;

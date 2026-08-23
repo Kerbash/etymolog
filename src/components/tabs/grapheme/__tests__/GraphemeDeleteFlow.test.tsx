@@ -126,11 +126,13 @@ describe('grapheme delete — when words use it', () => {
 
         expect(graphemeApi.getById(graphemeId).success).toBe(false);
 
-        // The auto-spelled word keeps its place in the spelling, written with
-        // the grapheme's phoneme instead of a reference to a row that is gone.
+        // The auto-spelled word is REGENERATED from its pronunciation against
+        // the graphemes that remain — none, here, so one IPA placeholder per
+        // sound (what the word form's auto-spell would produce today), not a
+        // dead reference and not a `ka` placeholder pasted over it.
         const word = lexiconApi.getByIdComplete(wordId);
         expect(word.success).toBe(true);
-        expect(word.data!.glyph_order).toBe(JSON.stringify(['ka', 'to']));
+        expect(word.data!.glyph_order).toBe(JSON.stringify(['k', 'a', 't', 'o']));
         expect(word.data!.needs_attention).toBe(false);
 
         // …and the page leaves for the gallery rather than sitting on a record

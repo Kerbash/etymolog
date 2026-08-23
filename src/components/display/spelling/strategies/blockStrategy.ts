@@ -15,12 +15,15 @@ import type {
     PositionedGlyph,
 } from '../types';
 import { emptyBounds, calculateBounds } from '../utils/bounds';
+import { cellGeometry } from '../utils/cell';
 
 /**
  * Block layout strategy.
  *
  * Glyphs flow left-to-right and wrap to new rows when maxWidth is reached.
- * If no maxWidth is specified, defaults to 5 glyphs per row.
+ * If no maxWidth is specified, defaults to 5 glyphs per row. Rows, like
+ * letters, advance by the cell, so a descender reaches into the row below
+ * the way a tail reaches into the next letter.
  *
  * Example (maxWidth fits 3 glyphs):
  * [G1] [G2] [G3]
@@ -35,13 +38,12 @@ export const blockStrategy: LayoutStrategy = {
             return { positions: [], bounds: emptyBounds(config) };
         }
 
-        const { glyphWidth, glyphHeight, spacing, padding, maxWidth } = config;
+        const { glyphWidth, glyphHeight, padding, maxWidth } = config;
+        const { stepX, stepY, fitInRow } = cellGeometry(config);
 
         // Calculate how many glyphs fit per row
-        const cellWidth = glyphWidth + spacing;
-        const availableWidth = maxWidth ? maxWidth - padding * 2 : Infinity;
         const glyphsPerRow = maxWidth
-            ? Math.max(1, Math.floor((availableWidth + spacing) / cellWidth))
+            ? fitInRow(maxWidth - padding * 2)
             : 5; // Default to 5 glyphs per row if no maxWidth
 
         const positions: PositionedGlyph[] = glyphs.map((glyph, index) => {
@@ -51,8 +53,8 @@ export const blockStrategy: LayoutStrategy = {
             return {
                 glyph,
                 index,
-                x: padding + col * (glyphWidth + spacing),
-                y: padding + row * (glyphHeight + spacing),
+                x: padding + col * stepX,
+                y: padding + row * stepY,
                 width: glyphWidth,
                 height: glyphHeight,
             };

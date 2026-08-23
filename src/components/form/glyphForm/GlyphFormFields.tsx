@@ -19,6 +19,15 @@
  * `normalizeGlyphSvg` re-applies the rule on save for markup that did not come
  * from this canvas (older glyphs, imports).
  *
+ * ## The guide square is the cell
+ *
+ * The canvas paints a guide square inset `GLYPH_GUIDE_INSET` from every edge
+ * (`db/utils/glyphMetrics`). That square is the space the glyph RESERVES in a
+ * word; the margin around it is space the glyph may reach into but does not
+ * own — the layout engine advances letters by the square, so margins overlap
+ * and a tail drawn there lands beside the next letter. Canvas and layout read
+ * the one constant, so the guide the author sees is the geometry the word uses.
+ *
  * `registerField()` is called on EVERY render on purpose — that is SmartForm's
  * contract. It registers once internally and returns fresh state each render;
  * caching the result in a ref is what produces stale-value bugs.
@@ -36,6 +45,7 @@ import type { registerFieldReturnType } from "smart-form/types";
 import { flex, sizing } from "utils-styles";
 
 import type { Glyph } from "../../../db";
+import { GLYPH_GUIDE_INSET } from "../../../db/utils/glyphMetrics";
 import { GLYPH_INK } from "./glyphInk";
 
 import styles from "./glyphFormFields.module.scss";
@@ -139,6 +149,7 @@ export default function GlyphFormFields({
                         <SvgDrawerInput
                             displayName="Glyph drawing"
                             colors={GLYPH_INK}
+                            guideInset={GLYPH_GUIDE_INSET}
                             {...glyphSvgField}
                         />
                     </HoverToolTip>

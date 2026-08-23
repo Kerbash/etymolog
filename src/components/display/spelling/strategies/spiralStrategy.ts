@@ -14,12 +14,15 @@ import type {
     PositionedGlyph,
 } from '../types';
 import { emptyBounds, calculateBounds } from '../utils/bounds';
+import { cellGeometry } from '../utils/cell';
 
 /**
  * Spiral layout strategy.
  *
  * Glyphs are arranged in an outward spiral starting from the center.
- * The first glyph is at the center, subsequent glyphs spiral outward.
+ * The first glyph is at the center, subsequent glyphs spiral outward. The
+ * grid pitch is the cell step, so neighbours overlap by their margins as in
+ * every other strategy.
  *
  * Example (simplified):
  *     [G5]
@@ -34,9 +37,8 @@ export const spiralStrategy: LayoutStrategy = {
             return { positions: [], bounds: emptyBounds(config) };
         }
 
-        const { glyphWidth, glyphHeight, spacing, padding } = config;
-        const cellWidth = glyphWidth + spacing;
-        const cellHeight = glyphHeight + spacing;
+        const { glyphWidth, glyphHeight, padding } = config;
+        const { stepX: cellWidth, stepY: cellHeight } = cellGeometry(config);
 
         // Use Ulam spiral pattern for grid positions
         // Direction order: right, up, left, down

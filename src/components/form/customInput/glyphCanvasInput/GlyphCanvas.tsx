@@ -17,6 +17,7 @@ import DOMPurify from 'dompurify';
 
 import type { GlyphCanvasProps, GlyphCanvasRef, CanvasGlyph } from './types';
 import { calculateGlyphLayout, calculateBounds, isVirtualGlyphId } from './utils';
+import { GLYPH_GUIDE_INSET } from '../../../../db/utils/glyphMetrics';
 
 import styles from './GlyphCanvas.module.scss';
 
@@ -132,6 +133,12 @@ const GlyphCanvas = forwardRef<GlyphCanvasRef, GlyphCanvasProps>(
                         role="img"
                         aria-label={`Canvas with ${selectedGlyphIds.length} glyphs`}
                     >
+                        {/* Two passes, cells first: boxes overlap by their
+                            margins, so a background painted with its own
+                            glyph would cover the previous letter's overhang. */}
+                        {positionedGlyphs.map((pg) => (
+                            <GlyphCell key={`cell-${pg.glyph.id}-${pg.index}`} positionedGlyph={pg} />
+                        ))}
                         {positionedGlyphs.map((pg) => (
                             <GlyphNode key={`${pg.glyph.id}-${pg.index}`} positionedGlyph={pg} />
                         ))}
@@ -143,7 +150,34 @@ const GlyphCanvas = forwardRef<GlyphCanvasRef, GlyphCanvasProps>(
 );
 
 /**
- * Individual glyph node rendered on the canvas.
+ * A glyph's CELL — the guide square, the space the letter reserves — drawn
+ * as the tile under it. The box around the cell is the letter's margin and
+ * gets no tile: it belongs to the neighbours as much as to this letter.
+ */
+function GlyphCell({ positionedGlyph }: { positionedGlyph: CanvasGlyph }) {
+    const { glyph, x, y, width, height } = positionedGlyph;
+    const isVirtual = isVirtualGlyphId(glyph.id);
+    const insetX = width * GLYPH_GUIDE_INSET;
+    const insetY = height * GLYPH_GUIDE_INSET;
+
+    return (
+        <rect
+            className={classNames(styles.glyphBackground, {
+                [styles.virtualBackground]: isVirtual,
+            })}
+            x={x + insetX}
+            y={y + insetY}
+            width={width - insetX * 2}
+            height={height - insetY * 2}
+            rx={4}
+            ry={4}
+        />
+    );
+}
+
+/**
+ * Individual glyph node rendered on the canvas — the full box, so ink drawn
+ * in the margin overhangs the cell tile onto the neighbour's.
  * Virtual glyphs (negative IDs) are rendered with distinct styling.
  */
 function GlyphNode({ positionedGlyph }: { positionedGlyph: CanvasGlyph }) {
@@ -170,17 +204,6 @@ function GlyphNode({ positionedGlyph }: { positionedGlyph: CanvasGlyph }) {
             {isVirtual && (
                 <title>IPA Fallback: {glyph.name}</title>
             )}
-
-            {/* Background - different style for virtual glyphs */}
-            <rect
-                className={classNames(styles.glyphBackground, {
-                    [styles.virtualBackground]: isVirtual,
-                })}
-                width={width}
-                height={height}
-                rx={4}
-                ry={4}
-            />
 
             {/* Glyph SVG content via foreignObject */}
             <foreignObject

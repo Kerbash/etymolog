@@ -42,7 +42,7 @@ import { safeNormalize } from '../generator/phonology/features';
 /**
  * Phoneme to grapheme mapping for auto-spelling.
  */
-interface PhonemeMapping {
+export interface PhonemeMapping {
     phoneme: string;
     grapheme_id: number;
 }
@@ -594,6 +594,16 @@ export function getAvailablePhonemeMap(): PhonemeMapping[] {
 }
 
 /**
+ * The phoneme → grapheme map the fallback speller runs on, read from the
+ * database ONCE. Pass the result to `generateSpellingWithFallback` when
+ * spelling many words in a row (the respell scan does): each call would
+ * otherwise re-read every auto-spelling phoneme.
+ */
+export function buildAutoSpellMappings(): PhonemeMapping[] {
+    return buildPhonemeMap(getAutoSpellingPhonemes());
+}
+
+/**
  * Generate spelling from pronunciation with virtual IPA glyph fallbacks.
  *
  * Unlike `generateSpellingFromPronunciation`, this function creates virtual
@@ -610,6 +620,8 @@ export function getAvailablePhonemeMap(): PhonemeMapping[] {
  * as IPA character text on the canvas.
  *
  * @param pronunciation - IPA pronunciation string
+ * @param mappings - Optional precomputed map (`buildAutoSpellMappings()`);
+ *                   read from the database when omitted
  * @returns AutoSpellResultExtended with grapheme IDs (may include virtual glyphs)
  *
  * @example
@@ -623,7 +635,10 @@ export function getAvailablePhonemeMap(): PhonemeMapping[] {
  * generateSpellingWithFallback('t͡sa').spelling.length; // 2, not 4
  * ```
  */
-export function generateSpellingWithFallback(pronunciation: string): AutoSpellResultExtended {
+export function generateSpellingWithFallback(
+    pronunciation: string,
+    mappings?: PhonemeMapping[],
+): AutoSpellResultExtended {
     if (!pronunciation || pronunciation.trim() === '') {
         return {
             success: false,
@@ -635,9 +650,7 @@ export function generateSpellingWithFallback(pronunciation: string): AutoSpellRe
         };
     }
 
-    // Get all phonemes marked for auto-spelling
-    const autoPhonemes = getAutoSpellingPhonemes();
-    const phonemeMappings = buildPhonemeMap(autoPhonemes);
+    const phonemeMappings = mappings ?? buildAutoSpellMappings();
 
     // Parse with optimal DP algorithm with fallback
     return optimalMatchWithFallback(pronunciation, phonemeMappings);

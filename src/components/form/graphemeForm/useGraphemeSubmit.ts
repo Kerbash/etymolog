@@ -11,6 +11,11 @@
  * `updateGlyphs` or a rejected phoneme still reported "saved" and navigated
  * away. Every call is checked here, and a partial failure is surfaced as a
  * warning naming what did not land rather than being swallowed.
+ *
+ * The phoneme list is saved with ONE `phoneme.replaceAll` call, not a
+ * delete-all followed by an add per row: the API respells auto-spelled words
+ * after every phoneme write, and the row-by-row version would have respelled
+ * them once per row (the first time against an empty list).
  */
 
 import { useCallback } from 'react';
@@ -18,6 +23,12 @@ import { useCallback } from 'react';
 import { useEtymolog, type CreateGraphemeRequest, type Glyph, type GraphemeComplete } from '../../../db';
 import { useApiAction, useNotify } from '../../shared';
 import type { GraphemeFormData } from './GraphemeFormFields';
+
+/** "Respelled 3 words" — or nothing, when the save changed no word. */
+export function describeRespell(count: number): string {
+    if (count <= 0) return '';
+    return `Respelled ${count} word${count === 1 ? '' : 's'}.`;
+}
 
 export interface GraphemeSubmitResult {
     success: boolean;
@@ -82,7 +93,11 @@ export function useGraphemeSubmit({
                     };
                 }
 
-                notify.success(`Created grapheme "${name}".`);
+                notify.success(
+                    [`Created grapheme "${name}".`, describeRespell(result.data.lexiconRespelled)]
+                        .filter(Boolean)
+                        .join(' '),
+                );
                 onSuccess?.(result.data.id);
                 return { success: true };
             }
@@ -108,24 +123,19 @@ export function useGraphemeSubmit({
             });
             if (!glyphResult.success) failures.push('its glyphs');
 
-            const cleared = api.phoneme.deleteAllForGrapheme(graphemeId);
-            if (!cleared.success) {
-                failures.push('its pronunciations');
-            } else {
-                for (const phoneme of phonemes) {
-                    const added = api.phoneme.add({ grapheme_id: graphemeId, ...phoneme });
-                    if (!added.success) {
-                        failures.push(`the pronunciation "${phoneme.phoneme}"`);
-                    }
-                }
-            }
+            const replaced = api.phoneme.replaceAll({ grapheme_id: graphemeId, phonemes });
+            if (!replaced.success) failures.push('its pronunciations');
 
             if (failures.length > 0) {
                 notify.warning(`${failures.join(' and ')} could not be saved.`, {
                     title: 'Grapheme saved, but not everything on it',
                 });
             } else {
-                notify.success('Grapheme saved.');
+                notify.success(
+                    ['Grapheme saved.', describeRespell(replaced.data?.lexiconRespelled ?? 0)]
+                        .filter(Boolean)
+                        .join(' '),
+                );
             }
 
             onSuccess?.(graphemeId);

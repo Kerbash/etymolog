@@ -76,7 +76,7 @@ export default function TranslatorHome() {
         <div className={styles.container}>
             <PageHeader
                 title="Phrase translator"
-                description="Words found in the lexicon use their defined spelling; unknown words are spelled character by character."
+                description="Words whose meaning (or lemma) is in the lexicon use their defined spelling; unknown words are spelled character by character."
             />
 
             <PhraseInput value={inputPhrase} onChange={setInputPhrase} />

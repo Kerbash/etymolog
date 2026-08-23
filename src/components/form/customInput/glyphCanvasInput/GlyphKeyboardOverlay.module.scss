@@ -14,7 +14,13 @@
     display: flex;
     flex-direction: column;
 
-    background: var(--surface-raised);
+    // OPAQUE, not a --surface-* token. This is chrome pinned to the bottom
+    // viewport edge that the page scrolls under — the glyph keyboard has to be
+    // legible whatever content sits behind it. The --surface-* tokens are
+    // translucent by design (glassmorphism), so the page showed through and the
+    // active glyph was hard to read. --bg-secondary is fully opaque in both
+    // themes (--bg-primary is itself translucent in dark).
+    background: var(--bg-secondary);
     border-radius: var(--radius-surface) var(--radius-surface) 0 0;
     box-shadow: var(--shadow-overlay);
 

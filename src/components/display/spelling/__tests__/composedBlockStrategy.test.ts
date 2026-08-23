@@ -10,7 +10,9 @@ import type { RenderableGlyph, LayoutStrategyConfig } from '../types';
 import type { WritingSystemSettings, DirectionValue } from '../../../../db/api/types';
 import { DEFAULT_WRITING_SYSTEM_SETTINGS } from '../../../../db/api/types';
 
-const CONFIG: LayoutStrategyConfig = { glyphWidth: 10, glyphHeight: 10, spacing: 2, padding: 0 };
+// `cellFraction: 1` — boxes abut, so the arithmetic below reads as box + spacing.
+// The cell advance (margins overlapping) is pinned in `cellAdvance.test.ts`.
+const CONFIG: LayoutStrategyConfig = { glyphWidth: 10, glyphHeight: 10, cellFraction: 1, spacing: 2, padding: 0 };
 
 function glyph(name: string, role?: RenderableGlyph['role']): RenderableGlyph {
     return { id: name.charCodeAt(0), name, svg_data: '<svg/>', isVirtual: false, sourceIndex: 0, ...(role ? { role } : {}) };

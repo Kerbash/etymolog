@@ -8,6 +8,7 @@ import DOMPurify from 'dompurify';
 import classNames from 'classnames';
 import type { PositionedGlyph, LayoutBounds } from './types';
 import { boundsToViewBox } from './utils/bounds';
+import { GLYPH_GUIDE_INSET } from '../../../db/utils/glyphMetrics';
 import styles from './GlyphSpellingDisplay.module.scss';
 export interface GlyphSpellingCoreProps {
     positions: PositionedGlyph[];
@@ -19,6 +20,16 @@ export interface GlyphSpellingCoreProps {
     /** Viewport zoom level (1 = 100%, 2 = 200%, etc.) */
     zoom?: number;
 }
+
+/**
+ * Default paper colour. A theme token so the paper follows the theme in the
+ * app — it was a literal `white`, so in dark mode the `currentColor` ink went
+ * white on white — with `white` as the `var()` FALLBACK, which is what an
+ * export resolves to: the SVG/PNG exporters serialise this element verbatim
+ * into a file where no app custom property exists, and an export must not
+ * look different depending on the theme it was made in.
+ */
+export const PAPER_FILL = 'var(--page-background-primary, white)';
 const GlyphItem = memo(function GlyphItem({
     positioned,
     showVirtualGlyphStyling,
@@ -61,12 +72,14 @@ const GlyphItem = memo(function GlyphItem({
             })}
         >
             <g dangerouslySetInnerHTML={{ __html: positionedSvg }} />
+            {/* The dashed "virtual" marker outlines the CELL, not the box:
+                boxes overlap by their margins, so box outlines would cross. */}
             {glyph.isVirtual && showVirtualGlyphStyling && (
                 <rect
-                    x={x}
-                    y={y}
-                    width={w}
-                    height={h}
+                    x={x + w * GLYPH_GUIDE_INSET}
+                    y={y + h * GLYPH_GUIDE_INSET}
+                    width={w * (1 - 2 * GLYPH_GUIDE_INSET)}
+                    height={h * (1 - 2 * GLYPH_GUIDE_INSET)}
                     rx={Math.min(w, h) * 0.05}
                     ry={Math.min(w, h) * 0.05}
                     className={styles.virtualBorder}
@@ -110,8 +123,10 @@ export const GlyphSpellingCore = memo(forwardRef<SVGSVGElement, GlyphSpellingCor
                     y={bounds.minY}
                     width={bounds.width}
                     height={bounds.height}
-                    fill={backgroundColor || 'white'}
                     className={styles.paperBackground}
+                    // A `style`, not a `fill` attribute: presentation
+                    // attributes cannot carry `var()`, inline CSS can.
+                    style={{ fill: backgroundColor || PAPER_FILL }}
                 />
             )}
             {positions.map((positioned) => (

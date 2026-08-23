@@ -17,6 +17,7 @@ import type { LayoutStrategy, LayoutStrategyConfig, RenderableGlyph } from '../.
 import { ltrStrategy, rtlStrategy, ttbStrategy, bttStrategy } from '../../../../display/spelling/strategies/linearStrategy';
 import { calculateBounds as calculateLayoutBounds } from '../../../../display/spelling/utils/bounds';
 import { isVirtualGlyphId } from '../../../../../db/utils/virtualGlyph';
+import { GLYPH_CELL_FRACTION } from '../../../../../db/utils/glyphMetrics';
 
 type MergedCanvasLayoutConfig = Required<Omit<CanvasLayoutConfig, 'customLayout'>> & Pick<CanvasLayoutConfig, 'customLayout'>;
 
@@ -35,6 +36,9 @@ function toStrategyConfig(config: MergedCanvasLayoutConfig): LayoutStrategyConfi
     return {
         glyphWidth: config.glyphWidth,
         glyphHeight: config.glyphHeight,
+        // The canvas shows the word the way the display does: letters advance
+        // by the cell the drawing canvas' guide square defines.
+        cellFraction: GLYPH_CELL_FRACTION,
         spacing: config.glyphSpacing,
         padding: config.canvasPadding,
     };

@@ -9,12 +9,25 @@ The Phrase Translator allows users to translate English phrases into their const
 1. **User Input**: User enters an English phrase in the text area
 2. **Tokenization**: System splits the phrase into individual words
 3. **Word Translation**: For each word:
-   - **Lexicon Lookup**: Search for the word in the lexicon (case-insensitive by lemma)
+   - **Lexicon Lookup**: Search for the word in the lexicon, case-insensitive — by **English meaning first**, then by lemma. The phrase is English, so `great` must find the word that *means* great before any word that happens to be romanised "great"; the lemma fallback keeps the other direction working (type the conlang word itself to see its spelling). See *Meaning matching* below.
    - **If Found**: Use the word's defined spelling from the lexicon
    - **If Not Found**: Use the autospeller to generate spelling character-by-character
 4. **Word Separation**: Insert virtual space glyphs (IPA ' ') between words
 5. **Display**: Render the complete translation on a pannable/zoomable canvas
 6. **Export**: Allow export as SVG or PNG
+
+### Meaning matching (`phraseService.meaningKeys`)
+
+Every meaning row (plus the legacy single `meaning` column) is turned into the single-word keys the entry answers to:
+
+- split on list separators `, ; / |` — `great; large, big` answers to `great`, `large` and `big`
+- lower-cased; the gloss lead-ins `to …`, `a …`, `an …`, `the …` are dropped (`to run` → `run`, `a cat` → `cat`), as are bracketed notes (`run (v.)`) and a trailing full stop
+- a bare article stays a word of its own (`a`, `the`)
+- multi-word glosses (`big house`) yield **no** key — the translator matches one token at a time, so they could never equal a token
+
+### Paper colour and exports
+
+The "simulated paper" rect is painted `var(--page-background-primary, white)` (see `GlyphSpellingCore.PAPER_FILL`). In the app the token follows the theme — it used to be a literal `white`, which in dark mode put the `currentColor` ink white-on-white. The exporters serialise the SVG verbatim into a file opened outside the app, where no custom property exists, so the `white` fallback is what an export resolves to: an export looks the same whichever theme it was made in. This is the one `var()` fallback the token ratchet (`styles/__tests__/tokens.test.ts`) allows, pinned to that file and token.
 
 ## Components
 
@@ -123,7 +136,7 @@ interface PhraseTranslationResult {
 ### Features Implemented
 - ✅ Phrase input with character counter
 - ✅ Word tokenization and normalization
-- ✅ Lexicon lookup (case-insensitive)
+- ✅ Lexicon lookup (case-insensitive; by English meaning, then lemma)
 - ✅ Autospelling fallback for unknown words
 - ✅ Virtual space glyphs as word separators
 - ✅ All 8 layout strategy support

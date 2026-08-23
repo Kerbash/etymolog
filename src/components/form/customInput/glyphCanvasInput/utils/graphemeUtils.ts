@@ -8,6 +8,7 @@
  */
 
 import type { Glyph, GraphemeComplete, GlyphWithUsage } from '../../../../../db/types';
+import { GLYPH_CELL_FRACTION } from '../../../../../db/utils/glyphMetrics';
 
 /**
  * Represents a grapheme or glyph with SVG data for rendering.
@@ -57,14 +58,18 @@ export function extractSvgInner(svg: string): string {
  * Combine multiple SVG strings into a single horizontal SVG.
  *
  * Each source is nested as its own `<svg>` with its ORIGINAL `viewBox`, placed
- * in a fixed-size cell, so the browser rescales it — a glyph authored in a
+ * in a fixed-size box, so the browser rescales it — a glyph authored in a
  * 0 0 100 100 space and one in 0 0 48 48 come out the same size. (Splicing the
  * raw markup into a shared coordinate space, as this used to, rendered
  * multi-glyph graphemes several times too large.)
  *
+ * Boxes advance by the glyph CELL (`GLYPH_CELL_FRACTION` of the box), exactly
+ * as the layout strategies do, so a multi-glyph grapheme is drawn with its
+ * glyphs' margins overlapping — the same picture the word display paints.
+ *
  * @param svgStrings - Array of SVG strings to combine
  * @param spacing - Horizontal spacing between cells (in output units)
- * @param glyphSize - Size of each square cell (width/height)
+ * @param glyphSize - Size of each square box (width/height)
  */
 export function combineSvgStrings(
     svgStrings: string[],
@@ -78,10 +83,11 @@ export function combineSvgStrings(
         return svgStrings[0];
     }
 
-    const totalWidth = svgStrings.length * glyphSize + (svgStrings.length - 1) * spacing;
+    const step = glyphSize * GLYPH_CELL_FRACTION + spacing;
+    const totalWidth = (svgStrings.length - 1) * step + glyphSize;
     const cells = svgStrings.map((svg, index) => {
         const vb = parseSvgViewBox(svg);
-        const x = index * (glyphSize + spacing);
+        const x = index * step;
         return `<svg x="${x}" y="0" width="${glyphSize}" height="${glyphSize}" viewBox="${vb.x} ${vb.y} ${vb.width} ${vb.height}" preserveAspectRatio="xMidYMid meet">${extractSvgInner(svg)}</svg>`;
     });
 

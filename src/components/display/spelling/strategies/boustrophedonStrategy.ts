@@ -15,6 +15,7 @@ import type {
     PositionedGlyph,
 } from '../types';
 import { emptyBounds, calculateBounds } from '../utils/bounds';
+import { cellGeometry } from '../utils/cell';
 
 /**
  * Boustrophedon layout strategy.
@@ -40,19 +41,18 @@ export const boustrophedonStrategy: LayoutStrategy = {
             return { positions: [], bounds: emptyBounds(config) };
         }
 
-        const { glyphWidth, glyphHeight, spacing, padding, maxWidth } = config;
+        const { glyphWidth, glyphHeight, padding, maxWidth } = config;
+        const { stepX, stepY, rowExtent, fitInRow } = cellGeometry(config);
 
         // Calculate how many glyphs fit per row
-        const cellWidth = glyphWidth + spacing;
-        const availableWidth = maxWidth ? maxWidth - padding * 2 : Infinity;
         // Without a width to wrap against, fold into a roughly square block —
         // the ox still turns, and the result has no magic row length.
         const glyphsPerRow = maxWidth
-            ? Math.max(1, Math.floor((availableWidth + spacing) / cellWidth))
+            ? fitInRow(maxWidth - padding * 2)
             : Math.max(1, Math.ceil(Math.sqrt(glyphs.length)));
 
         // Calculate the width of a full row (for RTL positioning)
-        const rowWidth = glyphsPerRow * glyphWidth + (glyphsPerRow - 1) * spacing;
+        const rowWidth = rowExtent(glyphsPerRow);
 
         const positions: PositionedGlyph[] = glyphs.map((glyph, index) => {
             const row = Math.floor(index / glyphsPerRow);
@@ -64,17 +64,17 @@ export const boustrophedonStrategy: LayoutStrategy = {
                 // RTL row: start from the right
                 // For incomplete rows, align to the right edge
                 const rightEdge = padding + rowWidth - glyphWidth;
-                x = rightEdge - colInRow * (glyphWidth + spacing);
+                x = rightEdge - colInRow * stepX;
             } else {
                 // LTR row: start from the left
-                x = padding + colInRow * (glyphWidth + spacing);
+                x = padding + colInRow * stepX;
             }
 
             return {
                 glyph,
                 index,
                 x,
-                y: padding + row * (glyphHeight + spacing),
+                y: padding + row * stepY,
                 width: glyphWidth,
                 height: glyphHeight,
             };

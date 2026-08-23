@@ -112,6 +112,34 @@ const COLOUR_LITERAL_ALLOWLIST: ReadonlyArray<{ file: string; reason: string }> 
 
 const ALLOWED_LITERAL_FILES = new Set(COLOUR_LITERAL_ALLOWLIST.map((e) => e.file));
 
+/**
+ * The ONE `var()` fallback invariant 2 permits, pinned to a file AND a token so
+ * nothing else can ride on it. It exists for the opposite reason to the
+ * fallbacks the ratchet bans: those masked a token that was NEVER defined, this
+ * one sits on a token that IS defined (invariant 1 still checks it) and only
+ * takes effect when the element LEAVES the document.
+ */
+const VAR_FALLBACK_ALLOWLIST: ReadonlyArray<{ file: string; token: string; reason: string }> = [
+    {
+        file: 'components/display/spelling/GlyphSpellingCore.tsx',
+        token: '--page-background-primary',
+        reason:
+            'The simulated-paper rect. In the app the token makes the paper follow the theme ' +
+            '(a literal `white` paper put the currentColor ink white-on-white in dark mode). ' +
+            'The SVG/PNG exporters serialise this element VERBATIM into a file that is opened ' +
+            'outside the app, where no custom property exists — the `white` fallback is what ' +
+            'the export resolves to, and an export must not change with the theme it was made in.',
+    },
+    {
+        file: 'components/display/spelling/__tests__/GlyphSpellingDisplay.test.tsx',
+        token: '--page-background-primary',
+        reason: 'Asserts the exact string the entry above produces.',
+    },
+];
+
+const allowedFallback = (file: string, token: string) =>
+    VAR_FALLBACK_ALLOWLIST.some((e) => e.file === file && e.token === token);
+
 const FILES = collectFiles(SRC)
     .filter((f) => f !== SELF)
     .sort();
@@ -216,10 +244,20 @@ describe('token ratchet — no var() fallbacks', () => {
         const offences: string[] = [];
         for (const file of FILES) {
             for (const { name, raw } of varReferences(read(file))) {
-                if (raw.includes(',')) offences.push(`${file}: ${name} + fallback`);
+                if (raw.includes(',') && !allowedFallback(file, name)) {
+                    offences.push(`${file}: ${name} + fallback`);
+                }
             }
         }
         expect(offences).toEqual([]);
+    });
+
+    it('every fallback exemption is still in use (a stale entry is a hole in the ratchet)', () => {
+        for (const { file, token } of VAR_FALLBACK_ALLOWLIST) {
+            expect(FILES, `${file} no longer exists`).toContain(file);
+            const used = varReferences(read(file)).some((r) => r.name === token && r.raw.includes(','));
+            expect(used, `${file} no longer passes a fallback to ${token}`).toBe(true);
+        }
     });
 });
 

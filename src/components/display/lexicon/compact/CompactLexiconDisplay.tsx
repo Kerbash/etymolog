@@ -1,7 +1,28 @@
-import type { LexiconComplete, GraphemeComplete, SpellingDisplayEntry } from '../../../../db/types';
-import { ScaledGlyphSpellingDisplay } from './ScaledGlyphSpellingDisplay';
-import styles from './compact.module.scss';
+/**
+ * CompactLexiconDisplay — the lexicon grid card.
+ *
+ * Three things, top to bottom: the word in the script, the word as sound, the
+ * word's meaning. The script is the hero, in a GLYPH BAND that is the same
+ * size on every card (a 2:1 box — its height is half the card's width) so a
+ * grid of words lines up; inside it every glyph is the same size, and a word
+ * that is too long for the band is scaled down as a whole — never up.
+ *
+ * The band used to be a DOM-measuring wrapper that applied `transform: scale`
+ * after a ResizeObserver fired, so cards resized a frame late and never agreed
+ * on a glyph size. It is now `GlyphSpellingDisplay fit="shrink"`: pure CSS, no
+ * measuring, no state.
+ *
+ * The line of grapheme NAMES under the glyphs ("Ae L O") is gone: it named
+ * the drawings, which the drawings already show. What identifies a word to a
+ * reader is how it sounds, so the title is the pronunciation — the IPA the
+ * author typed — and the lemma only when there is no pronunciation.
+ */
+
 import classNames from 'classnames';
+
+import type { LexiconComplete, GraphemeComplete } from '../../../../db/types';
+import { GlyphSpellingDisplay } from '../../spelling';
+import styles from './compact.module.scss';
 
 interface CompactLexiconDisplayProps {
     lexiconData: LexiconComplete;
@@ -10,30 +31,10 @@ interface CompactLexiconDisplayProps {
     onClick?: () => void;
 }
 
-/**
- * Compact display for a lexicon entry - shows lemma, spelling graphemes/IPA, pronunciation, and truncated meaning.
- * Designed for grid layout display.
- */
+/** The longest meaning the card shows before an ellipsis. */
+const MEANING_MAX = 50;
+
 export default function CompactLexiconDisplay({ lexiconData, graphemeMap, onClick }: CompactLexiconDisplayProps) {
-    // Render a short textual spelling (mixing grapheme names and IPA chars).
-    // The legacy `spelling` fallback is TYPED into `SpellingDisplayEntry` rather
-    // than cast to `any`: the two shapes are close enough that a cast silently
-    // accepted the wrong one, and `entry.ipaCharacter ?? entry` used to be able
-    // to stringify a whole Grapheme object into the card.
-    const entries: SpellingDisplayEntry[] =
-        lexiconData.spellingDisplay ??
-        lexiconData.spelling.map((grapheme, position) => ({
-            type: 'grapheme' as const,
-            position,
-            grapheme,
-        }));
-
-    const textualSpelling = entries
-        .map((entry) =>
-            entry.type === 'grapheme' ? (entry.grapheme?.name ?? '?') : (entry.ipaCharacter ?? ''),
-        )
-        .join(' ');
-
     // Get the primary meaning from meanings array, or fall back to meaning field
     const primaryMeaning = lexiconData.meanings && lexiconData.meanings.length > 0
         ? lexiconData.meanings[0].meaning
@@ -41,12 +42,12 @@ export default function CompactLexiconDisplay({ lexiconData, graphemeMap, onClic
 
     // Truncate meaning for compact display
     const truncatedMeaning = primaryMeaning
-        ? primaryMeaning.length > 50
-            ? `${primaryMeaning.substring(0, 47)}...`
+        ? primaryMeaning.length > MEANING_MAX
+            ? `${primaryMeaning.substring(0, MEANING_MAX - 3)}...`
             : primaryMeaning
         : null;
 
-    const hasSpelling = lexiconData.spellingDisplay && lexiconData.spellingDisplay.length > 0;
+    const hasSpelling = Boolean(lexiconData.spellingDisplay && lexiconData.spellingDisplay.length > 0);
     const additionalMeaningCount = lexiconData.meanings && lexiconData.meanings.length > 1
         ? lexiconData.meanings.length - 1
         : 0;
@@ -56,25 +57,27 @@ export default function CompactLexiconDisplay({ lexiconData, graphemeMap, onClic
             className={classNames(styles.compactCard, { [styles.clickable]: !!onClick })}
             onClick={onClick}
         >
-            {/* Title: show pronunciation in /slashes/ if present, otherwise show lemma */}
-            <h3 className={styles.lemma}>{lexiconData.pronunciation ? `/${lexiconData.pronunciation}/` : lexiconData.lemma}</h3>
-
-            {hasSpelling ? (
-                <div className={styles.spellingContainer}>
-                    <ScaledGlyphSpellingDisplay
+            {/* The band is rendered whether or not there is a spelling, so a
+                word without one keeps the grid's rhythm instead of collapsing. */}
+            <div className={styles.glyphBand} data-testid="glyph-band">
+                {hasSpelling ? (
+                    <GlyphSpellingDisplay
                         glyphs={lexiconData.spellingDisplay}
                         graphemeMap={graphemeMap}
-                        maxWidth={180}
-                        maxHeight={60}
+                        strategy="ltr"
+                        config="card"
+                        fit="shrink"
+                        overflow="visible"
                     />
-                </div>
-            ) : (
-                <div className={styles.noSpelling}>(no spelling)</div>
-            )}
+                ) : (
+                    <span className={styles.noSpelling}>(no spelling)</span>
+                )}
+            </div>
 
-            <div className={styles.spellingText} title={textualSpelling}>{textualSpelling}</div>
-
-            {/* Pronunciation already shown in title; removed secondary pronunciation element */}
+            {/* Title: the pronunciation in /slashes/, the lemma only without one. */}
+            <h3 className={styles.title}>
+                {lexiconData.pronunciation ? `/${lexiconData.pronunciation}/` : lexiconData.lemma}
+            </h3>
 
             {truncatedMeaning && (
                 <p className={styles.meaning}>

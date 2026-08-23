@@ -4,6 +4,10 @@
  * Implements LTR, RTL, TTB, and BTT layout directions.
  * Ported from glyphCanvasInput/utils/layoutUtils.ts for shared use.
  *
+ * Every direction advances by the CELL (see `utils/cell`): consecutive boxes
+ * overlap by their margins, so a letter's tail or accent lands beside the next
+ * letter instead of pushing it away.
+ *
  * @module display/spelling/strategies/linearStrategy
  */
 
@@ -15,6 +19,7 @@ import type {
     PositionedGlyph,
 } from '../types';
 import { emptyBounds, calculateBounds } from '../utils/bounds';
+import { cellGeometry } from '../utils/cell';
 
 /**
  * Left-to-Right layout strategy.
@@ -30,12 +35,13 @@ export const ltrStrategy: LayoutStrategy = {
             return { positions: [], bounds: emptyBounds(config) };
         }
 
-        const { glyphWidth, glyphHeight, spacing, padding } = config;
+        const { glyphWidth, glyphHeight, padding } = config;
+        const { stepX } = cellGeometry(config);
 
         const positions: PositionedGlyph[] = glyphs.map((glyph, index) => ({
             glyph,
             index,
-            x: padding + index * (glyphWidth + spacing),
+            x: padding + index * stepX,
             y: padding,
             width: glyphWidth,
             height: glyphHeight,
@@ -63,16 +69,16 @@ export const rtlStrategy: LayoutStrategy = {
             return { positions: [], bounds: emptyBounds(config) };
         }
 
-        const { glyphWidth, glyphHeight, spacing, padding } = config;
+        const { glyphWidth, glyphHeight, padding } = config;
+        const { stepX, rowExtent } = cellGeometry(config);
 
-        // Calculate total width needed
-        const totalWidth = glyphs.length * glyphWidth + (glyphs.length - 1) * spacing;
-        const startX = padding + totalWidth - glyphWidth;
+        // The first glyph's box sits at the right end of the row.
+        const startX = padding + rowExtent(glyphs.length) - glyphWidth;
 
         const positions: PositionedGlyph[] = glyphs.map((glyph, index) => ({
             glyph,
             index,
-            x: startX - index * (glyphWidth + spacing),
+            x: startX - index * stepX,
             y: padding,
             width: glyphWidth,
             height: glyphHeight,
@@ -104,13 +110,14 @@ export const ttbStrategy: LayoutStrategy = {
             return { positions: [], bounds: emptyBounds(config) };
         }
 
-        const { glyphWidth, glyphHeight, spacing, padding } = config;
+        const { glyphWidth, glyphHeight, padding } = config;
+        const { stepY } = cellGeometry(config);
 
         const positions: PositionedGlyph[] = glyphs.map((glyph, index) => ({
             glyph,
             index,
             x: padding,
-            y: padding + index * (glyphHeight + spacing),
+            y: padding + index * stepY,
             width: glyphWidth,
             height: glyphHeight,
         }));
@@ -142,17 +149,17 @@ export const bttStrategy: LayoutStrategy = {
             return { positions: [], bounds: emptyBounds(config) };
         }
 
-        const { glyphWidth, glyphHeight, spacing, padding } = config;
+        const { glyphWidth, glyphHeight, padding } = config;
+        const { stepY, columnExtent } = cellGeometry(config);
 
-        // Calculate total height needed
-        const totalHeight = glyphs.length * glyphHeight + (glyphs.length - 1) * spacing;
-        const startY = padding + totalHeight - glyphHeight;
+        // The first glyph's box sits at the bottom end of the column.
+        const startY = padding + columnExtent(glyphs.length) - glyphHeight;
 
         const positions: PositionedGlyph[] = glyphs.map((glyph, index) => ({
             glyph,
             index,
             x: padding,
-            y: startY - index * (glyphHeight + spacing),
+            y: startY - index * stepY,
             width: glyphWidth,
             height: glyphHeight,
         }));

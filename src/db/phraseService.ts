@@ -82,15 +82,56 @@ export function tokenizePhrase(phrase: string): PhraseWord[] {
     return result;
 }
 
+/** Gloss list separators: "great; large, big" offers three candidate words. */
+const GLOSS_SEPARATORS = /[,;/|]/;
+/** Gloss lead-ins that are not part of the word: "to run", "a cat", "the sun". */
+const GLOSS_LEAD_IN = /^(?:to|a|an|the)\s+/;
+
 /**
- * Lookup a word in the lexicon by lemma (case-insensitive). First match wins.
+ * The single-word English keys a lexicon entry answers to in the translator.
+ *
+ * Every meaning (the `meanings` rows plus the legacy `meaning` column) is
+ * split on list separators and lower-cased, then the "to …"/article lead-in,
+ * any bracketed note ("run (v.)") and a trailing full stop are removed.
+ * Multi-word glosses ("big house") are dropped: the translator matches one
+ * token at a time, so they could never equal a token.
+ */
+export function meaningKeys(entry: Pick<LexiconComplete, 'meaning' | 'meanings'>): string[] {
+    const glosses = [...(entry.meanings ?? []).map(m => m.meaning), entry.meaning ?? ''];
+    const keys = new Set<string>();
+    for (const gloss of glosses) {
+        for (const part of gloss.split(GLOSS_SEPARATORS)) {
+            const key = part
+                .toLowerCase()
+                .replace(/\([^)]*\)/g, ' ')
+                .trim()
+                .replace(GLOSS_LEAD_IN, '')
+                .replace(/[.!?]+$/, '')
+                .trim();
+            if (key && !/\s/.test(key)) keys.add(key);
+        }
+    }
+    return [...keys];
+}
+
+/**
+ * Lookup a word in the lexicon (case-insensitive). First match wins.
+ *
+ * Meaning BEFORE lemma: the phrase is English, so "great" must find the word
+ * that MEANS great before any word that happens to be romanised "great". The
+ * lemma fallback keeps the other direction working — typing the conlang word
+ * itself still shows its spelling.
  */
 export function lookupWord(
     normalizedWord: string,
     lexiconEntries: LexiconComplete[]
 ): LexiconComplete | null {
     const target = normalizedWord.toLowerCase();
-    return lexiconEntries.find(entry => entry.lemma.toLowerCase() === target) ?? null;
+    return (
+        lexiconEntries.find(entry => meaningKeys(entry).includes(target)) ??
+        lexiconEntries.find(entry => entry.lemma.toLowerCase() === target) ??
+        null
+    );
 }
 
 function toGraphemeRef(grapheme: GraphemeComplete): Grapheme {

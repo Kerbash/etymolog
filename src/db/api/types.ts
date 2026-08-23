@@ -411,6 +411,38 @@ export interface UpdatePhonemeRequest {
     context?: string | null;
 }
 
+/** One phoneme row in a `replaceAll` request. */
+export interface PhonemeRowRequest {
+    phoneme: string;
+    use_in_auto_spelling?: boolean;
+    context?: string;
+}
+
+/**
+ * Input for replacing every phoneme of a grapheme at once.
+ */
+export interface ReplacePhonemesRequest {
+    grapheme_id: number;
+    phonemes: PhonemeRowRequest[];
+}
+
+/**
+ * What `phoneme.replaceAll` did: the phonemes now on the grapheme, and how
+ * many auto-spelled words were respelled because of the change.
+ */
+export interface ReplacePhonemesResult {
+    phonemes: import('../types').Phoneme[];
+    lexiconRespelled: number;
+}
+
+/**
+ * What `grapheme.create` returns: the new grapheme, plus how many auto-spelled
+ * words were respelled now that its phonemes exist.
+ */
+export type CreateGraphemeResult = import('../types').GraphemeComplete & {
+    lexiconRespelled: number;
+};
+
 // =============================================================================
 // DATABASE API TYPES
 // =============================================================================
@@ -456,7 +488,11 @@ export interface GlyphApi {
  * Grapheme API interface - all grapheme-related operations.
  */
 export interface GraphemeApi {
-    create(request: CreateGraphemeRequest): ApiResponse<import('../types').GraphemeComplete>;
+    /**
+     * Create a grapheme. Auto-spelled words whose pronunciation mentions one
+     * of its auto-spelling phonemes are respelled (`lexiconRespelled`).
+     */
+    create(request: CreateGraphemeRequest): ApiResponse<CreateGraphemeResult>;
     getById(id: number): ApiResponse<import('../types').Grapheme>;
     getByIdComplete(id: number): ApiResponse<import('../types').GraphemeComplete>;
     getAll(): ApiResponse<GraphemeListResponse>;
@@ -467,8 +503,9 @@ export interface GraphemeApi {
     /**
      * Delete a grapheme. Fails with CONSTRAINT_VIOLATION when words spell
      * with it unless `respellLexicon` is set, in which case those words are
-     * rewritten first (auto-spelled words get the grapheme's primary phoneme,
-     * manual ones are flagged for review).
+     * rewritten first (auto-spelled words are regenerated from their
+     * pronunciation against the remaining graphemes — or, without one, get
+     * the grapheme's primary phoneme; manual ones are flagged for review).
      */
     delete(id: number, options?: DeleteGraphemeOptions): ApiResponse<DeleteGraphemeResult>;
     /** Words whose spelling uses this grapheme. */
@@ -485,7 +522,11 @@ export interface DeleteGraphemeOptions {
 }
 
 export interface DeleteGraphemeResult {
-    /** Auto-spelled words rewritten with the fallback phoneme. */
+    /**
+     * Auto-spelled words rewritten: regenerated from their pronunciation
+     * against the graphemes that remain, or — for a word with no
+     * pronunciation — with the fallback phoneme in the grapheme's place.
+     */
     lexiconRespelled: number;
     /** Manually spelled words flagged `needs_attention`. */
     lexiconMarked: number;
@@ -495,6 +536,11 @@ export interface DeleteGraphemeResult {
 
 /**
  * Phoneme API interface - all phoneme-related operations.
+ *
+ * Every write here changes what the auto-speller can produce, so every write
+ * respells the auto-spelled words whose pronunciation mentions the phoneme(s)
+ * involved (see `respellService`). Prefer `replaceAll` when editing a
+ * grapheme's whole list: one transaction, one respell pass.
  */
 export interface PhonemeApi {
     add(request: AddPhonemeRequest): ApiResponse<import('../types').Phoneme>;
@@ -503,6 +549,8 @@ export interface PhonemeApi {
     update(id: number, request: UpdatePhonemeRequest): ApiResponse<import('../types').Phoneme>;
     delete(id: number): ApiResponse<void>;
     deleteAllForGrapheme(graphemeId: number): ApiResponse<number>;
+    /** Replace a grapheme's phonemes wholesale, atomically. */
+    replaceAll(request: ReplacePhonemesRequest): ApiResponse<ReplacePhonemesResult>;
     getAutoSpelling(): ApiResponse<import('../types').Phoneme[]>;
 }
 

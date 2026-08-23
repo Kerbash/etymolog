@@ -173,6 +173,7 @@ How the translator uses settings
 | **FR23** | Grapheme glyphs display in IPA chart cells | Reuses `GlyphSpellingDisplay` component | ✅ Implemented |
 | **FR24** | Pre-fill phoneme when creating from IPA chart | URL param `?phoneme=X` read by create form | ✅ Implemented |
 | **FR25** | Customizable punctuation and word separators | `PunctuationSettings` in global settings, `phraseService` integration | ✅ Implemented |
+| **FR26** | Auto-spelled words are regenerated when the script changes (grapheme created/deleted, phoneme added/edited/removed) | `respellService` — narrow `instr()` candidate scan + DP regeneration, triggered from every phoneme write in `graphemeApi` | ✅ Implemented |
 
 ### Non-Functional Requirements
 
@@ -325,6 +326,50 @@ grapheme whose phoneme is `t͡s` still wins over the fallback; an untied `tʃ`
 stays two tokens (the tokenizer's documented conservative reading); and
 separators (`ˈ ˌ . ‿` and spaces) keep their existing one-entry-each behaviour
 rather than being dropped, which would silently merge a two-word pronunciation.
+
+### Auto-spelled words follow the script — `src/db/respellService.ts`
+
+A word with `auto_spell` on has a **derived** spelling: whatever the speller
+produces for its pronunciation against the graphemes that exist *now*. That
+derivation used to run exactly once, when the word was saved, so creating a
+grapheme for a sound twenty words were already using left all twenty showing
+the IPA placeholder, and editing a grapheme's phoneme silently made every word
+spelled with it wrong.
+
+Every write that changes the phoneme table now finishes by respelling — in the
+same transaction as the write, so the two commit or roll back together:
+
+| Trigger (API) | Patterns handed to the respell |
+|---------------|--------------------------------|
+| `grapheme.create` | its auto-spelling phonemes |
+| `grapheme.delete` (`respellLexicon`) | every phoneme it had — after the row is gone |
+| `phoneme.add` / `phoneme.delete` | that phoneme (if auto-spelling) |
+| `phoneme.update` | the **old and the new** text (skipped for a `context`-only edit) |
+| `phoneme.deleteAllForGrapheme` / `phoneme.replaceAll` | old ∪ new auto-spelling phonemes |
+
+**The scan is narrow on purpose.** The speller matches a phoneme as a literal
+substring of the pronunciation, so a phoneme can only affect a word whose
+pronunciation *contains* it. `getAutoSpelledLexiconMentioning(patterns)` is one
+`SELECT … WHERE auto_spell = 1 AND (instr(pronunciation, ?) > 0 OR …)` — `instr`,
+not `LIKE`, so `%`/`_` in a phoneme need no escaping — and the DP runs only on
+those candidates, with the phoneme map read once for the batch. A candidate is
+written only when the regenerated `glyph_order` differs from the stored one, so
+`updated_at` does not move for words the change did not affect.
+
+What it deliberately does not do: touch manually spelled words (they are not
+derived), respell a word with no pronunciation (nothing to derive from — on a
+grapheme delete it keeps the phoneme placeholder `handleGraphemeDeletion`
+substitutes), or clear `needs_attention` (set by things only a person can
+resolve). Glyph SVG edits and grapheme glyph-composition edits need none of
+this: spellings reference grapheme **ids**, so a redrawn glyph shows up
+everywhere by itself.
+
+The grapheme edit form saves its pronunciation list with one
+`phoneme.replaceAll` (atomic: a rejected row keeps the previous list) rather
+than a delete-all plus one `add` per row, which would respell once per row —
+the first time against an empty list. The toasts report the count
+("Grapheme saved. Respelled 3 words."), and the context re-reads the lexicon
+slice after every phoneme write.
 
 ### Ancestry and the closure table
 
@@ -1488,7 +1533,13 @@ looks like a bug, plus traps that have bitten more than once.
 - **Deleting a grapheme used by words** returns `CONSTRAINT_VIOLATION` with
   `details.lexiconCount`. Pass `{ respellLexicon: true }` to proceed (that is
   what the confirm dialog's "Respell and delete" does);
-  `api.grapheme.getLexiconUsage(id)` lists the words.
+  `api.grapheme.getLexiconUsage(id)` lists the words. Auto-spelled words with a
+  pronunciation are then **regenerated** against the remaining graphemes (so
+  a duplicate grapheme for the same sound takes over), not just given a
+  placeholder — see [Auto-spelled words follow the script](#auto-spelled-words-follow-the-script--srcdbrespellservicets).
+- **Every `api.phoneme.*` write respells.** Editing a grapheme's phoneme list
+  row by row (`deleteAllForGrapheme` + N × `add`) respells N+1 times; use
+  `phoneme.replaceAll` for one transaction and one pass.
 - **`import NavigationGuard from 'cyber-components/container/navigationGuard'`
   is `undefined` at runtime.** That index re-exports the component by NAME only;
   the default import typechecks under `allowSyntheticDefaultImports` and then

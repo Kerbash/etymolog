@@ -461,6 +461,33 @@ export function deleteAllPhonemesForGrapheme(graphemeId: number): number {
     });
 }
 
+/**
+ * Replace a grapheme's phonemes with `inputs`, in order, in ONE transaction.
+ *
+ * The grapheme edit form used to do this as a delete-all followed by one add
+ * per row, so a rejected row (too long, say) left the grapheme with a partial
+ * list and no way to tell. Here a bad row rolls the whole replacement back
+ * and the previous phonemes stay. Every input is validated before the first
+ * write.
+ */
+export function setGraphemePhonemes(graphemeId: number, inputs: CreatePhonemeInput[]): Phoneme[] {
+    const db = getDatabase();
+    for (const input of inputs) {
+        validateStringLength(input.phoneme, LIMITS.PHONEME, 'Phoneme');
+    }
+    return withTransaction(db, () => {
+        db.run('DELETE FROM phonemes WHERE grapheme_id = ?', [graphemeId]);
+        for (const input of inputs) {
+            db.run(
+                `INSERT INTO phonemes (grapheme_id, phoneme, use_in_auto_spelling, context) VALUES (?, ?, ?, ?)`,
+                [graphemeId, input.phoneme, input.use_in_auto_spelling ? 1 : 0, input.context ?? null],
+            );
+        }
+        touchGrapheme(graphemeId);
+        return getPhonemesByGraphemeId(graphemeId);
+    });
+}
+
 /** All phonemes marked for auto-spelling. */
 export function getAutoSpellingPhonemes(): Phoneme[] {
     return execRows(

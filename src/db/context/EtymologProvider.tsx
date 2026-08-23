@@ -255,18 +255,23 @@ export function EtymologProvider({ children }: EtymologProviderProps) {
             },
             grapheme: {
                 ...etymologApi.grapheme,
-                create: after(etymologApi.grapheme.create, 'graphemes', 'glyphs'),
+                // A new grapheme's phonemes respell the auto-spelled words
+                // that were waiting for them.
+                create: after(etymologApi.grapheme.create, 'graphemes', 'glyphs', 'lexicon'),
                 update: after(etymologApi.grapheme.update, 'graphemes'),
                 updateGlyphs: after(etymologApi.grapheme.updateGlyphs, 'graphemes', 'glyphs'),
                 // May respell words and (with autoManageGlyphs) remove glyphs.
                 delete: afterAll(etymologApi.grapheme.delete),
             },
+            // Every phoneme write respells the auto-spelled words it affects
+            // (see `respellService`), so each one re-reads the lexicon too.
             phoneme: {
                 ...etymologApi.phoneme,
-                add: after(etymologApi.phoneme.add, 'graphemes'),
-                update: after(etymologApi.phoneme.update, 'graphemes'),
-                delete: after(etymologApi.phoneme.delete, 'graphemes'),
-                deleteAllForGrapheme: after(etymologApi.phoneme.deleteAllForGrapheme, 'graphemes'),
+                add: after(etymologApi.phoneme.add, 'graphemes', 'lexicon'),
+                update: after(etymologApi.phoneme.update, 'graphemes', 'lexicon'),
+                delete: after(etymologApi.phoneme.delete, 'graphemes', 'lexicon'),
+                deleteAllForGrapheme: after(etymologApi.phoneme.deleteAllForGrapheme, 'graphemes', 'lexicon'),
+                replaceAll: after(etymologApi.phoneme.replaceAll, 'graphemes', 'lexicon'),
             },
             settings: etymologApi.settings,
             database: {

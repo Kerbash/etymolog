@@ -367,6 +367,46 @@ export function getLexiconByNative(isNative: boolean): Lexicon[] {
     ).map(mapLexiconRecord);
 }
 
+/** Patterns per statement — well under SQLite's bind-parameter ceiling. */
+const MENTION_PATTERN_CHUNK = 200;
+
+/**
+ * Auto-spelled words whose pronunciation CONTAINS any of `patterns` — the
+ * candidate set for a respell after a phoneme changes.
+ *
+ * A phoneme can only change how a word is spelled if that phoneme's text
+ * occurs somewhere in the word's pronunciation (the speller matches phonemes
+ * as literal substrings of it, see `autoSpellService`). So rather than running
+ * the DP over the whole lexicon after every script edit, this narrows it to
+ * the words that can possibly be affected with one substring scan — `instr()`,
+ * not `LIKE`, so a `%` or `_` inside a phoneme needs no escaping. Words without
+ * a pronunciation have nothing to respell from and are never candidates.
+ *
+ * Matching is exact and case-sensitive on the RAW stored strings, which is
+ * precisely the comparison the speller itself makes.
+ */
+export function getAutoSpelledLexiconMentioning(patterns: string[]): Lexicon[] {
+    const distinct = [...new Set(patterns.filter(p => p.length > 0))];
+    if (distinct.length === 0) return [];
+
+    const db = getDatabase();
+    const byId = new Map<number, Lexicon>();
+    for (let i = 0; i < distinct.length; i += MENTION_PATTERN_CHUNK) {
+        const chunk = distinct.slice(i, i + MENTION_PATTERN_CHUNK);
+        const mentions = chunk.map(() => 'instr(pronunciation, ?) > 0').join(' OR ');
+        for (const rec of execRows(db, `
+            SELECT ${lexiconColumns()} FROM lexicon
+            WHERE auto_spell = 1
+              AND pronunciation IS NOT NULL AND pronunciation <> ''
+              AND (${mentions})
+        `, chunk)) {
+            const row = mapLexiconRecord(rec);
+            byId.set(row.id, row);
+        }
+    }
+    return [...byId.values()].sort((a, b) => a.id - b.id);
+}
+
 /**
  * Update a lexicon entry. Providing `glyph_order` resyncs the spelling index;
  * providing `meanings` replaces the meanings table rows.
@@ -815,22 +855,40 @@ export function getLexiconEntriesUsingGrapheme(graphemeId: number): Lexicon[] {
     `, [graphemeId]).map(mapLexiconRecord);
 }
 
+export interface GraphemeDeletionReport {
+    /** Auto-spelled words rewritten with the fallback character. */
+    respelledCount: number;
+    /** Manually spelled (or already flagged) words flagged `needs_attention`. */
+    markedForAttentionCount: number;
+    /** Every word that was rewritten, in either category. */
+    affectedLexiconIds: number[];
+    /** The `respelledCount` words by id. */
+    respelledLexiconIds: number[];
+}
+
 /**
  * Rewrite every word that uses `graphemeId` so the grapheme can be deleted:
  * each occurrence becomes the fallback IPA character. Auto-spelled words are
  * counted as respelled; manually spelled words are flagged `needs_attention`
  * for review. Runs in one transaction.
+ *
+ * This is the SUBSTITUTION step only. Once the grapheme (and its phonemes)
+ * are gone, `respellAutoSpelledWords` (`respellService`) regenerates the
+ * auto-spelled words that have a pronunciation from scratch, so a sound
+ * another grapheme also covers is re-spelled with that grapheme rather than
+ * left as a placeholder. The substitution still matters for auto-spelled
+ * words WITHOUT a pronunciation, which have nothing to regenerate from.
  */
 export function handleGraphemeDeletion(
     graphemeId: number,
     deletedGraphemePronunciation?: string,
-): { respelledCount: number; markedForAttentionCount: number; affectedLexiconIds: number[] } {
+): GraphemeDeletionReport {
     const db = getDatabase();
     return withTransaction(db, () => {
         const affected = getLexiconEntriesUsingGrapheme(graphemeId);
         const target = createGraphemeEntry(graphemeId);
         const fallback = deletedGraphemePronunciation || '?';
-        let respelledCount = 0;
+        const respelledLexiconIds: number[] = [];
         let markedForAttentionCount = 0;
 
         for (const entry of affected) {
@@ -840,10 +898,15 @@ export function handleGraphemeDeletion(
             const needsAttention = !entry.auto_spell || entry.needs_attention;
             updateLexicon(entry.id, { glyph_order: glyphOrder, needs_attention: needsAttention });
             if (needsAttention) markedForAttentionCount++;
-            else respelledCount++;
+            else respelledLexiconIds.push(entry.id);
         }
 
-        return { respelledCount, markedForAttentionCount, affectedLexiconIds: affected.map(e => e.id) };
+        return {
+            respelledCount: respelledLexiconIds.length,
+            markedForAttentionCount,
+            affectedLexiconIds: affected.map(e => e.id),
+            respelledLexiconIds,
+        };
     });
 }
 

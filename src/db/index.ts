@@ -72,9 +72,13 @@ export {
     type CreateGlyphRequest,
     type UpdateGlyphRequest,
     type CreateGraphemeRequest,
+    type CreateGraphemeResult,
     type UpdateGraphemeRequest,
     type AddPhonemeRequest,
     type UpdatePhonemeRequest,
+    type ReplacePhonemesRequest,
+    type ReplacePhonemesResult,
+    type DeleteGraphemeResult,
     // Constants
     DEFAULT_SETTINGS,
 } from './api';
@@ -215,6 +219,7 @@ export {
     updatePhoneme,
     deletePhoneme,
     deleteAllPhonemesForGrapheme,
+    setGraphemePhonemes,
     getAutoSpellingPhonemes
 } from './graphemeService';
 
@@ -261,10 +266,21 @@ export {
     wouldCreateCycle,
     // Grapheme deletion handling
     getLexiconEntriesUsingGrapheme,
+    getAutoSpelledLexiconMentioning,
     handleGraphemeDeletion,
     getLexiconEntriesNeedingAttention,
     clearNeedsAttention
 } from './lexiconService';
+
+// =============================================================================
+// RESPELL SERVICE (auto-spelled words follow the script)
+// =============================================================================
+export {
+    respellAutoSpelledWords,
+    phonemePatterns,
+    EMPTY_RESPELL_REPORT,
+    type RespellReport
+} from './respellService';
 
 // =============================================================================
 // SPELLING UTILITIES
@@ -296,9 +312,12 @@ export {
 // =============================================================================
 export {
     generateSpellingFromPronunciation,
+    generateSpellingWithFallback,
     previewAutoSpelling,
     getAvailablePhonemeMap,
-    type AutoSpellResult
+    buildAutoSpellMappings,
+    type AutoSpellResult,
+    type PhonemeMapping
 } from './autoSpellService';
 
 // =============================================================================

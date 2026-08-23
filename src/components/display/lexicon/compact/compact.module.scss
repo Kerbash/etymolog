@@ -1,14 +1,23 @@
+/**
+ * CompactLexiconDisplay — the lexicon grid card.
+ *
+ * The card fills its grid cell. It used to carry `max-width: 200px` while the
+ * gallery's action footer (edit / delete) spanned the whole cell, so on any
+ * cell wider than 200px the card sat flush left under a wider footer and the
+ * glyphs looked off-centre.
+ */
+
 .compactCard {
     display: flex;
     flex-direction: column;
     align-items: center;
+    width: 100%;
+    min-width: 0;
     padding: 0.75rem;
     border: 1px solid var(--border-primary);
     border-radius: var(--radius-surface);
     background: var(--surface-base);
     transition: all 0.2s ease;
-    min-width: 120px;
-    max-width: 200px;
 }
 
 .compactCard.clickable {
@@ -21,7 +30,33 @@
     transform: translateY(-2px);
 }
 
-.lemma {
+/**
+ * The glyph band: one box, the same on every card — full width, half as tall
+ * as it is wide — so a grid of words lines up whatever each word's length.
+ * The spelling inside renders at the `card` preset's glyph size and, via
+ * `fit="shrink"`, scales down as a whole only when it is wider than the band.
+ * `overflow: hidden` on the band (not on the display, which is `visible`) is
+ * what clips: a letter may reach past its word's outer margin into the band's
+ * free space, but never out of the card.
+ */
+.glyphBand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    aspect-ratio: 2 / 1;
+    min-height: 0;
+    margin-bottom: 0.5rem;
+    overflow: hidden;
+}
+
+.noSpelling {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+.title {
     margin: 0;
     font-size: 0.95rem;
     font-weight: 600;
@@ -31,67 +66,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 100%;
-}
-
-.spellingContainer {
-    width: 180px;
-    height: 60px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin: 0.5rem 0;
-    overflow: hidden;
-    position: relative;
-
-    // Constrain and scale the GlyphSpellingDisplay to fit
-    > div {
-        max-width: 100%;
-        max-height: 100%;
-        transform-origin: center center;
-
-        // If the content width exceeds container, it will be clipped
-        // The overflow: hidden on parent handles this
-        // The centering ensures it stays in the middle
-    }
-}
-
-.scaledSpellingWrapper {
-    width: 100%;
-    /* Allow the wrapper to size to its content instead of forcing full height.
-       Forcing height:100% collapses when the parent doesn't have an explicit height,
-       resulting in zero-height canvases. Use auto so the scaling logic can measure
-       the natural size of the inner content. */
-    height: auto;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: visible;
-}
-
-.scaledSpellingContent {
-    transition: transform 0.2s ease;
-    will-change: transform;
-}
-
-
-
-
-.noSpelling {
-    width: 80px;
-    height: 48px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin: 0.5rem 0;
-    font-size: 0.75rem;
-    color: var(--text-secondary);
-    font-style: italic;
-}
-
-.pronunciation {
-    font-size: 0.8rem;
-    color: var(--text-secondary);
-    font-family: var(--font-mono);
 }
 
 .meaning {
@@ -139,21 +113,4 @@
     color: var(--text-secondary);
     border-radius: var(--radius-chip);
     font-weight: 500;
-}
-
-.spellingText {
-    font-size: 0.8125rem;
-    color: var(--text-secondary);
-    margin: 0.25rem 0;
-    text-align: center;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 100%;
-}
-
-.ipaChar {
-    color: var(--status-info);
-    border-bottom: 1px dashed var(--status-info);
-    padding-bottom: 1px;
 }

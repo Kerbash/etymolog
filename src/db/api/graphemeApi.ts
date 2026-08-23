@@ -3,18 +3,31 @@
  *
  * Standardized API layer for grapheme and phoneme operations.
  * Wraps the internal grapheme service with consistent ApiResponse format.
+ *
+ * THIS LAYER KEEPS AUTO-SPELLED WORDS CURRENT. A word with `auto_spell` on
+ * has a derived spelling, and the thing it derives from — the phoneme table —
+ * changes only through the writes in this file: creating a grapheme with
+ * phonemes, adding / editing / removing phonemes, deleting a grapheme. Each of
+ * those finishes by handing the phoneme strings it touched to
+ * `respellAutoSpelledWords`, which regenerates just the words whose
+ * pronunciation mentions one of them (see `respellService`). The service
+ * functions underneath stay single-purpose; the cross-entity consequence lives
+ * here, next to the other one this layer already owns (`autoManageGlyphs`).
  */
 
 import type {
     ApiResponse,
     ApiErrorCode,
     CreateGraphemeRequest,
+    CreateGraphemeResult,
     UpdateGraphemeRequest,
     UpdateGraphemeGlyphsRequest,
     GraphemeListResponse,
     GraphemeCompleteListResponse,
     AddPhonemeRequest,
     UpdatePhonemeRequest,
+    ReplacePhonemesRequest,
+    ReplacePhonemesResult,
     GraphemeApi,
     PhonemeApi,
     DeleteGraphemeOptions,
@@ -37,6 +50,7 @@ import {
     updatePhoneme as serviceUpdatePhoneme,
     deletePhoneme as serviceDeletePhoneme,
     deleteAllPhonemesForGrapheme as serviceDeleteAllPhonemesForGrapheme,
+    setGraphemePhonemes as serviceSetGraphemePhonemes,
     getAutoSpellingPhonemes as serviceGetAutoSpellingPhonemes,
     getGraphemeByPhoneme as serviceGetGraphemeByPhoneme,
     getAllPhonemeGraphemeMappings as serviceGetAllPhonemeGraphemeMappings,
@@ -44,10 +58,23 @@ import {
 } from '../graphemeService';
 import { getLexiconEntriesUsingGrapheme, handleGraphemeDeletion } from '../lexiconService';
 import { cleanupOrphanedGlyphs } from '../glyphService';
+import { phonemePatterns, respellAutoSpelledWords, type RespellReport } from '../respellService';
 import { isDatabaseInitialized, getDatabase } from '../database';
 import { withTransaction } from '../utils/transaction';
 import { getCurrentSettings } from './settingsApi';
 import { serviceLog } from '../utils/logger';
+
+/**
+ * Respell after a phoneme change and log what happened. `patterns` are the
+ * phoneme strings the change touched — old AND new for an edit.
+ */
+function respellAfterPhonemeChange(patterns: string[], cause: string): RespellReport {
+    const report = respellAutoSpelledWords(patterns);
+    if (report.respelled > 0) {
+        serviceLog.info(`${cause}: respelled ${report.respelled} of ${report.scanned} auto-spelled word(s)`);
+    }
+    return report;
+}
 
 /**
  * Helper to create a standardized error response.
@@ -88,10 +115,12 @@ function checkDbInitialized<T>(): ApiResponse<T> | null {
 // =============================================================================
 
 /**
- * Create a new grapheme.
+ * Create a new grapheme. Words already using one of its auto-spelling
+ * phonemes (as a placeholder, or spelled with another grapheme the DP now
+ * prefers differently) are respelled in the same transaction.
  */
-function createGrapheme(request: CreateGraphemeRequest): ApiResponse<GraphemeComplete> {
-    const dbError = checkDbInitialized<GraphemeComplete>();
+function createGrapheme(request: CreateGraphemeRequest): ApiResponse<CreateGraphemeResult> {
+    const dbError = checkDbInitialized<CreateGraphemeResult>();
     if (dbError) return dbError;
 
     // Validation
@@ -103,22 +132,28 @@ function createGrapheme(request: CreateGraphemeRequest): ApiResponse<GraphemeCom
     }
 
     try {
-        const grapheme = serviceCreateGrapheme({
-            name: request.name.trim(),
-            category: request.category?.trim(),
-            notes: request.notes?.trim(),
-            glyphs: request.glyphs.map(g => ({
-                glyph_id: g.glyph_id,
-                position: g.position,
-                transform: g.transform,
-            })),
-            phonemes: request.phonemes?.map(p => ({
-                phoneme: p.phoneme.trim(),
-                use_in_auto_spelling: p.use_in_auto_spelling,
-                context: p.context?.trim(),
-            })),
+        const result = withTransaction(getDatabase(), () => {
+            const grapheme = serviceCreateGrapheme({
+                name: request.name.trim(),
+                category: request.category?.trim(),
+                notes: request.notes?.trim(),
+                glyphs: request.glyphs.map(g => ({
+                    glyph_id: g.glyph_id,
+                    position: g.position,
+                    transform: g.transform,
+                })),
+                phonemes: request.phonemes?.map(p => ({
+                    phoneme: p.phoneme.trim(),
+                    use_in_auto_spelling: p.use_in_auto_spelling,
+                    context: p.context?.trim(),
+                })),
+            });
+            // Only the auto-spelling phonemes can change a spelling.
+            const patterns = phonemePatterns(grapheme.phonemes.filter(p => p.use_in_auto_spelling));
+            const respell = respellAfterPhonemeChange(patterns, `Created grapheme "${grapheme.name}"`);
+            return { ...grapheme, lexiconRespelled: respell.respelled };
         });
-        return successResponse(grapheme);
+        return successResponse(result);
     } catch (error) {
         return errorResponse(
             'OPERATION_FAILED',
@@ -306,8 +341,18 @@ function updateGraphemeGlyphs(id: number, request: UpdateGraphemeGlyphsRequest):
  *
  * When words still spell with it the call fails with CONSTRAINT_VIOLATION
  * (details.lexiconCount) unless `respellLexicon` is set — then the words are
- * rewritten (auto-spelled ones with the grapheme's primary phoneme, manual
- * ones flagged for review) and the grapheme removed, all in one transaction.
+ * rewritten and the grapheme removed, all in one transaction:
+ *
+ *  1. every occurrence of the grapheme becomes its primary phoneme as a
+ *     placeholder, and manually spelled words are flagged for review
+ *     (`handleGraphemeDeletion`);
+ *  2. the grapheme and its phonemes are deleted;
+ *  3. auto-spelled words whose pronunciation mentions one of those phonemes
+ *     are regenerated against the graphemes that REMAIN — so a sound another
+ *     grapheme also covers is spelled with that grapheme, not left as the
+ *     placeholder. (Step 1's placeholder is what an auto-spelled word with
+ *     no pronunciation keeps; it has nothing to regenerate from.)
+ *
  * With `autoManageGlyphs` on, glyphs orphaned by the delete are cleaned up.
  */
 function deleteGrapheme(id: number, options: DeleteGraphemeOptions = {}): ApiResponse<DeleteGraphemeResult> {
@@ -330,16 +375,26 @@ function deleteGrapheme(id: number, options: DeleteGraphemeOptions = {}): ApiRes
         }
 
         const result = withTransaction(getDatabase(), () => {
-            let lexiconRespelled = 0;
+            const respelledIds = new Set<number>();
             let lexiconMarked = 0;
             if (lexiconCount > 0) {
                 const primaryPhoneme = grapheme.phonemes.find(p => p.use_in_auto_spelling)?.phoneme
                     ?? grapheme.phonemes[0]?.phoneme;
                 const report = handleGraphemeDeletion(id, primaryPhoneme);
-                lexiconRespelled = report.respelledCount;
+                for (const lexiconId of report.respelledLexiconIds) respelledIds.add(lexiconId);
                 lexiconMarked = report.markedForAttentionCount;
             }
             serviceDeleteGrapheme(id);
+            // AFTER the delete, so the speller sees the phoneme table without
+            // this grapheme. Every phoneme, not only the auto-spelling ones: a
+            // word may have been spelled with this grapheme by hand while
+            // auto-spell was on, and its pronunciation still names the sound.
+            const regenerated = respellAfterPhonemeChange(
+                phonemePatterns(grapheme.phonemes),
+                `Deleted grapheme "${grapheme.name}"`,
+            );
+            for (const lexiconId of regenerated.respelledLexiconIds) respelledIds.add(lexiconId);
+            const lexiconRespelled = respelledIds.size;
             let orphanGlyphsRemoved = 0;
             if (getCurrentSettings().autoManageGlyphs) {
                 orphanGlyphsRemoved = cleanupOrphanedGlyphs();
@@ -447,10 +502,16 @@ function addPhoneme(request: AddPhonemeRequest): ApiResponse<Phoneme> {
             return errorResponse('NOT_FOUND', `Grapheme with ID ${request.grapheme_id} not found`);
         }
 
-        const phoneme = serviceAddPhoneme(request.grapheme_id, {
-            phoneme: request.phoneme.trim(),
-            use_in_auto_spelling: request.use_in_auto_spelling,
-            context: request.context?.trim(),
+        const phoneme = withTransaction(getDatabase(), () => {
+            const added = serviceAddPhoneme(request.grapheme_id, {
+                phoneme: request.phoneme.trim(),
+                use_in_auto_spelling: request.use_in_auto_spelling,
+                context: request.context?.trim(),
+            });
+            if (added.use_in_auto_spelling) {
+                respellAfterPhonemeChange([added.phoneme], `Added phoneme "${added.phoneme}"`);
+            }
+            return added;
         });
         return successResponse(phoneme);
     } catch (error) {
@@ -508,10 +569,31 @@ function updatePhoneme(id: number, request: UpdatePhonemeRequest): ApiResponse<P
     if (dbError) return dbError;
 
     try {
-        const phoneme = serviceUpdatePhoneme(id, {
-            phoneme: request.phoneme?.trim(),
-            use_in_auto_spelling: request.use_in_auto_spelling,
-            context: request.context,
+        const before = serviceGetPhonemeById(id);
+        if (!before) {
+            return errorResponse('NOT_FOUND', `Phoneme with ID ${id} not found`);
+        }
+        const phoneme = withTransaction(getDatabase(), () => {
+            const after = serviceUpdatePhoneme(id, {
+                phoneme: request.phoneme?.trim(),
+                use_in_auto_spelling: request.use_in_auto_spelling,
+                context: request.context,
+            });
+            if (!after) return null;
+            // Only the text and the auto-spelling flag reach the speller; a
+            // `context` note does not. Both the old and the new text are
+            // patterns: words that were spelled with the old value need
+            // regenerating as much as words that will match the new one.
+            const affectsSpelling =
+                after.phoneme !== before.phoneme
+                || after.use_in_auto_spelling !== before.use_in_auto_spelling;
+            if (affectsSpelling) {
+                respellAfterPhonemeChange(
+                    [before.phoneme, after.phoneme],
+                    `Updated phoneme "${before.phoneme}" → "${after.phoneme}"`,
+                );
+            }
+            return after;
         });
         if (!phoneme) {
             return errorResponse('NOT_FOUND', `Phoneme with ID ${id} not found`);
@@ -533,10 +615,16 @@ function deletePhoneme(id: number): ApiResponse<void> {
     if (dbError) return dbError;
 
     try {
-        const success = serviceDeletePhoneme(id);
-        if (!success) {
+        const existing = serviceGetPhonemeById(id);
+        if (!existing) {
             return errorResponse('NOT_FOUND', `Phoneme with ID ${id} not found`);
         }
+        withTransaction(getDatabase(), () => {
+            serviceDeletePhoneme(id);
+            if (existing.use_in_auto_spelling) {
+                respellAfterPhonemeChange([existing.phoneme], `Deleted phoneme "${existing.phoneme}"`);
+            }
+        });
         return successResponse(undefined);
     } catch (error) {
         return errorResponse(
@@ -554,12 +642,65 @@ function deleteAllPhonemesForGrapheme(graphemeId: number): ApiResponse<number> {
     if (dbError) return dbError;
 
     try {
-        const count = serviceDeleteAllPhonemesForGrapheme(graphemeId);
+        const count = withTransaction(getDatabase(), () => {
+            const existing = serviceGetPhonemesByGraphemeId(graphemeId);
+            const deleted = serviceDeleteAllPhonemesForGrapheme(graphemeId);
+            respellAfterPhonemeChange(
+                phonemePatterns(existing.filter(p => p.use_in_auto_spelling)),
+                `Cleared phonemes of grapheme ${graphemeId}`,
+            );
+            return deleted;
+        });
         return successResponse(count);
     } catch (error) {
         return errorResponse(
             'OPERATION_FAILED',
             error instanceof Error ? error.message : 'Failed to delete phonemes'
+        );
+    }
+}
+
+/**
+ * Replace every phoneme of a grapheme at once.
+ *
+ * One transaction and ONE respell pass over the union of the old and new
+ * phoneme strings — where a delete-all followed by one add per row would
+ * respell after each step and briefly leave every affected word spelled
+ * against an empty list.
+ */
+function replaceAllPhonemes(request: ReplacePhonemesRequest): ApiResponse<ReplacePhonemesResult> {
+    const dbError = checkDbInitialized<ReplacePhonemesResult>();
+    if (dbError) return dbError;
+
+    const rows = request.phonemes
+        .map(p => ({
+            phoneme: p.phoneme.trim(),
+            use_in_auto_spelling: p.use_in_auto_spelling,
+            context: p.context?.trim(),
+        }))
+        .filter(p => p.phoneme.length > 0);
+
+    try {
+        const grapheme = serviceGetGraphemeById(request.grapheme_id);
+        if (!grapheme) {
+            return errorResponse('NOT_FOUND', `Grapheme with ID ${request.grapheme_id} not found`);
+        }
+
+        const result = withTransaction(getDatabase(), () => {
+            const before = serviceGetPhonemesByGraphemeId(request.grapheme_id);
+            const phonemes = serviceSetGraphemePhonemes(request.grapheme_id, rows);
+            const patterns = phonemePatterns([
+                ...before.filter(p => p.use_in_auto_spelling),
+                ...phonemes.filter(p => p.use_in_auto_spelling),
+            ]);
+            const respell = respellAfterPhonemeChange(patterns, `Replaced phonemes of "${grapheme.name}"`);
+            return { phonemes, lexiconRespelled: respell.respelled };
+        });
+        return successResponse(result);
+    } catch (error) {
+        return errorResponse(
+            'OPERATION_FAILED',
+            error instanceof Error ? error.message : 'Failed to replace phonemes'
         );
     }
 }
@@ -592,5 +733,6 @@ export const phonemeApi: PhonemeApi = {
     update: updatePhoneme,
     delete: deletePhoneme,
     deleteAllForGrapheme: deleteAllPhonemesForGrapheme,
+    replaceAll: replaceAllPhonemes,
     getAutoSpelling: getAutoSpellingPhonemes,
 };

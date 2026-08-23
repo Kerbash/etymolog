@@ -27,6 +27,22 @@
     display: block;
 }
 
+// `fit="shrink"`: the container is `min(100%, natural)` wide (inline style);
+// the SVG fills it and keeps its viewBox's aspect ratio, so a word that is too
+// long for its parent scales down as a whole — every glyph in the app stays
+// the same size until one word genuinely does not fit. `max-height` lets a
+// bounded parent (the card's glyph band) cap a tall layout the same way; the
+// SVG letterboxes (`xMidYMid meet`) rather than distorting.
+.shrink {
+    min-width: 0;
+
+    > .svg {
+        width: 100%;
+        height: auto;
+        max-height: 100%;
+    }
+}
+
 .glyphWrapper {
     width: 100%;
     height: 100%;

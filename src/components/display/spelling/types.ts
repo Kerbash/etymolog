@@ -11,6 +11,7 @@
 
 import type { CSSProperties, ReactNode } from 'react';
 import type { Glyph, GraphemeComplete, SpellingDisplayEntry } from '../../../db/types';
+import { GLYPH_CELL_FRACTION } from '../../../db/utils/glyphMetrics';
 
 // =============================================================================
 // LAYOUT STRATEGY TYPES
@@ -34,11 +35,21 @@ export type LayoutStrategyType =
  * Configuration for layout strategies.
  */
 export interface LayoutStrategyConfig {
-    /** Width of each glyph box */
+    /** Width of each glyph box — the whole drawing canvas, margins included */
     glyphWidth: number;
     /** Height of each glyph box */
     glyphHeight: number;
-    /** Spacing between glyphs */
+    /**
+     * The CELL — the part of the box a letter reserves — as a fraction of the
+     * box on each axis. Letters advance by the cell, so consecutive boxes
+     * overlap by their margins and a letter can reach into its neighbour's
+     * space. `1` means no margins (boxes abut). Required rather than defaulted
+     * here so every hand-built config states which geometry it wants; the
+     * app's value is `GLYPH_CELL_FRACTION`, the same number the drawing
+     * canvas paints its guide square with. See `utils/cell`.
+     */
+    cellFraction: number;
+    /** Spacing between cells (on top of the cell advance) */
     spacing: number;
     /** Padding around the entire layout */
     padding: number;
@@ -54,18 +65,27 @@ export interface LayoutStrategyConfig {
 export const DEFAULT_LAYOUT_CONFIG: LayoutStrategyConfig = {
     glyphWidth: 20,
     glyphHeight: 20,
+    cellFraction: GLYPH_CELL_FRACTION,
     spacing: 2,
     padding: 4,
 };
 
 /**
- * Preset layout configurations for common use cases.
+ * Preset layout configurations for common use cases. None sets
+ * `cellFraction`: every preset is merged over `DEFAULT_LAYOUT_CONFIG`
+ * (`resolveLayoutConfig`), so all of them lay letters out by the app's cell.
+ *
+ * `card` is the lexicon grid card: a box large enough that the cell (half of
+ * it) reads at a glance, no spacing — neighbours touch cell to cell, which is
+ * what a written word looks like — and no padding, because the card's glyph
+ * band provides the room.
  */
 export const LAYOUT_PRESETS = {
     compact: { glyphWidth: 20, glyphHeight: 20, spacing: 2, padding: 4 },
     detailed: { glyphWidth: 40, glyphHeight: 40, spacing: 6, padding: 12 },
     tree: { glyphWidth: 14, glyphHeight: 14, spacing: 1, padding: 2 },
     input: { glyphWidth: 48, glyphHeight: 48, spacing: 8, padding: 16 },
+    card: { glyphWidth: 80, glyphHeight: 80, spacing: 0, padding: 0 },
 } as const;
 
 export type LayoutPreset = keyof typeof LAYOUT_PRESETS;
@@ -208,6 +228,18 @@ export interface GlyphSpellingDisplayProps {
 
     /** Overflow behavior (default: 'clip') */
     overflow?: OverflowBehavior;
+
+    /**
+     * How the static display relates to the space it is given.
+     *
+     * - `natural` (default): the display is exactly its layout's size.
+     * - `shrink`: the display is its natural size when that fits, and is
+     *   scaled DOWN — never up — to the parent's width (and, given a bounded
+     *   parent, height) when it does not. Pure CSS, no measuring: every word
+     *   renders at the same glyph size until one is too long for its box.
+     *   Static mode only.
+     */
+    fit?: 'natural' | 'shrink';
 
     // --- Simulated Paper Mode ---
 

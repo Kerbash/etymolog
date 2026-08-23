@@ -102,14 +102,16 @@ describe('combineSvgStrings', () => {
         expect(extractSvgInner(nested)).toBe('<svg x="1"><path d="M0 0"/></svg>');
     });
 
-    it('nests each source with its own viewBox in equal cells', () => {
+    it('nests each source with its own viewBox in equal boxes that advance by the cell', () => {
+        // Box 24, cell = half of it = 12, spacing 2 → the second box starts at
+        // 14 and the two boxes overlap by their margins; total = 14 + 24.
         const out = combineSvgStrings([small, large], 2, 24);
-        expect(out.startsWith('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 24"')).toBe(true);
+        expect(out.startsWith('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 38 24"')).toBe(true);
         const cells = out.match(/<svg x="(\d+)" y="0" width="24" height="24" viewBox="([^"]+)"/g) ?? [];
         expect(cells).toHaveLength(2);
         expect(cells[0]).toContain('x="0"');
         expect(cells[0]).toContain('viewBox="0 0 48 48"');
-        expect(cells[1]).toContain('x="26"');
+        expect(cells[1]).toContain('x="14"');
         expect(cells[1]).toContain('viewBox="0 0 100 100"');
         expect(out).toContain('<circle');
         expect(out).toContain('<rect');

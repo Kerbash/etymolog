@@ -79,8 +79,10 @@ Interactive appearance without user interactions:
 |------|------|---------|-------------|
 | `canvas.width` | `number` | Content width | Internal canvas width (enables text wrapping) |
 | `canvas.height` | `number` | Content height | Internal canvas height |
-| `canvas.backgroundColor` | `string` | transparent | Canvas background color |
-| `canvas.showPaperEffect` | `boolean` | `false` | Show paper border/shadow |
+| `canvas.backgroundColor` | `string` | see below | Canvas/paper colour override (a literal — it is serialised into exports as-is) |
+| `canvas.showPaperEffect` | `boolean` | `false` | Paint an opaque paper rect with a shadow behind the glyphs |
+
+The paper defaults to `var(--page-background-primary, white)` (`PAPER_FILL` in `GlyphSpellingCore`): the token follows the theme in the app, and the `white` fallback is what the SVG/PNG exporters — which serialise the element verbatim into a file with no app CSS — resolve to. Glyph ink is `currentColor`, so in-app it is `--text-primary` and in an export it is black on white.
 ### Viewport Configuration (Interactive Mode)
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
@@ -96,6 +98,23 @@ Interactive appearance without user interactions:
 |------|------|---------|-------------|
 | `emptyContent` | `ReactNode` | - | Content for empty state |
 | `showVirtualGlyphStyling` | `boolean` | `true` | Show distinct styling for virtual IPA glyphs |
+| `fit` | `'natural' \| 'shrink'` | `'natural'` | Static mode. `shrink`: natural size when it fits, scaled DOWN (never up) to the parent's width — and, in a bounded parent, height — when it does not. Pure CSS (`width: min(100%, natural)`), no measuring: every word renders at the same glyph size until one is too long for its box. Used by the lexicon card's glyph band. |
+
+### Cell and margin — how letters are spaced
+
+A glyph box is the whole drawing canvas. Its **cell** is the guide square in the middle — `cellFraction` of the box on each axis (`GLYPH_CELL_FRACTION` in `db/utils/glyphMetrics`, the same constant the drawing canvas paints its guide with). The cell is the space a letter *reserves*; the margin around it is space a letter may *reach into* but does not own.
+
+Every strategy advances by the cell (`utils/cell.ts` — `stepX = cellWidth + spacing`), so consecutive boxes overlap by their margins and the cells abut: a tail or an accent drawn in the margin lands beside the next letter instead of pushing it away. Rows in `block`/`boustrophedon` advance by the cell too. Bounds stay box-based — the word's outer margins are part of its drawing and are never clipped.
+
+`cellFraction` is a REQUIRED field of `LayoutStrategyConfig` so every hand-built config states its geometry; partial configs and presets are merged over `DEFAULT_LAYOUT_CONFIG` and get the app's cell. `cellFraction: 1` means boxes abut (no margins).
+
+| Preset | Box | Spacing | Padding | For |
+|--------|-----|---------|---------|-----|
+| `compact` | 20 | 2 | 4 | Inline spellings |
+| `detailed` | 40 | 6 | 12 | Detail pages |
+| `tree` | 14 | 1 | 2 | Etymology tree |
+| `input` | 48 | 8 | 16 | The glyph canvas input |
+| `card` | 80 | 0 | 0 | The lexicon grid card's glyph band (with `fit="shrink"`) |
 ## Ref Methods
 | Method | Description |
 |--------|-------------|

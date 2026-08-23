@@ -123,6 +123,35 @@ describe('GlyphSpellingDisplay', () => {
         });
     });
     describe('Canvas Configuration', () => {
+        it('paints the paper with the theme token and a white export fallback', () => {
+            // A literal `white` paper put the `currentColor` ink white on white
+            // in dark mode. The token follows the theme in the app; the `white`
+            // fallback is what the SVG/PNG exporters (which serialise this rect
+            // verbatim, into a file with no app CSS) resolve to.
+            const { container } = renderSync(
+                createElement(GlyphSpellingDisplay, {
+                    glyphs: mockGlyphs,
+                    mode: 'interactive',
+                    canvas: { width: 800, height: 600, showPaperEffect: true },
+                })
+            );
+            const paper = container.querySelector('svg > rect');
+            expect(paper).toBeTruthy();
+            expect(paper?.getAttribute('fill')).toBeNull();
+            expect(paper?.getAttribute('style')).toContain('var(--page-background-primary, white)');
+        });
+        it('lets an explicit canvas backgroundColor win over the paper token', () => {
+            const { container } = renderSync(
+                createElement(GlyphSpellingDisplay, {
+                    glyphs: mockGlyphs,
+                    mode: 'interactive',
+                    canvas: { width: 800, height: 600, showPaperEffect: true, backgroundColor: 'red' },
+                })
+            );
+            const style = container.querySelector('svg > rect')?.getAttribute('style') ?? '';
+            expect(style).toContain('fill: red');
+            expect(style).not.toContain('var(');
+        });
         it('uses canvas width for text wrapping', () => {
             const { container } = renderSync(
                 createElement(GlyphSpellingDisplay, { 

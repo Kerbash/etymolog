@@ -10,9 +10,9 @@
  *  1. the ordinary danger confirmation ("this also deletes its pronunciations");
  *  2. only if the service refuses with `CONSTRAINT_VIOLATION`, a second dialog
  *     that NAMES the words that use it and explains what respelling does to
- *     them — auto-spelled words are rewritten with the grapheme's phoneme,
- *     manually spelled ones are flagged for review rather than silently
- *     rearranged.
+ *     them — auto-spelled words are regenerated from their pronunciation
+ *     against the graphemes that remain, manually spelled ones are flagged
+ *     for review rather than silently rearranged.
  *
  * The first attempt deliberately does NOT go through `useApiAction`: its
  * refusal is a QUESTION, not a failure, and surfacing it as an error toast next
@@ -104,9 +104,9 @@ export function useGraphemeDelete(): (target: GraphemeDeleteTarget) => Promise<b
             const respell = await confirm({
                 title: `"${target.name}" is used in ${count} word${count === 1 ? '' : 's'}`,
                 message:
-                    'Deleting it rewrites those words: auto-spelled words are respelled with ' +
-                    "the grapheme's phoneme, and manually spelled words are flagged for review " +
-                    'so you can fix them yourself. This cannot be undone.',
+                    'Deleting it rewrites those words: auto-spelled words are respelled from ' +
+                    'their pronunciation with the graphemes that remain, and manually spelled ' +
+                    'words are flagged for review so you can fix them yourself. This cannot be undone.',
                 confirmLabel: 'Respell and delete',
                 tone: 'danger',
                 extra: labels.length > 0 ? describeAffectedWords(labels) : undefined,

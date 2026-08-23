@@ -303,7 +303,6 @@ const PronunciationTableInputInner = ({
                                         characters={IPA_CHARACTERS}
                                         displayName={`${t("pronunciationLabel")} ${rowIndex + 1}`}
                                         className={styles.textInput}
-                                        showBackspaceButton={true}
                                     />
                                 </td>
                                 <td>

@@ -16,6 +16,7 @@ import type {
     GlyphSpellingDisplayRef,
     LayoutStrategyConfig,
 } from './types';
+import { LAYOUT_PRESETS } from './types';
 import { useNormalizedGlyphs } from './hooks/useNormalizedGlyphs';
 import { useGlyphPositions } from './hooks/useGlyphPositions';
 import { createComposedBlockStrategy } from './strategies';
@@ -98,6 +99,7 @@ const GlyphSpellingDisplay = forwardRef<GlyphSpellingDisplayRef, GlyphSpellingDi
             glyphEmPx,
             zoom = 1,
             writingSystem,
+            fit = 'natural',
         },
         ref
     ) {
@@ -126,10 +128,13 @@ const GlyphSpellingDisplay = forwardRef<GlyphSpellingDisplayRef, GlyphSpellingDi
         const canvasHeight = canvas?.height;
 
         const effectiveConfig = useMemo<Partial<LayoutStrategyConfig>>(() => {
-            // A preset NAME carries no overridable fields, so the merge starts
-            // empty for one — same behaviour as before, now stated in the type.
+            // A preset NAME is expanded HERE, because what leaves this memo is
+            // a partial object, not the name: it used to start from `{}` for a
+            // preset, which silently threw the preset away — every
+            // `config="detailed"` in the app rendered at the 20px default and
+            // callers compensated with `glyphEmPx`.
             const merged: Partial<LayoutStrategyConfig> =
-                typeof config === 'string' ? {} : { ...(config ?? {}) };
+                typeof config === 'string' ? { ...LAYOUT_PRESETS[config] } : { ...(config ?? {}) };
 
             const wraps = strategy === 'block' || strategy === 'composed-block' || !strategy;
             if (canvasWidth && wraps) merged.maxWidth = canvasWidth;
@@ -181,21 +186,29 @@ const GlyphSpellingDisplay = forwardRef<GlyphSpellingDisplayRef, GlyphSpellingDi
         }), [bounds]);
 
         // Static mode container style - MUST be before conditional returns to satisfy hooks rules
-        const containerStyle = useMemo<React.CSSProperties>(
-            () => ({
+        const containerStyle = useMemo<React.CSSProperties>(() => {
+            const naturalWidth = typeof width === 'number' ? width * zoom : (width ?? bounds.width * zoom);
+            const naturalHeight = typeof height === 'number' ? height * zoom : (height ?? bounds.height * zoom);
+            return {
                 ...style,
-                // Scale container dimensions by zoom factor
-                width: typeof width === 'number' ? width * zoom : (width ?? bounds.width * zoom),
-                height: typeof height === 'number' ? height * zoom : (height ?? bounds.height * zoom),
+                // `shrink`: natural size when it fits, the parent's width when it
+                // does not — `min()` does the comparison, so no measuring and no
+                // transform. Height follows from the SVG's own aspect ratio (see
+                // `.shrink` in the stylesheet); `maxHeight` lets a bounded parent
+                // cap it too.
+                width: fit === 'shrink' && typeof naturalWidth === 'number'
+                    ? `min(100%, ${naturalWidth}px)`
+                    : naturalWidth,
+                height: fit === 'shrink' ? 'auto' : naturalHeight,
+                maxHeight: fit === 'shrink' ? '100%' : undefined,
                 overflow: OVERFLOW_CSS[overflow],
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 // If glyphEmPx was provided, set font-size on the container so 1em==glyphEmPx
                 fontSize: glyphEmPx ? `${glyphEmPx}px` : undefined,
-            }),
-            [style, width, height, bounds.width, bounds.height, overflow, glyphEmPx, zoom]
-        );
+            };
+        }, [style, width, height, bounds.width, bounds.height, overflow, glyphEmPx, zoom, fit]);
 
         // Handle empty state
         if (normalizedGlyphs.length === 0) {
@@ -237,7 +250,9 @@ const GlyphSpellingDisplay = forwardRef<GlyphSpellingDisplayRef, GlyphSpellingDi
         // Static mode (default) - preserve backward compatibility
         return (
             <div
-                className={classNames(styles.container, styles.centered, className)}
+                className={classNames(styles.container, styles.centered, className, {
+                    [styles.shrink]: fit === 'shrink',
+                })}
                 style={containerStyle}
             >
                 <GlyphSpellingCore

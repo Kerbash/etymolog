@@ -112,6 +112,31 @@ describe('EtymologProvider', () => {
         expect(latest?.data.glyphs[0].name).toBe('renamed');
     });
 
+    it('refreshes graphemes AND the lexicon, not glyphs, after a phoneme write', async () => {
+        root = await mount();
+        let graphemeId = 0;
+        await act(async () => {
+            const glyph = latest!.api.glyph.create({ name: 'g', svg_data: '<svg/>' }).data!;
+            graphemeId = latest!.api.grapheme.create({
+                name: 'K',
+                glyphs: [{ glyph_id: glyph.id, position: 0 }],
+            }).data!.id;
+        });
+        const glyphSpy = vi.spyOn(etymologApi.glyph, 'getAll');
+        const graphemeSpy = vi.spyOn(etymologApi.grapheme, 'getAllComplete');
+        const lexiconSpy = vi.spyOn(etymologApi.lexicon, 'getAllComplete');
+        await act(async () => {
+            latest!.api.phoneme.replaceAll({
+                grapheme_id: graphemeId,
+                phonemes: [{ phoneme: 'k', use_in_auto_spelling: true }],
+            });
+        });
+        // A phoneme write can respell words, so the lexicon slice is re-read.
+        expect(graphemeSpy).toHaveBeenCalledTimes(1);
+        expect(lexiconSpy).toHaveBeenCalledTimes(1);
+        expect(glyphSpy).not.toHaveBeenCalled();
+    });
+
     it('records a failed refresh instead of swallowing it', async () => {
         root = await mount();
         vi.spyOn(etymologApi.lexicon, 'getAllComplete').mockReturnValue({

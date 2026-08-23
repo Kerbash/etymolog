@@ -25,6 +25,7 @@ import type {
 } from '../types';
 import type { WritingSystemSettings } from '../../../../db/api/types';
 import { emptyBounds, calculateBounds } from '../utils/bounds';
+import { cellGeometry, type CellGeometry } from '../utils/cell';
 
 function isHorizontal(dir: string): boolean {
     return dir === 'ltr' || dir === 'rtl';
@@ -71,19 +72,22 @@ export function splitIntoWords(glyphs: RenderableGlyph[]): WordGroup[] {
     return groups;
 }
 
-/** Size of a word laid out along glyphDirection. */
+/**
+ * Size of a word laid out along glyphDirection — the BOX extent: letters
+ * within the word advance by the cell, the word's outer margins are its own.
+ */
 function measureWord(
     glyphCount: number,
     glyphDirection: string,
     glyphWidth: number,
     glyphHeight: number,
-    spacing: number
+    cell: CellGeometry
 ): { width: number; height: number } {
     if (glyphCount === 0) return { width: 0, height: 0 };
     if (isHorizontal(glyphDirection)) {
-        return { width: glyphCount * glyphWidth + (glyphCount - 1) * spacing, height: glyphHeight };
+        return { width: cell.rowExtent(glyphCount), height: glyphHeight };
     }
-    return { width: glyphWidth, height: glyphCount * glyphHeight + (glyphCount - 1) * spacing };
+    return { width: glyphWidth, height: cell.columnExtent(glyphCount) };
 }
 
 /**
@@ -113,6 +117,7 @@ export function createComposedBlockStrategy(writingSystem: WritingSystemSettings
             }
 
             const { glyphWidth, glyphHeight, spacing, padding, maxWidth, maxHeight } = config;
+            const cell = cellGeometry(config);
             const { glyphDirection, wordOrder, lineProgression, baselineAlignment, wordWrap } = writingSystem;
 
             const wordFlowHorizontal = isHorizontal(wordOrder);
@@ -128,9 +133,8 @@ export function createComposedBlockStrategy(writingSystem: WritingSystemSettings
 
             // For glyph-level wrapping: how many glyphs of a word fit on one line.
             // Only meaningful when glyphs run along the same axis as words.
-            const glyphExtent = glyphFlowHorizontal ? glyphWidth : glyphHeight;
             const maxGlyphsPerLine = wordWrap === 'glyph' && glyphFlowHorizontal === wordFlowHorizontal
-                ? Math.floor((maxPrimaryExtent + spacing) / (glyphExtent + spacing))
+                ? (glyphFlowHorizontal ? cell.fitInRow(maxPrimaryExtent) : cell.fitInColumn(maxPrimaryExtent))
                 : Infinity;
 
             // Group into lines, breaking on explicit line breaks and overflow.
@@ -152,7 +156,7 @@ export function createComposedBlockStrategy(writingSystem: WritingSystemSettings
                 }
 
                 for (const piece of chunkWord(group.glyphs, maxGlyphsPerLine)) {
-                    const wordSize = measureWord(piece.length, glyphDirection, glyphWidth, glyphHeight, spacing);
+                    const wordSize = measureWord(piece.length, glyphDirection, glyphWidth, glyphHeight, cell);
                     const wordExtent = wordFlowHorizontal ? wordSize.width : wordSize.height;
                     const gap = currentLine.words.length > 0 ? spacing : 0;
 
@@ -215,7 +219,8 @@ export function createComposedBlockStrategy(writingSystem: WritingSystemSettings
                         }
 
                         positions.push({ glyph: word[gi], index: globalIndex++, x, y, width: glyphWidth, height: glyphHeight });
-                        glyphOffset += (glyphFlowHorizontal ? glyphWidth : glyphHeight) + spacing;
+                        // Letters within a word advance by the cell.
+                        glyphOffset += glyphFlowHorizontal ? cell.stepX : cell.stepY;
                     }
 
                     wordOffset += (wordFlowHorizontal ? wordSize.width : wordSize.height) + spacing;
