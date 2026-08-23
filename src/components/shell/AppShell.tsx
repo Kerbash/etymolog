@@ -4,6 +4,7 @@ import AppNav from './AppNav';
 import AppFooter from './AppFooter';
 import { ShellStatusBanner } from './PersistenceStatus';
 import { UnsavedChangesRegistry } from './unsavedChanges';
+import { PwaUpdateGate } from '../../pwa';
 import styles from './AppShell.module.scss';
 
 /**
@@ -45,6 +46,12 @@ export default function AppShell() {
             </a>
 
             <UnsavedChangesRegistry>
+                {/* Renders nothing. Inside the registry because it hands the
+                    update controller the "is anything dirty?" probe, and
+                    ABOVE the pages because the route-change hook it owns must
+                    see every navigation. See `src/pwa/PwaUpdateGate.tsx`. */}
+                <PwaUpdateGate />
+
                 <AppHeader />
 
                 {/* Mounted ONCE, above the pages: a storage failure must stay on

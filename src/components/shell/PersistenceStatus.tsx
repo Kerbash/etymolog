@@ -7,6 +7,7 @@ import NotificationBanner, {
 import { downloadBlob } from 'utils-func/graphic/export';
 
 import { useEtymolog, persistDatabaseNow } from '../../db';
+import { usePwaUpdate } from '../../pwa';
 import { useNotify } from '../shared';
 import styles from './PersistenceStatus.module.scss';
 
@@ -104,9 +105,22 @@ interface Dismissal {
     /** `health.fkViolations` when dismissed — a different count is a new condition. */
     fkViolations: number;
 }
+
+/**
+ * Condition key of the new-version notice.
+ *
+ * Its dismissal does NOT go through {@link Dismissal}: that record is
+ * invalidated by the next successful save, which is correct for a storage
+ * error (the condition genuinely changed) and wrong here — an autosave a few
+ * seconds later would put the banner straight back. The controller owns a
+ * session-long `snoozed` flag instead.
+ */
+export const PWA_UPDATE_ISSUE_KEY = 'pwa-update-ready';
+
 export function ShellStatusBanner() {
     const { api, persistence, health } = useEtymolog();
     const notify = useNotify();
+    const pwa = usePwaUpdate();
     const [dismissed, setDismissed] = useState<Dismissal | null>(null);
     const [repairing, setRepairing] = useState(false);
 
@@ -206,6 +220,33 @@ export function ShellStatusBanner() {
                     'may be missing.',
             };
         }
+        // LAST, and the only `info` that offers an action: a waiting deploy is
+        // the least urgent thing this banner reports, and it must never cover a
+        // "your data is not being saved" error. It is also the only issue the
+        // user can reach at all — every branch above it describes damage, this
+        // one describes an improvement.
+        //
+        // Reaching this branch at all means the registry was dirty when the
+        // update landed: a clean registry applies it silently and reloads.
+        if (pwa.updateReady && !pwa.snoozed) {
+            return {
+                key: PWA_UPDATE_ISSUE_KEY,
+                severity: 'info',
+                title: 'A new version is ready',
+                message:
+                    'It will install on its own once you leave this form, or the next time ' +
+                    'you reload. Reloading now keeps everything already saved to this ' +
+                    'conlang, but unsaved form edits on screen are lost.',
+                actions: [
+                    {
+                        label: 'Reload now',
+                        onClick: pwa.apply,
+                        variant: 'primary',
+                        disabled: pwa.status === 'applying',
+                    },
+                ],
+            };
+        }
         return null;
     })();
 
@@ -216,6 +257,21 @@ export function ShellStatusBanner() {
         dismissed.savedAt === persistence.lastSavedAt &&
         dismissed.fkViolations === health.fkViolations;
     const visible = issue !== null && !isDismissed;
+
+    const handleDismiss = () => {
+        if (!issue) return;
+        // The update notice snoozes for the SESSION (see PWA_UPDATE_ISSUE_KEY);
+        // everything else snoozes until its condition regenerates.
+        if (issue.key === PWA_UPDATE_ISSUE_KEY) {
+            pwa.dismiss();
+            return;
+        }
+        setDismissed({
+            key: issue.key,
+            savedAt: persistence.lastSavedAt,
+            fkViolations: health.fkViolations,
+        });
+    };
 
     return (
         <NotificationBanner
@@ -228,10 +284,7 @@ export function ShellStatusBanner() {
             message={issue?.message}
             actions={issue?.actions}
             offsetTop={SHELL_BANNER_OFFSET_TOP}
-            onDismiss={() =>
-                issue &&
-                setDismissed({ key: issue.key, savedAt: persistence.lastSavedAt, fkViolations: health.fkViolations })
-            }
+            onDismiss={handleDismiss}
         />
     );
 }

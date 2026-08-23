@@ -5,12 +5,20 @@ import {resolveStoredTheme} from 'cyber-components/interactable/settings/darkmod
 import 'bootstrap-icons/font/bootstrap-icons.css'
 import './index.css'
 import {installScrollDebug} from './debug/scrollDebug.ts'
+import {installPwaUpdates} from './pwa'
 import App from './App.tsx'
 
 // Opt-in wheel-scroll diagnostics (`?scrollDebug=1`). Must run BEFORE React
 // mounts so it can record wheel/touch listeners as components register them.
 // A no-op unless the flag is set.
 installScrollDebug()
+
+// Register the service worker and start watching for deploys. BEFORE React,
+// like the line above: registration is process-wide and must not be tied to
+// the lifetime of a component tree that remounts. Everything after
+// registration (when to apply, and whether an editor is mid-edit) is decided
+// by `PwaUpdateGate` inside the shell. See `src/pwa/updateController.ts`.
+installPwaUpdates()
 
 // Get the same base path from import.meta.env
 const basename = import.meta.env.BASE_URL

@@ -24,3 +24,7 @@ function createLogger(prefix: string) {
 export const dbLog = createLogger('DB');
 export const settingsLog = createLogger('Settings');
 export const serviceLog = createLogger('Service');
+// The service-worker / deploy-update flow (`src/pwa/`). It lives here rather
+// than beside the controller because this module is the app's ONE logging
+// facade — a second `createLogger` copy is how prefixes start drifting.
+export const pwaLog = createLogger('PWA');

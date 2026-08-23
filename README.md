@@ -205,6 +205,7 @@ App.tsx
 
 AppShell
 ├─ skip link → #main-content
+├─ PwaUpdateGate           renders nothing; dirty probe + route-change apply
 ├─ AppHeader    <header>   h1 = conlang name, rename, Export, Import,
 │                         New conlang (danger confirm), DarkmodeSwitch
 ├─ ShellStatusBanner       persistence / health, mounted once
@@ -546,6 +547,7 @@ and `components/background/background.tsx`.
 | `AppFooter` | `<footer>` | build stamp, `PersistenceStatusText`, author |
 | `ShellStatusBanner` | persistent `NotificationBanner` | storage errors, recovery, FK violations; `offsetTop` = `SHELL_BANNER_OFFSET_TOP` (73) |
 | `PersistenceStatusText` | polite `aria-live` span | Saved / Saving… / Unsaved changes / Not saved, adapter kind on `title` |
+| `PwaUpdateGate` | nothing | the three wires between React and the update controller (see *In-app updates*) |
 
 ### Scroll model
 
@@ -605,6 +607,90 @@ that navigates away after a save leaves no stale "dirty" behind.
 'cyber-components/container/navigationGuard'`): that index re-exports the
 component under its name only, so a default import resolves to `undefined` at
 runtime while typechecking cleanly under `allowSyntheticDefaultImports`.
+
+### In-app updates (PWA)
+
+Etymolog is a precached PWA, so an open tab keeps running the bundle it first
+loaded — a user with the app open for a week never saw a deploy without a
+force-refresh. `src/pwa/` closes that gap.
+
+**Mode decision: `registerType: 'prompt'`, not `autoUpdate`.** Under `autoUpdate`
+the plugin forces `skipWaiting` + `clientsClaim` into the generated worker and
+calls `window.location.reload()` from inside its own `activated` handler — there
+is no point at which the app can say "not now, the user is mid-edit". Under
+`prompt` the new worker parks in `waiting` until the app posts `SKIP_WAITING`,
+which makes the moment of handover an application decision. `injectRegister` is
+`false` for the same reason: the app registers itself so it holds the
+`ServiceWorkerRegistration` it needs to poll with, and the plugin's
+auto-injected `registerSW.js` would be a second registration racing the first.
+
+| Piece | Role |
+|-------|------|
+| `pwa/updateController.ts` | framework-free singleton: registers the worker, drives the checks, owns the state machine (`idle → checking → ready → applying`, plus `error`). Injectable `registerSW` / `flush` / `now` / `log` / `storage` for tests. |
+| `pwa/usePwaUpdate.ts` | `useSyncExternalStore` view of it. The store returns the SAME object until something moves, so an hourly poll does not re-render the shell. |
+| `pwa/PwaUpdateGate.tsx` | renders nothing; installs the dirty probe, announces the boot notice, and forwards route changes. Mounted by `AppShell` inside `UnsavedChangesRegistry`. |
+| `ShellStatusBanner` | the "A new version is ready" issue — LAST in the issue chain, below every storage error. |
+
+`installPwaUpdates()` runs in `main.tsx` **before React mounts**, next to
+`installScrollDebug()`: registration is process-wide and must not be tied to a
+tree that remounts.
+
+**Detection.** A waiting worker only appears if something re-fetches the SW
+script, which in a long-lived SPA never happens on its own. Four triggers:
+
+| Trigger | Throttle |
+|---------|----------|
+| hourly interval | — (`PWA_CHECK_INTERVAL_MS`) |
+| tab becomes visible | 30 s (`PWA_EVENT_CHECK_THROTTLE_MS`) |
+| connection comes back | 30 s |
+| in-app route change | 5 min (`PWA_ROUTE_CHECK_THROTTLE_MS`) |
+
+The two event triggers share the floor because both fire in bursts (alt-tabbing,
+a flapping connection). Route changes carry the longest window because they are
+the highest-frequency signal.
+
+**Applying.** When `onNeedRefresh` fires:
+
+- **registry clean** → `flushPersist()` then `updateSW(true)`. The user sees an
+  ordinary reload into the new build, and the next boot says
+  `Updated to v0.2.0` once, from a `sessionStorage` flag written immediately
+  before the handover (`PWA_APPLIED_FLAG`; per-tab, so other tabs do not
+  announce an update they did not perform).
+- **registry dirty** → nothing reloads. The shell banner offers it instead, and
+  it goes in by itself on the first route change after the editor lets go.
+  Dismissing snoozes the BANNER for the session; it does not strand the user on
+  the old build.
+
+Form drafts live in React state and never reach SQLite until submit, so a reload
+mid-edit destroys them silently. That is why every automatic path is gated on
+`useUnsavedChanges().isDirty()` and only the banner's button overrides it — and
+why the button's copy names the cost. Persistence is flushed on every path,
+including the button, because the SQLite snapshot is written on a debounce.
+
+**`beforeunload` interaction (known wart).** The reload is performed by the
+plugin helper, from its `controlling` listener — the app does not call it and
+cannot exempt it from `beforeunload`. `LexiconEditor` mounts cyber
+`NavigationGuard` with `active={isDirty}`, which is armed in exactly the
+situation where the banner appears, so pressing **Reload now** on a dirty form
+draws a second, native "Leave site?" prompt. Answering *Stay* (or an automation
+environment answering it for you) cancels the navigation with no event to
+observe, which used to leave the banner disabled in `applying` for the rest of
+the session. `PWA_APPLY_TIMEOUT_MS` (15 s) re-arms the button and clears the
+applied flag when the reload does not arrive. The auto-apply path has no such
+problem: by the time it runs the editor has already unmounted.
+
+**Dev server.** `virtual:pwa-register` is a no-op stub unless `devOptions` is
+enabled, so `registerSW` never calls back and the controller sits silently at
+`idle` — no registration, no checks, no log noise. Under vitest the specifier is
+aliased (`vitest.config.ts`) to `src/pwa/__mocks__/virtualPwaRegister.ts`, which
+copies that stub exactly; the production build has no alias and resolves the
+plugin's real module. `src/vite-env.d.ts` carries the
+`/// <reference types="vite-plugin-pwa/client" />` that makes the specifier
+typecheck.
+
+`window.__etymologPwa` is a diagnostics handle (`getState()`, `checkNow()`,
+`apply()`) — "is an update waiting, and why has it not applied?" is otherwise
+unanswerable from a user's console.
 
 ### Theme
 
@@ -1272,7 +1358,7 @@ already have is never offered in the first place.
 
 ## Testing
 
-**~2 100 tests across 100 files**, all green. Vitest, default environment `node`;
+**~2 200 tests across 106 files**, all green. Vitest, default environment `node`;
 component tests opt in per file with `// @vitest-environment happy-dom` on line 1.
 
 ### By area
@@ -1283,7 +1369,8 @@ component tests opt in per file with `// @vitest-environment happy-dom` on line 
 | **Data safety** | `persistence`, `initDatabase`, `transaction`, `foreignKeys`, `migrations`, `repair`, `orphans`, `settingsApi`, `queryCount` | Debounce coalescing, CRC-mismatch → `previous` recovery, `QUOTA` surfacing, savepoint nesting, FK enforcement surviving an `export()`, every legacy-schema fixture migrating to v6, orphan repair counts, statement counts for the N+1 fixes |
 | **Import/export** (`src/db/exportImport/__tests__/`) | `importSafety`, `jsonCodec`, `roundTrip`, `pixelCodec`, `crc32` | A malformed row leaves the pre-import data intact, dangling children are pruned and reported, an imported closure is rebuilt, PNG round-trips losslessly |
 | **Shared primitives** (`src/components/shared/**/__tests__/`) | `ConfirmDialogProvider`, `NotificationProvider`, `DialogPanel`, `PageHeader`, `LoadingState`, `FormActionBar`, `FieldHelp`, `EntityGallery`, `useGalleryState` | The promise contract behind every delete, the queue/auto-hide rules, label wiring, the derived-page gallery model |
-| **Shell** (`src/components/shell/__tests__/`) | `AppShell`, `PersistenceStatus` | Landmarks, tablist keyboard behaviour, dropdown mode under 480 px, the dirty registry blocking tab navigation, storage-error banner actions |
+| **Shell** (`src/components/shell/__tests__/`) | `AppShell`, `PersistenceStatus`, `PwaUpdateBanner` | Landmarks, tablist keyboard behaviour, dropdown mode under 480 px, the dirty registry blocking tab navigation, storage-error banner actions, the new-version notice yielding to every storage condition above it |
+| **PWA updates** (`src/pwa/__tests__/`) | `updateController`, `usePwaUpdate`, `PwaUpdateGate` | The whole state machine against an injected `registerSW`: auto-apply only when the registry is clean, `flushPersist()` before the handover, the four triggers and their throttles, the re-arm after a cancelled reload, the store's referential stability, and the once-only "Updated to vX" boot notice |
 | **Pages** (`src/components/tabs/**/__tests__/`) | `EntityEditLayout`, `ScriptMakerShell`, `GlyphPickerModal`, `GraphemeDeleteFlow`, `CustomChartsPage`, `LexiconEditor`, `LexiconViewPage`, `TranslatorHome`, `WritingSystemPage` | One CRUD paradigm, the respell-and-delete choice, not-found empty states, accessible names on every rule select |
 | **Display / forms** | `GlyphSpellingDisplay`, `composedBlockStrategy`, `GlyphCanvasInput`, `glyphCanvasInput`, `normalizeGlyphSvg`, `virtualGlyph`, `ExportImportButtons` | Role-based word/line splitting, insertion strategies, `currentColor` normalisation on save, the header dropdown toggles being real buttons |
 | **Word generator core** (`src/generator/**/__tests__/`) | `features`, `tokenize`, `sonority`, `classes`, `sources`, `validate`, `presets`, `examples`, `coverage`, `random`, `weights`, `template`, `constraints`, `normalize`, `generate`, `inventory`, `audit-phase2`, `audit-phase3`, `quality-phase3b` | Symbol → features for every chart symbol, the template grammar and its error positions, determinism per seed and the attempt cap, every constraint re-checked with independent code over 7 presets × 300 words, and the flavour quality bands. See "Word generator → Testing the generator" |

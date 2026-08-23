@@ -119,8 +119,24 @@ export default defineConfig(() => {
         plugins: [
             react(),
             VitePWA({
-                registerType: 'autoUpdate',
-                includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
+                // `prompt`, not `autoUpdate` — the app owns the moment of
+                // handover. See `src/pwa/updateController.ts` for the full
+                // reasoning; the short version is that `autoUpdate` forces
+                // `skipWaiting` + `clientsClaim` into the generated worker and
+                // reloads the page from inside the plugin's own `activated`
+                // handler, so there is no point at which "the user is mid-edit"
+                // can veto it. Under `prompt` the new worker parks in `waiting`
+                // until `updateSW()` posts SKIP_WAITING.
+                registerType: 'prompt',
+                // The app registers itself (`installPwaUpdates()` in main.tsx)
+                // because it needs the `registration` handle to poll with. The
+                // plugin's auto-injected `registerSW.js` only registers, and
+                // would be a SECOND registration racing the first.
+                injectRegister: false,
+                // Only files that actually exist in public/ — the previous list named
+                // three assets that were never shipped, and Workbox silently skips
+                // a missing includeAsset rather than failing the build.
+                includeAssets: ['icon.svg', 'icon-maskable.svg'],
                 manifest: {
                     name: 'Etymolog',
                     short_name: 'Etymolog',
@@ -130,16 +146,23 @@ export default defineConfig(() => {
                     start_url: base,
                     scope: base,
                     display: 'standalone',
+                    // The "Ab" mark in public/. SVG with sizes:any covers every
+                    // launcher size; the maskable variant is full-bleed with the
+                    // glyph inside the 80% safe zone so Android's adaptive-icon
+                    // crop does not clip it. Paths resolve against the manifest
+                    // URL, i.e. under the configured base.
                     icons: [
                         {
-                            src: 'pwa-192x192.png',
-                            sizes: '192x192',
-                            type: 'image/png'
+                            src: 'icon.svg',
+                            sizes: 'any',
+                            type: 'image/svg+xml',
+                            purpose: 'any'
                         },
                         {
-                            src: 'pwa-512x512.png',
-                            sizes: '512x512',
-                            type: 'image/png'
+                            src: 'icon-maskable.svg',
+                            sizes: 'any',
+                            type: 'image/svg+xml',
+                            purpose: 'maskable'
                         }
                     ]
                 },

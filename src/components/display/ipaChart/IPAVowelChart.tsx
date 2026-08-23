@@ -91,15 +91,18 @@ export default function IPAVowelChart({
             vowels.forEach((vowel, idx) => {
                 const xOffset = hasPair ? (idx === 0 ? -pairOffset : pairOffset) : 0;
 
+                // ABSOLUTE x/y on the <foreignObject>, not a translate() on a
+                // parent <g>. WebKit (Safari, every iOS browser) does not apply
+                // an ancestor's SVG transform to a <foreignObject>'s HTML
+                // content — every cell rendered at the trapezoid's origin,
+                // bunched in one corner, while Chrome and Firefox positioned
+                // them correctly. Attributes on the element itself are honoured
+                // everywhere.
                 cells.push(
-                    <g
-                        key={vowel.ipa}
-                        transform={`translate(${coords.x + xOffset}, ${coords.y})`}
-                        className={styles.vowelGroup}
-                    >
+                    <g key={vowel.ipa} className={styles.vowelGroup}>
                         <foreignObject
-                            x={-cellSize / 2}
-                            y={-cellSize / 2}
+                            x={coords.x + xOffset - cellSize / 2}
+                            y={coords.y - cellSize / 2}
                             width={cellSize}
                             height={cellSize}
                             className={styles.vowelForeignObject}
