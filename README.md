@@ -18,7 +18,7 @@ A conlang (constructed language) script creation and management tool. Create cus
 - [Testing](#testing)
 - [Development](#development)
 - [Known Issues](#known-issues)
-- [GitHub Pages Deployment](#github-pages-deployment-quick)
+- [Deployment (GitHub Pages)](#deployment-github-pages)
 - [Architecture Notes](#architecture-notes)
 
 ---
@@ -1548,30 +1548,66 @@ Migration v6 is a SQLite table rebuild, so it runs with `PRAGMA foreign_keys = O
 
 ---
 
-## GitHub Pages Deployment (quick)
+## Deployment (GitHub Pages)
 
-This repository includes a GitHub Actions workflow to build and publish the `apps/etymolog` Vite app to GitHub Pages.
+The public site is **https://kerbash.github.io/etymolog/**. It is served by
+GitHub Pages from a **separate mirror repository**, `Kerbash/etymolog`
+(branch `main`, folder `/docs`), which holds a snapshot of this
+`apps/etymolog` directory — source plus the committed build output.
 
-- Workflow: `.github/workflows/deploy-gh-pages.yml` (builds `apps/etymolog` and publishes `apps/etymolog/dist` to the `gh-pages` branch).
-- By default the workflow sets `GH_PAGES_BASE` to `/etymolog/`. Replace that value in the workflow if you publish to a different repository name.
+Two facts drive the procedure below:
 
-Local build for GitHub Pages (replace REPO_NAME and run from the app folder):
+- `vite build` writes to the **committed** `docs/` folder (`outDir: 'docs'` in
+  `vite.config.ts`, base `/etymolog/`). The footer stamps the version and git
+  SHA at build time, so the build must happen **after** the version-bump commit.
+- The mirror is a snapshot, not a buildable checkout (the app depends on
+  `workspace:*` packages that only exist in this monorepo). Nothing is built in
+  the mirror; it is `git archive` output plus two mirror-only files.
 
-```powershell
-# from repo root
-cd D:\Coding\Javascript\greatest-Monorepo
-pnpm install
-# then build with the repo base
-cd apps\etymolog
-$env:GH_PAGES_BASE = '/REPO_NAME/'
-pnpm build
-```
+### Release procedure
 
-After pushing `main` to GitHub the workflow will run and publish the site at:
+1. In a worktree, bump and build:
 
-    https://<GITHUB_USER>.github.io/REPO_NAME/
+   ```bash
+   node scripts/version-bump.mjs etymolog patch   # or minor / major — edits apps/etymolog/package.json only
+   git commit -m "(etymolog): bump version to X.Y.Z - ..." apps/etymolog/package.json
+   cd apps/etymolog && npx vite build             # rewrites docs/
+   git add apps/etymolog/docs && git commit -m "(etymolog): rebuild static docs site (vX.Y.Z)"
+   ```
 
-If you'd like, I can: create the remote GitHub repository, add the `gh`-CLI commands to your workflow, or adjust the base name to your chosen repo — tell me the desired repo name and whether you want me to push the code for you.
+   Run the gates first (`npx vitest run`, `npx tsc -p tsconfig.app.json --noEmit | grep -v packages/`,
+   `npx eslint src --max-warnings=0`). Merge to `master` and push.
+
+2. Snapshot into the mirror:
+
+   ```bash
+   git clone https://github.com/Kerbash/etymolog.git mirror && cd mirror
+   # wipe everything except .git, LICENSE and .github, then:
+   git -C <monorepo> archive master apps/etymolog | tar -x --strip-components=2
+   git checkout HEAD -- .gitignore docs/.nojekyll   # mirror-only files; .nojekyll keeps Jekyll off
+   git add -A . && git commit -m "deploy vX.Y.Z: ..." && git push origin main
+   ```
+
+3. Verify: `gh api repos/Kerbash/etymolog/pages/builds/latest` reports `built`
+   for the new SHA, and the live `assets/index-*.js` contains the new version.
+
+### How users receive an update
+
+Since v0.2.1 the app updates itself — see [In-app updates (PWA)](#in-app-updates-pwa).
+A running tab polls for the new service worker, installs it in the background
+and reloads as soon as no editor has unsaved input. Users do not need to
+force-refresh. The one exception was the upgrade *to* 0.2.1: tabs still
+controlled by the old `autoUpdate` worker cannot be told about the new
+behaviour, and iOS Safari in particular keeps serving the cached bundle until
+every tab of the site is closed and reopened.
+
+### The monorepo workflow is dead
+
+`.github/workflows/deploy-gh-pages.yml` at the repo root has never deployed
+anything: it triggers on a `main` branch (this repo's default is `master`),
+pins Node 18 (Vite 7 needs ≥ 20.19) and would publish to a `gh-pages` branch
+nothing serves. The monorepo has no Pages site. Do not expect it to run; the
+mirror procedure above is the only deployment path.
 
 ---
 
