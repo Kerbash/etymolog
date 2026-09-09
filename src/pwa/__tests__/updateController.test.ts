@@ -493,6 +493,47 @@ describe('updateController — triggers', () => {
         expect(sw.update).toHaveBeenCalledTimes(1);
     });
 
+    it('APPLIES a held-ready update on reconnection once the registry is clean', async () => {
+        const sw = makeSw();
+        const controller = build(sw);
+        controller.start();
+        let dirty = true;
+        controller.setDirtyProbe(() => dirty);
+
+        // A worker was detected while an editor was dirty, so it is parked in
+        // `ready` — held back, not applied.
+        sw.needRefresh();
+        await settle();
+        expect(sw.updateSW).not.toHaveBeenCalled();
+
+        // The editor is now clean and the connection comes back: reconnection
+        // must TAKE the held update, not merely re-check for one.
+        dirty = false;
+        window.dispatchEvent(new Event('online'));
+        await settle();
+        expect(sw.updateSW).toHaveBeenCalledWith(true);
+        // Applied straight from `ready`; no redundant check spent.
+        expect(sw.update).not.toHaveBeenCalled();
+    });
+
+    it('holds a reconnection update back while an editor is dirty', async () => {
+        const sw = makeSw();
+        const controller = build(sw);
+        controller.start();
+        controller.setDirtyProbe(() => true);
+
+        sw.needRefresh();
+        await settle();
+
+        window.dispatchEvent(new Event('online'));
+        await settle();
+
+        // A wifi blip mid-definition must never reload the form away; the
+        // banner carries it instead. Reconnection falls through to a check.
+        expect(sw.updateSW).not.toHaveBeenCalled();
+        expect(sw.update).toHaveBeenCalledTimes(1);
+    });
+
     it('throttles bursts of visibility events', async () => {
         const sw = makeSw();
         build(sw, { eventCheckThrottleMs: 30_000 }).start();

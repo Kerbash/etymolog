@@ -37,8 +37,15 @@
  * A `waiting` worker only appears if something asks for the SW script again.
  * The browser does that on navigation, which is exactly what never happens in
  * a long-lived SPA session, so this module drives `registration.update()` from
- * four triggers: an hourly interval, tab-visible, back-online, and in-app route
- * changes (throttled — see the constants).
+ * four triggers: a 15-minute interval, tab-visible, back-online, and in-app
+ * route changes (throttled — see the constants).
+ *
+ * Two of those triggers do not merely CHECK, they also APPLY a held-ready
+ * update the moment it is safe: an in-app route change (a form has just
+ * unmounted) and reconnection to the network (a `beforeunload`-free moment
+ * that is also the one recovery gesture a stuck user can perform by hand).
+ * Both go through `maybeAutoApply`, so neither can reload away an editor that
+ * still holds unsaved input — that always waits for the banner.
  *
  * ## Why it is framework-free
  *
@@ -57,11 +64,15 @@ import { pwaLog } from '../db/utils/logger';
 // ── Timings ──────────────────────────────────────────────────────────────
 
 /**
- * Unconditional background poll. An hour is the interval a tab left open
- * overnight still notices a morning deploy on, without turning a parked tab
- * into a request generator.
+ * Unconditional background poll. Fifteen minutes keeps a tab that is open but
+ * untouched — never navigated, never backgrounded, connection never dropped —
+ * from lagging a deploy by up to an hour, which is long enough that a user
+ * watching a just-deployed tab concludes the update is broken and force-closes
+ * it. Short enough to feel current, still far from turning a parked tab into a
+ * request generator. The event triggers (visibility, online, route) carry the
+ * real responsiveness; this is only the floor for a tab nobody is touching.
  */
-export const PWA_CHECK_INTERVAL_MS = 60 * 60 * 1000;
+export const PWA_CHECK_INTERVAL_MS = 15 * 60 * 1000;
 
 /**
  * Route changes are the highest-frequency trigger — a user clicking through
@@ -432,6 +443,19 @@ export function createPwaUpdateController(
         }
         if (typeof window !== 'undefined') {
             const onOnline = () => {
+                // Reconnection is a FORCE-UPDATE trigger. A tab that just
+                // regained the network is the one most likely to have slept
+                // through a deploy, and "turn your connection off and on" is
+                // the one recovery gesture we can hand a user who is stranded
+                // on an old build. So take a held-ready update straight away
+                // (same shape as handleRouteChange), then look for a fresh one.
+                //
+                // The dirty gate still holds: `maybeAutoApply` refuses while an
+                // editor has unsaved input, so a wifi blip mid-definition can
+                // never silently reload the form away — that surfaces the
+                // "Reload now" banner instead. Everyone NOT mid-edit is updated
+                // the moment they reconnect.
+                if (maybeAutoApply()) return;
                 void checkNow({ throttleMs: eventThrottleMs });
             };
             window.addEventListener('online', onOnline);
