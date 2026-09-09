@@ -104,6 +104,11 @@ const { LexiconFormFields } = await import('../../../../form/lexiconForm/Lexicon
 const { NotificationProvider } = await import(
     '../../../../shared/notifications/NotificationProvider'
 );
+// LexiconFormFields calls useConfirm() (the "Build spelling from ancestors"
+// overwrite guard) and needs a ConfirmDialogProvider above it.
+const { default: ConfirmDialogProvider } = await import(
+    '../../../../shared/confirmDialog/ConfirmDialogProvider'
+);
 const { SmartForm, useSmartForm } = await import('smart-form/smartForm');
 const generatorBarrel = await import('../../../../../generator');
 const { PRESETS, LIMITS } = generatorBarrel;
@@ -1176,6 +1181,8 @@ describe('audit — accessibility', () => {
  * markup no matter what the URL carried.
  */
 let formState: Record<string, unknown> = {};
+/** The latest name-source flag the fields reported (pronunciation OR meaning). */
+let auditHasNameSource = false;
 
 function PrefillHost({ prefill, mode = 'create' }: { prefill?: string; mode?: 'create' | 'edit' }) {
     const { registerField, registerForm } = useSmartForm({ mode: 'onChange' });
@@ -1187,13 +1194,16 @@ function PrefillHost({ prefill, mode = 'create' }: { prefill?: string; mode?: 'c
         formState = formProps.formState as unknown as Record<string, unknown>;
     });
     return (
-        <SmartForm {...formProps} registerField={registerField}>
-            <LexiconFormFields
-                registerField={registerField}
-                mode={mode}
-                initialPronunciation={prefill}
-            />
-        </SmartForm>
+        <ConfirmDialogProvider>
+            <SmartForm {...formProps} registerField={registerField}>
+                <LexiconFormFields
+                    registerField={registerField}
+                    mode={mode}
+                    initialPronunciation={prefill}
+                    onHasNameSourceChange={(v) => { auditHasNameSource = v; }}
+                />
+            </SmartForm>
+        </ConfirmDialogProvider>
     );
 }
 
@@ -1273,11 +1283,15 @@ describe('audit — the pronunciation prefill', () => {
         expect(pronunciationInput().value).toBe('');
     });
 
-    it('leaves an empty form empty and unsubmittable', async () => {
+    it('leaves an empty form empty and without a name source', async () => {
+        auditHasNameSource = false;
         openForm(undefined);
         await settle(3);
         expect(pronunciationInput().value).toBe('');
-        expect(formState.isSubmittable).toBe(false);
+        // Pronunciation is optional now, so the empty form is gated by the
+        // name-source rule (no pronunciation AND no meaning), not by
+        // `isSubmittable` — which the perpetually-non-empty array fields keep true.
+        expect(auditHasNameSource).toBe(false);
         expect(formState.isChanged).toBe(false);
     });
 });

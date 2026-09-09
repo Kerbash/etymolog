@@ -30,7 +30,7 @@ describe('jsonCodec', () => {
         it('should return valid structure with empty tables', () => {
             const data = collectExportData();
             expect(data.magic).toBe('ETYMOLOG_EXPORT');
-            expect(data.version).toBe(1);
+            expect(data.version).toBe(EXPORT_SCHEMA_VERSION);
             expect(data.tables.glyphs).toEqual([]);
             expect(data.tables.graphemes).toEqual([]);
             expect(data.settings).toBeDefined();

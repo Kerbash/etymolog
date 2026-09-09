@@ -12,7 +12,7 @@
  */
 
 import { useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 
 import IconButton from 'cyber-components/interactable/buttons/iconButton/iconButton.tsx';
 import { buttonStyles } from 'cyber-components/interactable/buttons/button';
@@ -22,10 +22,22 @@ import { useEtymolog } from '../../../db';
 import type { GraphemeComplete } from '../../../db/types';
 import { ROUTES } from '../../../url_mapping';
 import { PageHeader } from '../../shared';
+import { indexFolders, lexiconCreateHref } from './folders';
 import LexiconGallery from './galleryLexicon/LexiconGallery';
 
 export default function LexiconHome() {
     const { data, isReady, error } = useEtymolog();
+    const [searchParams] = useSearchParams();
+
+    // "New word" defaults into the folder the gallery is viewing (`?folder=`),
+    // validated against the loaded tree — an unknown id creates at the root.
+    const createHref = useMemo(() => {
+        const raw = searchParams.get('folder');
+        if (raw === null) return lexiconCreateHref(null);
+        const parsed = Number.parseInt(raw, 10);
+        const valid = Number.isInteger(parsed) && indexFolders(data.folders ?? []).has(parsed);
+        return lexiconCreateHref(valid ? parsed : null);
+    }, [searchParams, data.folders]);
 
     // Memoised, not a bare `??`: the fallback produces a NEW empty array on
     // every render, which would change the identity of every downstream `useMemo`
@@ -75,7 +87,7 @@ export default function LexiconHome() {
                         </IconButton>
                         <IconButton
                             as={Link}
-                            to={ROUTES.lexiconCreate}
+                            to={createHref}
                             iconName="plus-lg"
                             className={buttonStyles.primary}
                         >

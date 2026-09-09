@@ -12,6 +12,7 @@ A conlang (constructed language) script creation and management tool. Create cus
 - [Design System (tokens & shared primitives)](#design-system-tokens--shared-primitives)
 - [App shell](#app-shell-srccomponentsshell)
 - [Component Architecture](#component-architecture)
+- [Folders & the inline tree explorer](#folders--the-inline-tree-explorer)
 - [Auto-Manage Glyphs](#auto-manage-glyphs-feature)
 - [Punctuation & Separators](#punctuation--separators-new)
 - [Word generator](#word-generator-new)
@@ -326,6 +327,68 @@ grapheme whose phoneme is `t͡s` still wins over the fallback; an untied `tʃ`
 stays two tokens (the tokenizer's documented conservative reading); and
 separators (`ˈ ˌ . ‿` and spaces) keep their existing one-entry-each behaviour
 rather than being dropped, which would silently merge a two-word pronunciation.
+
+### Word-level symbols (logographs) — `src/db/wordSymbolService.ts`
+
+A logographic author wants to spell a whole word as ONE symbol, without visiting
+the Script Maker at all. A **word symbol** is exactly that: a single
+drawn-or-imported symbol that IS the word. Under the hood it is still an ordinary
+glyph → grapheme pair — a `'logogram'`-category grapheme holding one glyph — so
+every downstream surface (spelling render, delete flow, export/import, repair)
+treats it like any other grapheme with no special case. What marks a word as a
+symbol word is only that its `glyph_order` is exactly that one grapheme and its
+category is `'logogram'`; `wordSymbolGraphemeId()` recognises that pair so the
+word form can reopen the word in **Symbol mode**.
+
+- `createWordSymbol({ name, svgData })` makes the glyph + grapheme in ONE
+  transaction (both stamped `'logogram'`, glyph linked at position 0) and
+  returns their ids. The SVG is sanitised by the glyph service on the way in.
+- `updateWordSymbolDrawing(graphemeId, svgData)` re-draws the grapheme's single
+  glyph.
+- `api.wordSymbol.{create,updateDrawing}` wrap both in the standard
+  `ApiResponse` envelope.
+- **Composite create**: `CreateLexiconInput.symbol = { name?, svgData }`. When
+  present AND no explicit `glyph_order`/`spelling` was given, `lexicon.create`
+  creates the symbol and sets `glyph_order` to that one grapheme **inside the
+  same transaction as the word insert** — a failure anywhere (a bad meaning, a
+  dangling ancestor FK) rolls the whole thing back, so no orphan glyph/grapheme
+  survives. The symbol name defaults to the word's display name (pronunciation,
+  else first meaning). Symbol words are forced `auto_spell = 0`.
+- A logogram grapheme carries **no phonemes**, so it is invisible to the
+  IPA/syllabary charts by construction, and — being `auto_spell = 0` — a symbol
+  word is never a respell candidate, so a phoneme/grapheme edit can never rewrite
+  a hand-placed logograph.
+- Deleting the word leaves the grapheme (a reusable script unit); deleting the
+  grapheme via the Script Maker runs the usual `handleGraphemeDeletion` flow and
+  flags the (manually spelled) word for attention.
+
+The word form's Spelling section offers a **Compose from graphemes | Word
+symbol** segmented choice (`LexiconFormFields`). Compose is the default; edit
+mode INFERS Symbol mode from a one-logogram `glyph_order`. Symbol mode reuses the
+Phase-2 image-import control plus an inline `SvgDrawerInput` (same `GLYPH_INK` /
+`GLYPH_GUIDE_INSET` as the glyph drawer), and forces the Auto-spell checkbox off.
+
+### Word chains — build a compound's spelling from its ancestors (UC-B2)
+
+A logographic word is often a chain of other words: "boredom" is `night` +
+`affliction`. When a word has ≥1 ancestor and the Spelling section is in Compose
+mode, `LexiconFormFields` shows a **"Build spelling from ancestors"** button that
+concatenates each ancestor's stored `glyph_order` — in **ancestry position
+order** (the order of the ancestor rows) — onto this word's canvas. That is the
+four-click flow: add two ancestors (type `compound`), press Build, save; no visit
+to the Script Maker.
+
+- The canvas content is replaced through the spelling input's imperative
+  `setGlyphOrder` handle (`GlyphCanvasInputRef`), so the build flows back up the
+  same path a manual edit does (dirtying the form, updating `glyph_order`).
+- **The concatenated entries REFERENCE the ancestors' graphemes — they are not
+  copied.** A later edit to `night`'s symbol therefore updates every compound
+  that was built from it automatically, which is exactly the desirable
+  logographic behaviour. IPA fallback entries in an ancestor's spelling carry
+  over verbatim.
+- Ancestors whose spelling is empty contribute nothing; when **every** ancestor
+  is empty the button is disabled with an inline hint. Replacing a non-empty
+  canvas is confirmed first (a `useConfirm` dialog, `tone: 'danger'`).
 
 ### Auto-spelled words follow the script — `src/db/respellService.ts`
 
@@ -936,6 +999,132 @@ replaces pointed at an id `CyberSwitch` never renders, so the label was inert.
 
 ---
 
+## Folders & the inline tree explorer
+
+Words, glyphs AND graphemes can each be organised into nested folders, browsed
+as a **collapsible tree rendered inside the gallery itself** — expand a folder in
+place (Finder list-view style) and see the current directory and its children at
+once, recursively. The "directory" concept is shared by all three domains, so it
+is ONE reusable renderer plus ONE app-side binding, never three copies.
+
+### Data model — three sibling folder tables, one engine
+
+Each domain has its own folder table — `lexicon_folders` (migration v7),
+`glyph_folders` and `grapheme_folders` (v8) — as exact structural clones rather
+than a single table with a `domain` column, so every foreign key stays honest.
+Each item table carries a nullable `folder_id ... ON DELETE SET NULL` (an item
+whose folder is deleted falls back to root, it is never destroyed).
+
+One parameterised service engine drives all three:
+
+```
+src/db/folderDomain.ts
+  createFolderDomain({ folderTable, itemTable, itemFolderColumn, label })
+    → lexiconFolderDomain · glyphFolderDomain · graphemeFolderDomain
+```
+
+- `folderService.ts` is now a set of thin re-exports of the lexicon instance, so
+  every historical import keeps working.
+- `MAX_FOLDER_DEPTH = 12` (root folder = depth 1). `moveFolder` is guarded
+  against cycles (walks the target's parent chain) and against exceeding the
+  depth cap (`depthOf(newParent) + subtreeHeight(id) <= MAX`).
+- **`deleteFolder` deletes nothing but the folder row.** Child folders AND items
+  reparent to the deleted folder's parent in ONE transaction — the delete dialog
+  says so.
+- `setItemFolder(itemId, folderId | null)` files or unfiles a single item.
+
+The API mirrors the engine: `createFolderApi(domain)` produces the same
+`FolderApi` surface (list / getById / create / rename / update / move / delete /
+getPath / setItemFolder) for each domain. `api.folder` is the lexicon instance
+(it keeps a `setLexiconFolder` alias for back-compat); `api.glyphFolder` and
+`api.graphemeFolder` are the other two. The `createGlyph` / `createGrapheme`
+paths accept an optional `folder_id` (validated against the domain's folder
+table; an invalid id throws, except on import, which coerces a dangling id to
+root). Word-symbol auto-created glyph + grapheme always land at root — folder ids
+do not translate across domains.
+
+`folderApi.fromError` maps engine errors by string-sniffing five message
+substrings (`not found`, `cannot exceed`, `into itself`, `own descendant`,
+`needs a name`); the engine keeps them byte-identical across all three domains.
+
+The context (`useEtymolog().data`) exposes three folder slices —
+`folders` (lexicon), `glyphFolders`, `graphemeFolders` — wired through the closed
+`RefreshError` union, `EMPTY_DATA`, the refreshers and `batchMutations` exactly
+like every other slice.
+
+### `TreeExplorer` — the generic renderer (in cyber-components)
+
+The tree itself is a generic, **reusable** cyber-components primitive at
+`packages/cyber-components/display/treeExplorer/` (documented in that package's
+`COMPONENT_DIRECTORY.md`) — so nochi and taxonia can adopt it too. It imports
+neither `next` nor `react-router-dom`: links and routing arrive via render props,
+keeping it framework-agnostic.
+
+| Piece | Role |
+|---|---|
+| `buildForest(nodes, compareNodes?)` | Pure flat-list → forest. Every walk carries a visited-set guard: an orphan (missing/self parent) renders at ROOT, a cycle is broken (one member promoted to root) and always terminates — nothing is ever dropped or hangs. |
+| `useTreeState(...)` | Headless expansion hook — `expandedIds` as a `ReadonlySet`, controlled (`expandedIds` + `onExpandedChange`) or uncontrolled (`defaultExpandedIds`); `isExpanded` / `toggle` / `expand` / `collapse` / `collapseAll`. |
+| `TreeExplorer` | Recursive disclosure renderer. Each node is a header row = a real `<button aria-expanded aria-controls>` (chevron + caller `renderNodeHeader`) with an `endSlot` rendered OUTSIDE the button (no button-in-button); expanded content = the child sub-tree THEN `renderNodeContent`. |
+
+**A11y is the disclosure pattern, not `role="tree"`.** Because expanded content
+embeds arbitrary interactive card grids, a strict tree (which would own all
+Arrow-key focus) is avoided: nested `<ul role="list">` + disclosure buttons with
+`aria-expanded` / `aria-controls`, normal tab flow, plus ArrowLeft/ArrowRight as
+progressive enhancement on the header buttons. Indentation is a per-level step
+**visually capped at level 4** (`min(level, 4)`) with a continuous guide line so
+deeper nesting still reads as nested; all colours are semantic CSS tokens.
+
+### `DirectoryGallery` — the one binding (cap-and-focus)
+
+`src/components/shared/directory/DirectoryGallery.tsx` is the single etymolog
+binding all three galleries render through (`LexiconGallery`, `graphemeGallery`,
+`galleryGlyphs` each pass their existing adapters/renderers plus `folders`,
+`getItemFolderId`, `folderApi` and a `domainKey`). It wraps `EntityGallery` and
+adds the folder chrome:
+
+- **Flat vs tree.** `flatView = selectionMode || allItems || searchActive` — in
+  flat/picker mode it renders the plain paginated `EntityGallery` exactly as
+  before. **Search always escapes folders; pickers are always flat** (no folder
+  chrome), matching the shipped semantics.
+- **Cap-and-focus, never auto-navigate.** An expanded folder shows its child
+  folders (further expandable) plus its first `TREE_ITEM_CAP = 12` items as a
+  card grid, then a **"Show all N →"** row that FOCUSES the folder (it becomes
+  the tree root, the breadcrumb grows, `?folder=` updates). A small folder that
+  never reaches the cap gets an always-present **open-folder** affordance
+  (`box-arrow-in-right`) in its row so it is still focusable. Nothing ever
+  navigates by itself. There is no pagination in tree mode — the cap replaces it.
+- **Per-node CRUD** lives in the row's `endSlot`: open folder / new subfolder /
+  rename / move / delete, driven by the shared `FolderNameDialog` and
+  `MoveToFolderDialog` (generalised over `FolderRecord`). A per-card **Move to
+  folder** action is added once in the wrapper, so all three domains get it.
+- **Create-in-folder.** `?folder=<id>` is carried into each create route via the
+  per-domain `createHref` helpers (`lexiconCreateHref` / `glyphCreateHref` /
+  `graphemeCreateHref`); the create page validates it against its own slice and
+  threads `folder_id` onto the new row.
+- **Deep links + persistence.** `?folder=<id>` is the focused root — parsed and
+  validated against the loaded slice (unknown/non-numeric → root) in ONE place.
+  The expanded-folder set persists per domain in `localStorage`
+  (`etymolog.treeExpansion.<domainKey>`); every read/write is `try/catch`ed,
+  shape-validated, and pruned against the live slice, so a corrupt or stale value
+  degrades to an empty set, never a crash.
+
+The old `tabs/lexicon/folders/*` module paths remain as re-export shims, so
+nothing outside `shared/directory/` had to change.
+
+### Export / import (schema v3)
+
+`EXPORT_SCHEMA_VERSION = 3`. The envelope now carries `glyph_folders`,
+`grapheme_folders` and the three `folder_id` columns; folders and memberships for
+all three domains round-trip losslessly. Older exports still import (v1/v2 →
+the new folder tables simply come in empty), and import coerces any dangling
+`folder_id` / `parent_id` to root. Because a *moved* folder can end up with a
+lower row id than its parent, the import transaction runs under
+`PRAGMA defer_foreign_keys = ON` so a valid-but-out-of-order insert order does not
+abort the restore — the end-of-transaction `foreign_key_check` remains the sole
+integrity gate.
+
+---
+
 ## Auto-Manage Glyphs Feature
 
 ### Overview
@@ -1403,16 +1592,19 @@ already have is never offered in the first place.
 
 ## Testing
 
-**~2 200 tests across 106 files**, all green. Vitest, default environment `node`;
+**2 616 tests across 136 files**, all green. Vitest, default environment `node`;
 component tests opt in per file with `// @vitest-environment happy-dom` on line 1.
+(The generic `TreeExplorer` primitive is tested in the cyber-components package's
+own suite, not here.)
 
 ### By area
 
 | Area | Files | What it covers |
 |---|---|---|
 | **Services** (`src/db/__tests__/`) | `glyphService`, `graphemeService`, `lexiconService`, `autoSpellService`, `phraseService`, `closureService`, `ancestry`, `spellingSourceOfTruth`, `translatorLogic`, `twoListArchitecture`, `edgeCases` | CRUD, the auto-spell DP algorithm, ancestry/closure maintenance, the one-spelling-source-of-truth rule, translator output |
-| **Data safety** | `persistence`, `initDatabase`, `transaction`, `foreignKeys`, `migrations`, `repair`, `orphans`, `settingsApi`, `queryCount` | Debounce coalescing, CRC-mismatch → `previous` recovery, `QUOTA` surfacing, savepoint nesting, FK enforcement surviving an `export()`, every legacy-schema fixture migrating to v6, orphan repair counts, statement counts for the N+1 fixes |
-| **Import/export** (`src/db/exportImport/__tests__/`) | `importSafety`, `jsonCodec`, `roundTrip`, `pixelCodec`, `crc32` | A malformed row leaves the pre-import data intact, dangling children are pruned and reported, an imported closure is rebuilt, PNG round-trips losslessly |
+| **Data safety** | `persistence`, `initDatabase`, `transaction`, `foreignKeys`, `migrations`, `repair`, `orphans`, `settingsApi`, `queryCount` | Debounce coalescing, CRC-mismatch → `previous` recovery, `QUOTA` surfacing, savepoint nesting, FK enforcement surviving an `export()`, every legacy-schema fixture migrating to the current version (fresh == migrated parity, incl. the v7/v8 folder tables), orphan repair counts, statement counts for the N+1 fixes |
+| **Import/export** (`src/db/exportImport/__tests__/`) | `importSafety`, `jsonCodec`, `roundTrip`, `pixelCodec`, `crc32`, `glyphGraphemeFolders`, `threeDomainScenario` | A malformed row leaves the pre-import data intact, dangling children are pruned and reported, an imported closure is rebuilt, PNG round-trips losslessly, folders + memberships round-trip for all three domains (incl. a moved folder), v1/v2 exports import with empty folder tables, a dangling `folder_id` coerces to root |
+| **Folders & tree** | `folderDomain`, `folderPersistence` (`src/db/__tests__/`), `DirectoryGallery`, `DirectoryGalleryCrud` (`src/components/shared/directory/__tests__/`), `GlyphFolders`, `GraphemeFolders`, `createInFolderLands`, `createInFolderRoute` (`src/components/tabs/grapheme/__tests__/`), `LexiconFolders` | The engine's cycle/depth/reparent/setItemFolder over all three domains (`describe.each`), folder mutations mark the DB dirty for persistence, flat↔tree switching, cap + Show-all focus, `?folder=` validation, localStorage corruption/pruning, per-card move round-trips, delete-reparents, create-in-folder landing, pickers staying flat |
 | **Shared primitives** (`src/components/shared/**/__tests__/`) | `ConfirmDialogProvider`, `NotificationProvider`, `DialogPanel`, `PageHeader`, `LoadingState`, `FormActionBar`, `FieldHelp`, `EntityGallery`, `useGalleryState` | The promise contract behind every delete, the queue/auto-hide rules, label wiring, the derived-page gallery model |
 | **Shell** (`src/components/shell/__tests__/`) | `AppShell`, `PersistenceStatus`, `PwaUpdateBanner` | Landmarks, tablist keyboard behaviour, dropdown mode under 480 px, the dirty registry blocking tab navigation, storage-error banner actions, the new-version notice yielding to every storage condition above it |
 | **PWA updates** (`src/pwa/__tests__/`) | `updateController`, `usePwaUpdate`, `PwaUpdateGate` | The whole state machine against an injected `registerSW`: auto-apply only when the registry is clean, `flushPersist()` before the handover, the four triggers and their throttles, the re-arm after a cancelled reload, the store's referential stability, and the once-only "Updated to vX" boot notice |
@@ -1590,6 +1782,8 @@ Schema versioning lives in `src/db/migrations/`:
 | 4 | `lexicon.glyph_order` + `needs_attention`, backfilled from `lexicon_spelling` |
 | 5 | `lexicon_meanings`, backfilled from `lexicon.meaning` |
 | 6 | Rebuild `lexicon_ancestry` so `ancestor_id` is `NOT NULL ... ON DELETE CASCADE` (the previous `NOT NULL` + `ON DELETE SET NULL` could never be satisfied), then `repairOrphans`, then rebuild the closure table |
+| 7 | `lexicon_folders` (self-referential tree) + `lexicon.folder_id ... ON DELETE SET NULL` — nested folders for the lexicon |
+| 8 | `glyph_folders` and `grapheme_folders` (structural clones of `lexicon_folders`) + `glyphs.folder_id` / `graphemes.folder_id ... ON DELETE SET NULL` — folders for the other two domains. In the fresh DDL each folder table is created BEFORE its item table (FK order); the migration reuses the same DDL functions, then `ALTER TABLE ... ADD COLUMN`, indexes, and a `foreignKeyViolationCount()` assert |
 
 Migration v6 is a SQLite table rebuild, so it runs with `PRAGMA foreign_keys = OFF` — toggled by the runner *outside* the transaction (the pragma is a no-op inside one) — and finishes with its own `PRAGMA foreign_key_check`, so an inconsistent rebuild throws and rolls back instead of committing.
 

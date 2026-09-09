@@ -41,6 +41,12 @@ export interface UseGraphemeSubmitOptions {
     initialData?: GraphemeComplete | null;
     /** The ordered glyph list the form is holding. */
     glyphs: Glyph[];
+    /**
+     * The folder a NEW grapheme is filed into (create-in-folder, from the
+     * gallery's `?folder=`). Ignored in edit mode — a grapheme's folder is
+     * changed from its card's "Move to folder", not this form.
+     */
+    folderId?: number | null;
     /** Called with the saved grapheme's id. Navigation belongs to the caller. */
     onSuccess?: (graphemeId: number) => void;
 }
@@ -49,6 +55,7 @@ export function useGraphemeSubmit({
     mode,
     initialData,
     glyphs,
+    folderId,
     onSuccess,
 }: UseGraphemeSubmitOptions): (formData: Record<string, unknown>) => Promise<GraphemeSubmitResult> {
     const { api } = useEtymolog();
@@ -81,6 +88,7 @@ export function useGraphemeSubmit({
                     notes,
                     glyphs: glyphs.map((glyph, index) => ({ glyph_id: glyph.id, position: index })),
                     phonemes,
+                    folder_id: folderId ?? null,
                 };
 
                 const result = await runApiAction(() => api.grapheme.create(request), {
@@ -141,7 +149,7 @@ export function useGraphemeSubmit({
             onSuccess?.(graphemeId);
             return { success: true };
         },
-        [api, glyphs, initialData, mode, notify, onSuccess, runApiAction],
+        [api, glyphs, initialData, mode, folderId, notify, onSuccess, runApiAction],
     );
 }
 

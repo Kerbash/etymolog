@@ -8,4 +8,4 @@
  * Bump it together with a new `MIGRATIONS` entry — `index.ts` asserts at load
  * time that the two agree.
  */
-export const CURRENT_SCHEMA_VERSION = 6;
+export const CURRENT_SCHEMA_VERSION = 8;

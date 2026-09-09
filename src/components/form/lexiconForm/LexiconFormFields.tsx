@@ -25,19 +25,56 @@ import type {registerFieldReturnType} from "smart-form/types";
 import {useEtymolog} from "../../../db";
 import {buildVirtualGlyphMap} from "../../../db/autoSpellService";
 import {deserializeGlyphOrder, type SpellingEntry} from "../../../db/utils/spellingUtils";
-import type {VirtualGlyph} from "../customInput/glyphCanvasInput/types";
+import {LIMITS} from "../../../db/utils/sanitize";
+import {GLYPH_GUIDE_INSET} from "../../../db/utils/glyphMetrics";
+import {wordSymbolGraphemeId} from "../../../db/wordSymbolService";
+import type {VirtualGlyph, GlyphCanvasInputRef} from "../customInput/glyphCanvasInput/types";
 
 import LabelShiftTextCustomKeyboardInput from "smart-form/input/fancy/redditStyle/labelShiftTextCustomKeyboardInput";
 import TextInputValidatorFactory from "smart-form/commonValidatorFactory/textValidatorFactory/textValidatorFactory";
+import SvgDrawerInput from "smart-form/input/basic/svgDrawerInput/svgDrawerInput.tsx";
 import HoverToolTip from "cyber-components/interactable/information/hoverToolTip/hoverToolTip.tsx";
 import NumberedSectionHeader from "cyber-components/graphics/decor/numbered-section-header";
-import {FieldHelp} from "../../shared";
+import Button, {buttonStyles} from "cyber-components/interactable/buttons/button";
+import {FieldHelp, useConfirm} from "../../shared";
 import {IPA_CHARACTERS} from "cyber-components/interactable/customKeyboard/ipaCharacters";
 import {AncestryInput} from "../customInput/ancestryInput";
 import {MeaningTableInput} from "../customInput/meaningTableInput";
-import {flex} from "utils-styles";
+import {FolderTreeSelect} from "../../tabs/lexicon/folders";
+import {GLYPH_INK} from "../glyphForm/glyphInk";
+import {GlyphImageImport, GlyphImagePreview, type GlyphImportMode} from "../glyphImport";
+import {flex, sizing} from "utils-styles";
 import styles from "./LexiconFormFields.module.scss";
 import {GlyphCanvasInput} from "@src/components/form/customInput/glyphCanvasInput";
+
+/** How a word's spelling is authored: from graphemes, or as one word symbol. */
+export type SpellingMode = 'compose' | 'symbol';
+
+/**
+ * The word-symbol state the fields report to the editor, which turns it into a
+ * `symbol` composite create (new word), an `api.wordSymbol.updateDrawing` (an
+ * existing symbol whose drawing changed), or an `api.wordSymbol.create` +
+ * glyph_order rewrite (a word switched INTO Symbol mode on edit).
+ */
+export interface LexiconSymbolState {
+    mode: SpellingMode;
+    /** The current symbol SVG (drawing or imported image); null if none yet. */
+    svg: string | null;
+    /** The existing symbol grapheme id inferred from the stored word (edit). */
+    existingGraphemeId: number | null;
+    /** The stored symbol SVG at open, to detect an unchanged drawing on edit. */
+    originalSvg: string | null;
+}
+
+/** True when SVG markup is a raster import the drawing canvas cannot parse back. */
+function isImageImportSvg(svg: string | null | undefined): boolean {
+    return !!svg && /<image[\s>]/i.test(svg);
+}
+
+/** Classify an image-import SVG for the preview caption. */
+function detectImportMode(svg: string): GlyphImportMode {
+    return /<mask[\s>]/i.test(svg) && /currentColor/i.test(svg) ? "line-art" : "keep-colors";
+}
 
 export interface LexiconFormFieldsProps {
     /**
@@ -62,6 +99,12 @@ export interface LexiconFormFieldsProps {
      * owns the field.
      */
     initialPronunciation?: string;
+    /**
+     * The folder a NEW word should default into — the `?folder=` the gallery
+     * passed to `/lexicon/create` (Phase 5b, UC-D). Ignored in edit mode, where
+     * `initialData.folder_id` owns the picker.
+     */
+    initialFolderId?: number | null;
     /** Optional class name for the container */
     className?: string;
     /**
@@ -81,6 +124,28 @@ export interface LexiconFormFieldsProps {
     onIsNativeChange?: (isNative: boolean) => void;
     /** Callback when autoSpell changes */
     onAutoSpellChange?: (autoSpell: boolean) => void;
+    /**
+     * Callback reporting whether the word currently has something to be NAMED
+     * by — a non-empty pronunciation OR at least one non-empty meaning. The
+     * editor gates submission on it: pronunciation is optional, but a word with
+     * neither a pronunciation nor a meaning has no derivable lemma and cannot
+     * be created. (SmartForm's own `isSubmittable` can't express this — the
+     * spelling/ancestry array fields keep the form non-empty regardless.)
+     */
+    onHasNameSourceChange?: (hasNameSource: boolean) => void;
+    /**
+     * Callback reporting the word-symbol state (Phase 3, UC-B1) — the spelling
+     * mode and, in Symbol mode, the chosen SVG plus any existing symbol grapheme
+     * inferred from the stored word. The editor turns this into a composite
+     * create, a drawing update, or a mode-switch on save.
+     */
+    onSymbolStateChange?: (state: LexiconSymbolState) => void;
+    /**
+     * Callback reporting the chosen folder id (schema v7), or null for the root
+     * level. Like Native / Auto-spell it is plain reported-up state, not a
+     * SmartForm field — so it stays clear of the dirty-on-mount latch machinery.
+     */
+    onFolderIdChange?: (folderId: number | null) => void;
 }
 
 /**
@@ -137,15 +202,20 @@ export function LexiconFormFields({
                                               mode,
                                               initialData,
                                               initialPronunciation,
+                                              initialFolderId,
                                               className,
                                               onSpellingChange,
                                               onGlyphOrderChange,
                                               onAncestorsChange,
                                               onIsNativeChange,
                                               onAutoSpellChange,
+                                              onHasNameSourceChange,
+                                              onSymbolStateChange,
+                                              onFolderIdChange,
                                           }: LexiconFormFieldsProps) {
     const {api, data} = useEtymolog();
     const sectionIdPrefix = useId();
+    const confirm = useConfirm();
 
     // Track if we've initialized the form with initial data
     const initializedRef = useRef(false);
@@ -158,9 +228,16 @@ export function LexiconFormFields({
     /** The prefill, ignored in edit mode where the stored word owns the field. */
     const prefill = mode === 'create' ? initialPronunciation?.trim() || undefined : undefined;
 
-    // Available data from context
-    const availableGraphemes = data.graphemesComplete ?? [];
-    const availableLexicon = data.lexiconComplete ?? [];
+    // Available data from context. `graphemesComplete` is memoised so the
+    // symbol-inference memos below don't see a fresh `?? []` identity every
+    // render (react-hooks/exhaustive-deps).
+    const graphemesComplete = data.graphemesComplete;
+    const availableGraphemes = useMemo(() => graphemesComplete ?? [], [graphemesComplete]);
+    // Memoised for the same reason as `availableGraphemes`: the
+    // ancestor-spelling memo below keys on it, and a fresh `?? []` identity
+    // every render would recompute it needlessly (react-hooks/exhaustive-deps).
+    const lexiconComplete = data.lexiconComplete;
+    const availableLexicon = useMemo(() => lexiconComplete ?? [], [lexiconComplete]);
 
     // Internal state for complex fields
     // Track both the legacy spellingIds and new glyph_order format
@@ -191,6 +268,89 @@ export function LexiconFormFields({
     const [autoSpellEnabled, setAutoSpellEnabled] = useState<boolean>(
         initialData?.auto_spell ?? true
     );
+
+    // Folder (schema v7). Edit mode starts from the stored word; create mode
+    // from the `?folder=` the gallery passed (null = root). Plain state, like
+    // Native / Auto-spell — reported up, never a SmartForm field, so seeding it
+    // from a prop cannot dirty the form on mount.
+    const [folderId, setFolderId] = useState<number | null>(
+        mode === 'edit' ? (initialData?.folder_id ?? null) : (initialFolderId ?? null),
+    );
+
+    // -------------------------------------------------------------------------
+    // Word-symbol mode (Phase 3, UC-B1)
+    // -------------------------------------------------------------------------
+
+    /**
+     * The existing symbol inferred from the STORED word (edit mode): a
+     * glyph_order of exactly one grapheme whose category is 'logogram'. Depends
+     * on `availableGraphemes`, which may load a tick after mount, so the adopt
+     * effect below re-checks rather than only reading it once.
+     *
+     * Kept as two PRIMITIVE memos (id, svg) rather than one object: the effects
+     * below key on them, and a primitive that recomputes to the SAME value does
+     * not refire an effect — an object would (a fresh identity every render),
+     * which would loop through the report effect's `setState`.
+     */
+    const inferredSymbolGraphemeId = useMemo((): number | null => {
+        if (mode !== 'edit' || !initialData) return null;
+        const order = deserializeGlyphOrder(initialData.glyph_order);
+        return wordSymbolGraphemeId(
+            order,
+            id => availableGraphemes.find(g => g.id === id)?.category ?? null,
+        );
+    }, [mode, initialData, availableGraphemes]);
+
+    const inferredSymbolSvg = useMemo((): string => {
+        if (inferredSymbolGraphemeId === null) return '';
+        return availableGraphemes.find(g => g.id === inferredSymbolGraphemeId)?.glyphs[0]?.svg_data ?? '';
+    }, [inferredSymbolGraphemeId, availableGraphemes]);
+
+    const [spellingMode, setSpellingMode] = useState<SpellingMode>('compose');
+    const [symbolSvg, setSymbolSvg] = useState<string | null>(null);
+    // Once the user picks a mode, the auto-adopt below must not override them.
+    const modeUserSetRef = useRef(false);
+    // Latch the one-shot adoption of an inferred symbol (edit open).
+    const symbolAdoptedRef = useRef(false);
+
+    // Adopt the inferred symbol once graphemes have loaded (edit open). Sets the
+    // mode AND seeds the drawing together, so the drawer/preview first renders
+    // with the stored symbol already in hand (its `defaultValue`) and does not
+    // dirty the form.
+    useEffect(() => {
+        if (mode !== 'edit' || inferredSymbolGraphemeId === null || symbolAdoptedRef.current) return;
+        symbolAdoptedRef.current = true;
+        if (!modeUserSetRef.current) setSpellingMode('symbol');
+        setSymbolSvg(inferredSymbolSvg || null);
+    }, [mode, inferredSymbolGraphemeId, inferredSymbolSvg]);
+
+    // Report the symbol state up so the editor can act on it at submit.
+    useEffect(() => {
+        onSymbolStateChange?.({
+            mode: spellingMode,
+            svg: symbolSvg,
+            existingGraphemeId: inferredSymbolGraphemeId,
+            originalSvg: inferredSymbolGraphemeId === null ? null : inferredSymbolSvg,
+        });
+    }, [spellingMode, symbolSvg, inferredSymbolGraphemeId, inferredSymbolSvg, onSymbolStateChange]);
+
+    const handleModeChange = useCallback((next: SpellingMode) => {
+        modeUserSetRef.current = true;
+        setSpellingMode(next);
+    }, []);
+
+    const handleSymbolImport = useCallback((svg: string, _importMode: GlyphImportMode) => {
+        setSymbolSvg(svg);
+    }, []);
+
+    const handleSymbolDraw = useCallback((svg: string | null) => {
+        setSymbolSvg(svg && svg.trim() ? svg : null);
+    }, []);
+
+    const handleSymbolClearImport = useCallback(() => {
+        // Back to a blank drawing canvas.
+        setSymbolSvg(null);
+    }, []);
 
     const [autoSpellPreview, setAutoSpellPreview] = useState<AutoSpellResultExtended | null>(null);
 
@@ -226,9 +386,18 @@ export function LexiconFormFields({
         onIsNativeChange?.(isNative);
     }, [isNative, onIsNativeChange]);
 
+    // Notify parent of folder changes
     useEffect(() => {
-        onAutoSpellChange?.(autoSpellEnabled);
-    }, [autoSpellEnabled, onAutoSpellChange]);
+        onFolderIdChange?.(folderId);
+    }, [folderId, onFolderIdChange]);
+
+    // Symbol words are ALWAYS manually spelled — a logograph has no
+    // pronunciation-derived spelling to regenerate — so Symbol mode forces
+    // auto-spell off in what the editor submits, regardless of the checkbox.
+    const effectiveAutoSpell = spellingMode === 'symbol' ? false : autoSpellEnabled;
+    useEffect(() => {
+        onAutoSpellChange?.(effectiveAutoSpell);
+    }, [effectiveAutoSpell, onAutoSpellChange]);
 
     // Note: Lemma input removed from form UI. The database still stores a lemma
     // column for backwards compatibility, but users will now edit/display
@@ -236,14 +405,23 @@ export function LexiconFormFields({
     //
     // Register fields
     const pronunciationField = registerField("pronunciation", {
-        // Both modes seed through `defaultValue` — it is what makes the field
-        // non-empty (and therefore the form submittable) from the first render,
-        // before any effect has run.
+        // Both modes seed through `defaultValue`; it makes the field non-empty
+        // from the first render, before any effect has run, which the editor's
+        // name-source gate reads.
+        //
+        // NO `required` validator: pronunciation is OPTIONAL now (a word can be
+        // named by its meaning, or carry a symbol before its phonetics are
+        // decided). Only a max-length rule remains — the same ceiling the
+        // service enforces on save (`validateStringLength`) — so an over-long
+        // value is caught client-side too.
         defaultValue: mode === 'edit'
             ? (initialData?.pronunciation ? initialData.pronunciation : undefined)
             : prefill,
         validation: TextInputValidatorFactory({
-            required: { value: true, message: "Pronunciation is required" },
+            maxLength: {
+                value: LIMITS.PRONUNCIATION,
+                message: `Pronunciation must be ${LIMITS.PRONUNCIATION} characters or fewer`,
+            },
         }),
     });
 
@@ -272,6 +450,90 @@ export function LexiconFormFields({
     const ancestryField = registerField("ancestry", {
         defaultValue: ancestors,
     });
+
+    // The word-symbol drawing binds to SvgDrawerInput, which needs a SmartForm
+    // field. The value the EDITOR reads is `symbolSvg` (reported via
+    // `onSymbolStateChange`), not this field's DOM value — the field exists only
+    // to drive the drawer. `defaultValue` seeds the drawer with the current
+    // symbol each time it (re)mounts (only in Symbol mode, and only when the
+    // symbol is a DRAWING, not an imported image), so switching modes back and
+    // forth, or opening an existing drawing symbol on edit, preserves it without
+    // dirtying the form.
+    const symbolDrawing = symbolSvg && !isImageImportSvg(symbolSvg) ? symbolSvg : undefined;
+    const symbolSvgField = registerField("symbolSvg", {
+        defaultValue: symbolDrawing,
+    });
+
+    /**
+     * Whether the word has a NAME SOURCE — a non-empty pronunciation or at
+     * least one non-empty meaning. Read straight off the two fields' live
+     * `isEmpty` flags (SmartForm re-renders this component when either flips),
+     * and reported up so the editor can gate submission. It is deliberately NOT
+     * `formState.isSubmittable`: the spelling and ancestry composite fields seed
+     * `[]`, which SmartForm counts as non-empty, so the form is never "empty"
+     * and that gate can't tell a nameable word from a blank one.
+     */
+    const hasNameSource =
+        !pronunciationField.fieldState.isEmpty.value || !meaningsField.fieldState.isEmpty.value;
+
+    useEffect(() => {
+        onHasNameSourceChange?.(hasNameSource);
+    }, [hasNameSource, onHasNameSourceChange]);
+
+    // -------------------------------------------------------------------------
+    // Build spelling from ancestors (Phase 4, UC-B2)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Every ancestor's stored spelling, concatenated in ancestry position
+     * order (which IS the order of the `ancestors` array). Grapheme references
+     * are kept as references — not copied — so a later edit to an ancestor's
+     * symbol flows through to this compound automatically (the desirable
+     * logographic behaviour). IPA fallback entries carry over verbatim.
+     * Ancestors with an empty spelling contribute nothing.
+     */
+    const ancestorGlyphOrder = useMemo((): SpellingEntry[] => {
+        const combined: SpellingEntry[] = [];
+        for (const row of ancestors) {
+            const entry = availableLexicon.find(l => l.id === row.ancestorId);
+            if (!entry) continue;
+            combined.push(...deserializeGlyphOrder(entry.glyph_order));
+        }
+        return combined;
+    }, [ancestors, availableLexicon]);
+
+    /** Nothing to build from when every ancestor's spelling is empty. */
+    const canBuildFromAncestors = ancestorGlyphOrder.length > 0;
+
+    /**
+     * Drop the ancestors' concatenated spellings onto the canvas, replacing
+     * whatever is there. Only offered in Compose mode with ≥1 ancestor. The
+     * canvas content is replaced through the input's imperative
+     * `setGlyphOrder` (the same handle SmartForm holds), which flows back up as
+     * a normal spelling change. When the canvas already holds a spelling the
+     * overwrite is confirmed first.
+     */
+    const handleBuildFromAncestors = useCallback(async () => {
+        if (ancestorGlyphOrder.length === 0) return;
+
+        const handle = spellingField.registerSmartFieldProps.ref?.current as GlyphCanvasInputRef | null;
+        if (!handle?.setGlyphOrder) return;
+
+        const current = handle.glyphOrder ?? glyphOrder;
+        if (current.length > 0) {
+            const ok = await confirm({
+                title: 'Replace the current spelling?',
+                message:
+                    'The glyphs on the canvas will be replaced by the ancestors’ spellings, joined in ancestry order.',
+                confirmLabel: 'Replace spelling',
+                cancelLabel: 'Keep current',
+                tone: 'danger',
+            });
+            if (!ok) return;
+        }
+
+        handle.setGlyphOrder(ancestorGlyphOrder);
+    }, [ancestorGlyphOrder, glyphOrder, confirm, spellingField]);
 
     // Set initial values for edit mode
     useEffect(() => {
@@ -482,9 +744,9 @@ export function LexiconFormFields({
                 />
 
                 <div className={classNames(flex.flexColumn, flex.flexGapM)}>
-                    <HoverToolTip content="IPA pronunciation (optional for external words)">
+                    <HoverToolTip content="IPA pronunciation — optional. A word can be named by its meaning instead.">
                         <LabelShiftTextCustomKeyboardInput
-                            displayName="Pronunciation"
+                            displayName="Pronunciation (optional)"
                             characters={IPA_CHARACTERS}
                             {...pronunciationField}
                         />
@@ -511,20 +773,20 @@ export function LexiconFormFields({
                     <div className={styles.checkboxRow}>
                         <label
                             className={classNames(styles.checkboxLabel, {
-                                [styles.disabled]: !isNative,
+                                [styles.disabled]: !isNative || spellingMode === 'symbol',
                             })}
                         >
                             <input
                                 type="checkbox"
-                                checked={autoSpellEnabled && isNative}
+                                checked={effectiveAutoSpell && isNative}
                                 onChange={(e) => setAutoSpellEnabled(e.target.checked)}
-                                disabled={!isNative}
+                                disabled={!isNative || spellingMode === 'symbol'}
                             />
                             <span>Auto-spell</span>
                         </label>
                         <FieldHelp
                             label="What auto-spelling does"
-                            text="Generates the spelling from the pronunciation using your grapheme-to-phoneme mappings. Type the pronunciation first, then use the auto-spell control in the Spelling section."
+                            text="Generates the spelling from the pronunciation using your grapheme-to-phoneme mappings. Type the pronunciation first, then use the auto-spell control in the Spelling section. Words with no pronunciation simply keep their manual spelling — auto-spell leaves them untouched."
                         />
                     </div>
 
@@ -532,6 +794,26 @@ export function LexiconFormFields({
                         <p className={styles.externalNote}>
                             External word: pronunciation is optional and auto-spell is disabled.
                         </p>
+                    )}
+
+                    {spellingMode === 'symbol' && (
+                        <p className={styles.externalNote}>
+                            Word-symbol spelling: this word is written as a single symbol, so
+                            auto-spell is off — the symbol is placed by hand.
+                        </p>
+                    )}
+
+                    {/* Folder picker (Phase 5b, UC-D). Only shown once folders
+                        exist — a lexicon with no folders has nothing to file
+                        into, and the lone "Root" option would be noise. */}
+                    {(data.folders?.length ?? 0) > 0 && (
+                        <FolderTreeSelect
+                            folders={data.folders ?? []}
+                            value={folderId}
+                            onChange={setFolderId}
+                            label="Folder"
+                            rootLabel="No folder (root)"
+                        />
                     )}
                 </div>
             </section>
@@ -543,8 +825,8 @@ export function LexiconFormFields({
                     parts={{ title: { id: `${sectionIdPrefix}-meanings`, 'aria-level': 3 } }}
                 />
 
-                <HoverToolTip content="Multiple definitions or glosses for this word">
-                    <MeaningTableInput {...meaningsField} defaultValue={initialMeanings} />
+                <HoverToolTip content="Multiple definitions or glosses for this word. Optional if the word has a pronunciation.">
+                    <MeaningTableInput {...meaningsField} defaultValue={initialMeanings} optional />
                 </HoverToolTip>
             </section>
 
@@ -555,17 +837,106 @@ export function LexiconFormFields({
                     parts={{ title: { id: `${sectionIdPrefix}-spelling`, 'aria-level': 3 } }}
                 />
 
-                <GlyphCanvasInput
-                    {...spellingField}
-                    availableGlyphs={availableGraphemes}
-                    defaultValue={spellingIds}
-                    initialGlyphOrder={glyphOrder}
-                    onSelectionChange={handleSpellingChange}
-                    autoSpellPreview={autoSpellEnabled ? autoSpellPreview : null}
-                    onRequestAutoSpell={autoSpellEnabled ? handleRequestAutoSpell : undefined}
-                    enableIpaMode={true}
-                    initialVirtualGlyphs={autoSpellVirtualGlyphs}
-                />
+                {/* Two ways to spell a word: compose it from graphemes, or draw
+                    / import ONE symbol that IS the word (a logograph). */}
+                <div className={styles.segmented} role="group" aria-label="How to spell this word">
+                    <button
+                        type="button"
+                        className={classNames(styles.segment, {
+                            [styles.segmentActive]: spellingMode === 'compose',
+                        })}
+                        aria-pressed={spellingMode === 'compose'}
+                        onClick={() => handleModeChange('compose')}
+                    >
+                        Compose from graphemes
+                    </button>
+                    <button
+                        type="button"
+                        className={classNames(styles.segment, {
+                            [styles.segmentActive]: spellingMode === 'symbol',
+                        })}
+                        aria-pressed={spellingMode === 'symbol'}
+                        onClick={() => handleModeChange('symbol')}
+                    >
+                        Word symbol
+                    </button>
+                </div>
+
+                {spellingMode === 'compose' ? (
+                    <div className={classNames(flex.flexColumn, flex.flexGapM)}>
+                        {/* Word chains (UC-B2): concatenate the ancestors'
+                            symbols into this word's spelling in one click. Only
+                            when this word has ancestors to build from. */}
+                        {ancestors.length > 0 && (
+                            <div className={styles.buildFromAncestors}>
+                                <Button
+                                    type="button"
+                                    themeType="basic"
+                                    className={buttonStyles.secondary}
+                                    onClick={handleBuildFromAncestors}
+                                    disabled={!canBuildFromAncestors}
+                                >
+                                    Build spelling from ancestors
+                                </Button>
+                                <FieldHelp
+                                    label="What building from ancestors does"
+                                    text="Concatenates each ancestor word's spelling, in ancestry order, into this word's spelling. The symbols are referenced (not copied), so editing an ancestor's symbol later updates this compound too."
+                                />
+                            </div>
+                        )}
+                        {ancestors.length > 0 && !canBuildFromAncestors && (
+                            <p className={styles.externalNote}>
+                                {'None of this word’s ancestors have a spelling yet, so there is nothing to build from.'}
+                            </p>
+                        )}
+
+                        <GlyphCanvasInput
+                            {...spellingField}
+                            availableGlyphs={availableGraphemes}
+                            defaultValue={spellingIds}
+                            initialGlyphOrder={glyphOrder}
+                            onSelectionChange={handleSpellingChange}
+                            autoSpellPreview={autoSpellEnabled ? autoSpellPreview : null}
+                            onRequestAutoSpell={autoSpellEnabled ? handleRequestAutoSpell : undefined}
+                            enableIpaMode={true}
+                            initialVirtualGlyphs={autoSpellVirtualGlyphs}
+                        />
+                    </div>
+                ) : (
+                    <div className={classNames(flex.flexColumn, flex.flexGapM)}>
+                        <p className={styles.symbolHelp}>
+                            Draw or import ONE symbol for the whole word. It becomes a reusable
+                            logograph in your script.
+                            {!hasNameSource && ' Give the word a meaning (or a pronunciation) above so the symbol can be named.'}
+                        </p>
+
+                        <div className={classNames(sizing.parentWidth, flex.flex, flex.justifyContentCenter)}>
+                            {isImageImportSvg(symbolSvg) ? (
+                                <GlyphImagePreview
+                                    svg={symbolSvg!}
+                                    mode={detectImportMode(symbolSvg!)}
+                                    onClear={handleSymbolClearImport}
+                                    className={styles.symbolDrawer}
+                                />
+                            ) : (
+                                <HoverToolTip
+                                    className={styles.symbolDrawer}
+                                    content="Draw the symbol for this word"
+                                >
+                                    <SvgDrawerInput
+                                        displayName="Word symbol drawing"
+                                        colors={GLYPH_INK}
+                                        guideInset={GLYPH_GUIDE_INSET}
+                                        onSvgChange={handleSymbolDraw}
+                                        {...symbolSvgField}
+                                    />
+                                </HoverToolTip>
+                            )}
+                        </div>
+
+                        <GlyphImageImport onImport={handleSymbolImport} />
+                    </div>
+                )}
             </section>
 
             <section className={styles.section} aria-labelledby={`${sectionIdPrefix}-etymology`}>

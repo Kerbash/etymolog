@@ -26,7 +26,7 @@ import type {
     GlyphReference,
 } from './types';
 
-const GLYPH_COLUMNS = 'id, name, svg_data, category, notes, created_at, updated_at';
+const GLYPH_COLUMNS = 'id, name, svg_data, category, notes, folder_id, created_at, updated_at';
 
 function mapGlyph(rec: SqlRecord): Glyph {
     return {
@@ -35,6 +35,7 @@ function mapGlyph(rec: SqlRecord): Glyph {
         svg_data: rec.svg_data as string,
         category: (rec.category as string | null) ?? null,
         notes: (rec.notes as string | null) ?? null,
+        folder_id: (rec.folder_id as number | null) ?? null,
         created_at: rec.created_at as string,
         updated_at: rec.updated_at as string,
     };
@@ -57,8 +58,8 @@ export function createGlyph(input: CreateGlyphInput): Glyph {
 
     const glyphId = withTransaction(db, () => {
         db.run(
-            `INSERT INTO glyphs (name, svg_data, category, notes) VALUES (?, ?, ?, ?)`,
-            [input.name, sanitizedSvg, input.category ?? null, input.notes ?? null],
+            `INSERT INTO glyphs (name, svg_data, category, notes, folder_id) VALUES (?, ?, ?, ?, ?)`,
+            [input.name, sanitizedSvg, input.category ?? null, input.notes ?? null, input.folder_id ?? null],
         );
         return lastInsertId(db);
     });
@@ -83,7 +84,7 @@ export function getAllGlyphs(): Glyph[] {
 /** All glyphs with the number of graphemes using each. */
 export function getAllGlyphsWithUsage(): GlyphWithUsage[] {
     return execRows(getDatabase(), `
-        SELECT g.id, g.name, g.svg_data, g.category, g.notes, g.created_at, g.updated_at,
+        SELECT g.id, g.name, g.svg_data, g.category, g.notes, g.folder_id, g.created_at, g.updated_at,
                COUNT(gg.id) AS usage_count
         FROM glyphs g
         LEFT JOIN grapheme_glyphs gg ON g.id = gg.glyph_id

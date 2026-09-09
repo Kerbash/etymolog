@@ -40,7 +40,7 @@ describe('APP_VERSION', () => {
 describe('EXPORT_SCHEMA_VERSION', () => {
     it('is a number describing the envelope shape, independent of APP_VERSION', () => {
         expect(typeof EXPORT_SCHEMA_VERSION).toBe('number');
-        expect(EXPORT_SCHEMA_VERSION).toBe(1);
+        expect(EXPORT_SCHEMA_VERSION).toBe(3);
     });
 });
 

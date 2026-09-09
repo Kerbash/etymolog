@@ -46,9 +46,9 @@ import type {
     LexiconComplete,
     UpdateLexiconInput,
 } from '../../../../db/types';
-import type { SpellingEntry } from '../../../../db/utils/spellingUtils';
+import { createGraphemeEntry, type SpellingEntry } from '../../../../db/utils/spellingUtils';
 import { ROUTES, resolveUrl } from '../../../../url_mapping';
-import { LexiconFormFields } from '../../../form/lexiconForm';
+import { LexiconFormFields, type LexiconSymbolState } from '../../../form/lexiconForm';
 import { FormActionBar, LoadingState, PageHeader, useApiAction, useNotify } from '../../../shared';
 import { useRegisterUnsaved } from '../../../shell';
 import DialogPanel from '../../../shared/dialogPanel';
@@ -87,6 +87,25 @@ export default function LexiconEditor({ mode, initialData }: LexiconEditorProps)
     const [ancestors, setAncestors] = useState<LexiconAncestorFormRow[]>([]);
     const [isNative, setIsNative] = useState(initialData?.is_native ?? true);
     const [autoSpell, setAutoSpell] = useState(initialData?.auto_spell ?? true);
+    // The folder the word is filed in (schema v7). Reported up by the fields —
+    // seeded from the stored word (edit) or the `?folder=` param (create).
+    const [folderId, setFolderId] = useState<number | null>(initialData?.folder_id ?? null);
+    // The word-symbol state (Phase 3): mode, the chosen SVG, and — on edit — the
+    // existing symbol grapheme inferred from the stored word. Starts in Compose
+    // mode; the fields flip it to Symbol when they infer or the user chooses it.
+    const [symbolState, setSymbolState] = useState<LexiconSymbolState>({
+        mode: 'compose',
+        svg: null,
+        existingGraphemeId: null,
+        originalSvg: null,
+    });
+
+    // Whether the word has something to be NAMED by — a pronunciation or a
+    // meaning. Reported by the fields (SmartForm's own `isSubmittable` can't
+    // express it; see `onHasNameSourceChange`). An existing word always has a
+    // name (its lemma), so edit mode starts true; a fresh create form starts
+    // false and the fields flip it as soon as either is filled.
+    const [hasNameSource, setHasNameSource] = useState(mode === 'edit');
 
     const editingId = mode === 'edit' ? (initialData?.id ?? null) : null;
 
@@ -100,6 +119,20 @@ export default function LexiconEditor({ mode, initialData }: LexiconEditorProps)
      */
     const initialPronunciation =
         mode === 'create' ? (searchParams.get('pronunciation') ?? undefined) : undefined;
+
+    /**
+     * `/lexicon/create?folder=…` — the gallery's "New word" default (Phase 5b,
+     * UC-D). Same read-here-not-in-the-fields rule as `?pronunciation=`. An
+     * unparseable value is ignored (root); an id no folder has is filtered by
+     * the picker's own option list, so the word simply files at the root.
+     */
+    const initialFolderId = useMemo(() => {
+        if (mode !== 'create') return undefined;
+        const raw = searchParams.get('folder');
+        if (raw === null) return undefined;
+        const parsed = Number.parseInt(raw, 10);
+        return Number.isInteger(parsed) ? parsed : undefined;
+    }, [mode, searchParams]);
 
     const backTo = useMemo(
         () =>
@@ -124,19 +157,41 @@ export default function LexiconEditor({ mode, initialData }: LexiconEditorProps)
                     usage_notes: m.usage_notes?.trim(),
                 }));
 
+            const isSymbol = symbolState.mode === 'symbol';
+            const symbolSvg = symbolState.svg?.trim();
+            if (isSymbol && !symbolSvg) {
+                return { success: false, message: 'Draw or import a symbol for this word.' };
+            }
+            // The symbol name defaults to the word's display name.
+            const symbolName =
+                pronunciation || meanings?.[0]?.meaning || initialData?.lemma || 'Symbol';
+
             if (mode === 'create') {
-                const input: CreateLexiconInput = {
-                    pronunciation: pronunciation || undefined,
-                    is_native: isNative,
-                    auto_spell: autoSpell,
-                    meanings,
-                    glyph_order: glyphOrder,
-                    ancestry: ancestors.map((a, index) => ({
-                        ancestor_id: a.ancestorId,
-                        position: index,
-                        ancestry_type: a.ancestryType,
-                    })),
-                };
+                const ancestry = ancestors.map((a, index) => ({
+                    ancestor_id: a.ancestorId,
+                    position: index,
+                    ancestry_type: a.ancestryType,
+                }));
+                const input: CreateLexiconInput = isSymbol
+                    ? {
+                          pronunciation: pronunciation || undefined,
+                          is_native: isNative,
+                          // Symbol words are always manual (the api enforces this too).
+                          auto_spell: false,
+                          meanings,
+                          symbol: { svgData: symbolSvg! },
+                          ancestry,
+                          folder_id: folderId,
+                      }
+                    : {
+                          pronunciation: pronunciation || undefined,
+                          is_native: isNative,
+                          auto_spell: autoSpell,
+                          meanings,
+                          glyph_order: glyphOrder,
+                          ancestry,
+                          folder_id: folderId,
+                      };
 
                 const result = await runApiAction(() => api.lexicon.create(input), {
                     errorTitle: 'Could not create the word',
@@ -155,16 +210,52 @@ export default function LexiconEditor({ mode, initialData }: LexiconEditorProps)
                 return { success: false, message: 'No word to update' };
             }
 
+            // Symbol mode on edit: the word's spelling is one logogram grapheme.
+            // Either it already exists (reuse it, and re-draw its glyph if the
+            // drawing changed) or the word is being switched INTO Symbol mode
+            // now (make a new symbol grapheme). The result is the glyph_order
+            // the word update pins.
+            let editGlyphOrder = glyphOrder;
+            let redrawGraphemeId: number | null = null;
+            if (isSymbol) {
+                if (symbolState.existingGraphemeId != null) {
+                    editGlyphOrder = [createGraphemeEntry(symbolState.existingGraphemeId)];
+                    if (symbolSvg !== (symbolState.originalSvg ?? '').trim()) {
+                        redrawGraphemeId = symbolState.existingGraphemeId;
+                    }
+                } else {
+                    const created = api.wordSymbol.create({
+                        name: symbolName,
+                        svgData: symbolSvg!,
+                    });
+                    if (!created.success || !created.data) {
+                        return {
+                            success: false,
+                            message: created.error?.message ?? 'Could not create the symbol',
+                        };
+                    }
+                    editGlyphOrder = [createGraphemeEntry(created.data.graphemeId)];
+                }
+            }
+
             const update: UpdateLexiconInput = {
-                // `lemma` is kept populated for backwards compatibility — the
-                // lemma INPUT was removed from the form, and pronunciation is
-                // the primary identifier everywhere the user can see.
-                lemma: (pronunciation || initialData?.lemma || '').trim() || undefined,
-                pronunciation: pronunciation || undefined,
+                // `lemma` is intentionally NOT sent: the api recomputes it from
+                // pronunciation → first meaning → existing lemma, so clearing
+                // the pronunciation of a word that has a meaning renames it to
+                // that meaning rather than stranding the old lemma.
+                //
+                // `null` (not `undefined`) when empty so the api actually
+                // CLEARS the pronunciation — `undefined` would leave the old
+                // value in place, making it impossible to remove a pronunciation
+                // once set.
+                pronunciation: pronunciation ? pronunciation : null,
                 is_native: isNative,
-                auto_spell: autoSpell,
+                // Symbol mode forces auto-spell off (the fields already report
+                // false, but pin it here so a symbol word is never auto-spelled).
+                auto_spell: isSymbol ? false : autoSpell,
                 meanings,
-                glyph_order: glyphOrder,
+                glyph_order: editGlyphOrder,
+                folder_id: folderId,
             };
 
             const result = await runApiAction(() => api.lexicon.update(editingId, update), {
@@ -172,6 +263,21 @@ export default function LexiconEditor({ mode, initialData }: LexiconEditorProps)
             });
             if (!result.success) {
                 return { success: false, message: result.error?.message ?? 'Update failed' };
+            }
+
+            if (redrawGraphemeId != null) {
+                const draw = api.wordSymbol.updateDrawing({
+                    graphemeId: redrawGraphemeId,
+                    svgData: symbolSvg!,
+                });
+                if (!draw.success) {
+                    // The word itself saved; the drawing did not. Warn rather
+                    // than fail the whole save (mirrors the ancestry warning).
+                    notify.warning(
+                        draw.error?.message ?? 'The symbol drawing could not be updated.',
+                        { title: 'Word saved, but its symbol was not re-drawn' },
+                    );
+                }
             }
 
             const ancestryResult = api.lexicon.updateAncestry(editingId, {
@@ -199,11 +305,13 @@ export default function LexiconEditor({ mode, initialData }: LexiconEditorProps)
         [
             mode,
             editingId,
-            initialData,
             glyphOrder,
             ancestors,
             isNative,
             autoSpell,
+            folderId,
+            symbolState,
+            initialData,
             api,
             runApiAction,
             refresh,
@@ -274,7 +382,7 @@ export default function LexiconEditor({ mode, initialData }: LexiconEditorProps)
                 }}
                 description={
                     mode === 'create'
-                        ? 'Type the pronunciation first — auto-spelling reads it to build the spelling.'
+                        ? 'Name the word by its pronunciation or its meaning — either is enough. Auto-spelling, when used, reads the pronunciation to build the spelling.'
                         : undefined
                 }
             />
@@ -290,16 +398,23 @@ export default function LexiconEditor({ mode, initialData }: LexiconEditorProps)
                     mode={mode}
                     initialData={initialData}
                     initialPronunciation={initialPronunciation}
+                    initialFolderId={initialFolderId}
                     onGlyphOrderChange={setGlyphOrder}
                     onAncestorsChange={setAncestors}
                     onIsNativeChange={setIsNative}
                     onAutoSpellChange={setAutoSpell}
+                    onHasNameSourceChange={setHasNameSource}
+                    onSymbolStateChange={setSymbolState}
+                    onFolderIdChange={setFolderId}
                 />
 
                 <FormActionBar
                     onCancel={() => navigate(backTo)}
                     submitLabel={mode === 'create' ? 'Create word' : 'Save changes'}
-                    disabled={!formProps.formState.isSubmittable}
+                    // Both gates: SmartForm's field-level validity AND a name
+                    // source (pronunciation or meaning). A word with neither has
+                    // no derivable lemma and is rejected by the api anyway.
+                    disabled={!formProps.formState.isSubmittable || !hasNameSource}
                 />
             </SmartForm>
         </>

@@ -25,6 +25,13 @@ export interface MeaningTableInputProps extends registerFieldReturnType {
     defaultValue?: MeaningRowValue[];
     maxRows?: number;
     className?: string;
+    /**
+     * When true, a word may be named by its pronunciation alone, so an empty
+     * meanings table is VALID (its emptiness is still tracked for the host's
+     * name-source gate). When false (default) at least one non-empty meaning is
+     * required and an empty table holds the field invalid.
+     */
+    optional?: boolean;
 }
 
 /** Internal row state type -------------------------------------- */
@@ -46,6 +53,7 @@ export const MeaningTableInput = forwardRef((
         defaultValue = [],
         maxRows,
         className,
+        optional = false,
     }: MeaningTableInputProps,
     // Unused — the value is exposed through `registerSmartFieldProps.ref` (see
     // the `useImperativeHandle` below) — but DECLARED, because React warns at
@@ -104,6 +112,7 @@ export const MeaningTableInput = forwardRef((
             maxRows={maxRows}
             className={className}
             idPrefix={idPrefix}
+            optional={optional}
         />
     );
 });
@@ -118,6 +127,7 @@ interface MeaningTableInputInnerProps {
     maxRows?: number;
     className?: string;
     idPrefix: string;
+    optional: boolean;
 }
 
 const MeaningTableInputInner = ({
@@ -129,6 +139,7 @@ const MeaningTableInputInner = ({
     maxRows,
     className,
     idPrefix,
+    optional,
 }: MeaningTableInputInnerProps) => {
     // Create internal SmartForm for managing meaning rows
     const { registerField, registerForm, unregisterField } = useSmartForm({});
@@ -173,6 +184,27 @@ const MeaningTableInputInner = ({
         fieldStateRef.current.isChanged.setIsChanged(true);
     }, [innerChanged, fieldStateRef]);
 
+    /**
+     * A signature of the meaning-column text, recomputed every render. The
+     * inner form re-renders this component on every keystroke, so reading its
+     * live values here gives the current text; used as the effect dep below it
+     * makes the empty/valid recomputation fire on typing AND clearing.
+     *
+     * The `isValid` dep alone was enough only while the inner rows carried a
+     * `required` validator (typing flipped inner validity, re-running the
+     * effect). In `optional` mode there is no such validator, so without a
+     * value-derived dep the emptiness went stale and the host's name-source
+     * gate never opened.
+     */
+    const meaningsSignature = rows
+        .map(row => {
+            const value = (smartFormRef.current?.value as Record<string, string> | undefined)?.[`meaning-${row.id}`];
+            // Only per-row emptiness matters to isEmpty / validity, so a
+            // boolean flag per row is a collision-free, cheap dep.
+            return (value ?? "").trim().length > 0 ? "1" : "0";
+        })
+        .join("");
+
     // Validate and update isEmpty/isInputValid states
     useEffect(() => {
         const formValues = smartFormRef.current?.value || {};
@@ -184,13 +216,19 @@ const MeaningTableInputInner = ({
 
         fieldStateRef.current.isEmpty.setIsEmpty(allEmpty);
 
-        // At least one meaning must have non-empty text
-        const allValid = rows.some(row => {
-            const value = formValues[`meaning-${row.id}`];
-            return value && value.trim() !== "";
-        });
-        fieldStateRef.current._setValidation(allValid ? null : { type: 'error', message: 'Invalid entries' });
-    }, [rows, selfFormProps.formState.isValid, fieldStateRef]);
+        // When `optional`, the meanings table never invalidates the host form:
+        // a word may be named by its pronunciation alone. Otherwise at least
+        // one meaning must have non-empty text.
+        if (optional) {
+            fieldStateRef.current._setValidation(null);
+        } else {
+            const allValid = rows.some(row => {
+                const value = formValues[`meaning-${row.id}`];
+                return value && value.trim() !== "";
+            });
+            fieldStateRef.current._setValidation(allValid ? null : { type: 'error', message: 'Invalid entries' });
+        }
+    }, [rows, meaningsSignature, selfFormProps.formState.isValid, fieldStateRef, optional]);
 
     // Row operations
     const handleAddRow = useCallback(() => {
@@ -262,9 +300,14 @@ const MeaningTableInputInner = ({
                                     <LabelShiftTextInput
                                         {...registerField(`meaning-${row.id}`, {
                                             defaultValue: row.meaning,
-                                            validation: TextInputValidatorFactory({
-                                                required: { value: true, message: "At least one meaning is required" },
-                                            }),
+                                            // When the table is optional a blank row is not an
+                                            // error — the "required" message would otherwise
+                                            // shout at a word that is named by its pronunciation.
+                                            validation: optional
+                                                ? undefined
+                                                : TextInputValidatorFactory({
+                                                    required: { value: true, message: "At least one meaning is required" },
+                                                }),
                                         })}
                                         displayName={`${t("meaningLabel")} ${rowIndex + 1}`}
                                         className={styles.textInput}

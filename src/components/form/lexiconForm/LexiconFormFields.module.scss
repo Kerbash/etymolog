@@ -71,3 +71,57 @@
     border-radius: var(--radius-chip);
     margin-top: 0.5rem;
 }
+
+.segmented {
+    display: inline-flex;
+    gap: 0;
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-control);
+    overflow: hidden;
+    align-self: flex-start;
+}
+
+.segment {
+    padding: 0.4rem 0.9rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    background: var(--surface-base);
+    color: var(--text-secondary);
+    border: none;
+    cursor: pointer;
+
+    & + & {
+        border-left: 1px solid var(--border-primary);
+    }
+
+    &:hover {
+        color: var(--text-primary);
+    }
+}
+
+.segmentActive {
+    background: var(--interactive-base);
+    color: var(--interactive-text);
+
+    &:hover {
+        color: var(--interactive-text);
+    }
+}
+
+.symbolHelp {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+.buildFromAncestors {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    align-self: flex-start;
+}
+
+.symbolDrawer {
+    width: 100%;
+    max-width: 320px;
+}

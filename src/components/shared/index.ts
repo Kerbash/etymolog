@@ -55,3 +55,29 @@ export type {
     GalleryQuery,
     GalleryPage,
 } from './gallery';
+
+export {
+    DirectoryGallery,
+    TREE_ITEM_CAP,
+    FolderTreeSelect,
+    FolderNameDialog,
+    MoveToFolderDialog,
+    buildFolderOptions,
+    childFolders,
+    compareFolders,
+    descendantFolders,
+    folderPath,
+    indexFolders,
+    folderCreateHref,
+    lexiconCreateHref,
+    glyphCreateHref,
+    graphemeCreateHref,
+} from './directory';
+export type {
+    DirectoryGalleryProps,
+    DirectoryEmptyContext,
+    FolderTreeSelectProps,
+    FolderNameDialogProps,
+    MoveToFolderDialogProps,
+    FolderTreeOption,
+} from './directory';

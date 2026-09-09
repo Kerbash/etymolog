@@ -27,6 +27,14 @@ export interface Glyph {
     svg_data: string;
     category: string | null;
     notes: string | null;
+    /**
+     * Nesting folder this glyph belongs to (schema v8), or null for the root /
+     * unfiled level. ON DELETE SET NULL in the DB; the glyph folder service
+     * reparents glyphs before a folder is deleted. Optional on the TYPE (not
+     * the DB) so partial/mock glyphs built before v8 keep type-checking; treat
+     * an absent value exactly like null (root level).
+     */
+    folder_id?: number | null;
     created_at: string;
     updated_at: string;
 }
@@ -39,6 +47,8 @@ export interface CreateGlyphInput {
     svg_data: string;
     category?: string;
     notes?: string;
+    /** Nesting folder id (schema v8), or null/undefined for the root level. */
+    folder_id?: number | null;
 }
 
 /**
@@ -65,6 +75,14 @@ export interface Grapheme {
     name: string;
     category: string | null;
     notes: string | null;
+    /**
+     * Nesting folder this grapheme belongs to (schema v8), or null for the
+     * root / unfiled level. ON DELETE SET NULL in the DB; the grapheme folder
+     * service reparents graphemes before a folder is deleted. Optional on the
+     * TYPE (not the DB) so partial/mock graphemes built before v8 keep
+     * type-checking; treat an absent value exactly like null (root level).
+     */
+    folder_id?: number | null;
     created_at: string;
     updated_at: string;
 }
@@ -102,6 +120,8 @@ export interface CreateGraphemeInput {
     glyphs: CreateGraphemeGlyphInput[];
     /** Optional phonemes to create with the grapheme */
     phonemes?: CreatePhonemeInput[];
+    /** Nesting folder id (schema v8), or null/undefined for the root level. */
+    folder_id?: number | null;
 }
 
 /**
@@ -269,9 +289,68 @@ export interface Lexicon {
      * - Auto-respelling fails
      */
     needs_attention: boolean;
+    /**
+     * Nesting folder this word belongs to (schema v7), or null for the root /
+     * unfiled level. ON DELETE SET NULL in the DB; the folder service reparents
+     * words before a folder is deleted, so this only becomes null when the word
+     * is explicitly moved to root.
+     *
+     * Optional on the TYPE (not the DB, where the column always exists and
+     * `mapLexiconRecord` always fills it) so partial/mock lexicon objects built
+     * before v7 continue to type-check; a reader should treat an absent value
+     * exactly like null (root level).
+     */
+    folder_id?: number | null;
     created_at: string;
     updated_at: string;
 }
+
+/**
+ * A nested folder record (schema v7 for lexicon; schema v8 for glyphs and
+ * graphemes). Adjacency list: `parent_id` is null at the root level. All three
+ * domains share this identical row shape — they differ only in the table and
+ * item column the folder engine (`createFolderDomain`) is bound to.
+ */
+export interface FolderRecord {
+    id: number;
+    name: string;
+    parent_id: number | null;
+    position: number;
+    created_at: string;
+    updated_at: string;
+}
+
+/**
+ * Input for creating a folder (any domain).
+ */
+export interface CreateFolderInput {
+    name: string;
+    parent_id?: number | null;
+    position?: number;
+}
+
+/**
+ * Input for updating a folder (rename / reorder). Moving between parents is a
+ * separate operation (`moveFolder`) because it is cycle-checked.
+ */
+export interface UpdateFolderInput {
+    name?: string;
+    position?: number;
+}
+
+/**
+ * A nested folder for organising lexicon entries (schema v7).
+ *
+ * Historical alias of {@link FolderRecord} — structural, so every existing
+ * import keeps compiling. Prefer `FolderRecord` in new code.
+ */
+export type LexiconFolder = FolderRecord;
+
+/** Historical alias of {@link CreateFolderInput}. */
+export type CreateLexiconFolderInput = CreateFolderInput;
+
+/** Historical alias of {@link UpdateFolderInput}. */
+export type UpdateLexiconFolderInput = UpdateFolderInput;
 
 /**
  * Junction table entry linking a grapheme to a lexicon entry for spelling.
@@ -333,6 +412,18 @@ export interface CreateLexiconInput {
     spelling?: CreateLexiconSpellingInput[];
     /** Array of ancestor references */
     ancestry?: CreateLexiconAncestryInput[];
+    /** Nesting folder id (schema v7), or null/undefined for the root level. */
+    folder_id?: number | null;
+    /**
+     * Whole-word symbol (Phase 3, UC-B1). When present AND no explicit
+     * `glyph_order`/`spelling` is given, the composite `lexicon.create`
+     * creates a backing logogram glyph + grapheme in the SAME transaction as
+     * the word and sets `glyph_order` to that one grapheme — so a failure
+     * anywhere rolls back the symbol too (no orphan glyph/grapheme). `name`
+     * defaults to the word's display name (pronunciation or first meaning).
+     * Handled entirely at the api layer; the lexicon service ignores it.
+     */
+    symbol?: { name?: string; svgData: string };
 }
 
 /**
@@ -370,6 +461,8 @@ export interface UpdateLexiconInput {
     glyph_order?: string[];
     /** Mark/unmark entry as needing attention */
     needs_attention?: boolean;
+    /** Move to a folder (schema v7); null clears to the root level. */
+    folder_id?: number | null;
 }
 
 /**

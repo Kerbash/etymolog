@@ -164,6 +164,36 @@ describe('EtymologProvider', () => {
         });
         expect(lexiconSpy).not.toHaveBeenCalled();
     });
+
+    it('refreshes the folder slices too (not just glyphs/graphemes/lexicon) after database.clear', async () => {
+        root = await mount();
+        // A folder in each of the three domains — the tree that a clear must wipe.
+        await act(async () => {
+            latest!.api.folder.create({ name: 'Words folder', parent_id: null });
+            latest!.api.glyphFolder.create({ name: 'Glyph folder', parent_id: null });
+            latest!.api.graphemeFolder.create({ name: 'Grapheme folder', parent_id: null });
+        });
+        expect(latest?.data.folders.length).toBe(1);
+        expect(latest?.data.glyphFolders.length).toBe(1);
+        expect(latest?.data.graphemeFolders.length).toBe(1);
+
+        const folderSpy = vi.spyOn(etymologApi.folder, 'list');
+        const glyphFolderSpy = vi.spyOn(etymologApi.glyphFolder, 'list');
+        const graphemeFolderSpy = vi.spyOn(etymologApi.graphemeFolder, 'list');
+
+        await act(async () => {
+            latest!.api.database.clear();
+        });
+
+        // The gap this closes: afterAll used to refresh only the three entity
+        // slices, leaving a stale folder tree on screen after a clear/reset.
+        expect(folderSpy).toHaveBeenCalledTimes(1);
+        expect(glyphFolderSpy).toHaveBeenCalledTimes(1);
+        expect(graphemeFolderSpy).toHaveBeenCalledTimes(1);
+        expect(latest?.data.folders).toEqual([]);
+        expect(latest?.data.glyphFolders).toEqual([]);
+        expect(latest?.data.graphemeFolders).toEqual([]);
+    });
 });
 
 /**

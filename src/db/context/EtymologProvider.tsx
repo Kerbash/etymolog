@@ -55,10 +55,10 @@ interface EtymologProviderProps {
 }
 
 type AnyApiFn = (...args: never[]) => ApiResponse<unknown>;
-type Slice = 'glyphs' | 'graphemes' | 'lexicon';
+type Slice = 'glyphs' | 'graphemes' | 'lexicon' | 'folders' | 'glyphFolders' | 'graphemeFolders';
 
 /** The one order refreshes ever run in, wherever they are triggered from. */
-const SLICE_ORDER: readonly Slice[] = ['glyphs', 'graphemes', 'lexicon'];
+const SLICE_ORDER: readonly Slice[] = ['glyphs', 'graphemes', 'lexicon', 'folders', 'glyphFolders', 'graphemeFolders'];
 
 /**
  * EtymologProvider
@@ -165,11 +165,47 @@ export function EtymologProvider({ children }: EtymologProviderProps) {
         }));
     }, [recordFailure]);
 
+    const refreshFolders = useCallback(() => {
+        if (!isReadyRef.current) return;
+        const response = etymologApi.folder.list();
+        if (!response.success) return recordFailure('folders', response);
+        setData(prev => ({
+            ...prev,
+            folders: response.data ?? [],
+            lastRefreshError: clearFailure(prev, 'folders'),
+        }));
+    }, [recordFailure]);
+
+    const refreshGlyphFolders = useCallback(() => {
+        if (!isReadyRef.current) return;
+        const response = etymologApi.glyphFolder.list();
+        if (!response.success) return recordFailure('glyphFolders', response);
+        setData(prev => ({
+            ...prev,
+            glyphFolders: response.data ?? [],
+            lastRefreshError: clearFailure(prev, 'glyphFolders'),
+        }));
+    }, [recordFailure]);
+
+    const refreshGraphemeFolders = useCallback(() => {
+        if (!isReadyRef.current) return;
+        const response = etymologApi.graphemeFolder.list();
+        if (!response.success) return recordFailure('graphemeFolders', response);
+        setData(prev => ({
+            ...prev,
+            graphemeFolders: response.data ?? [],
+            lastRefreshError: clearFailure(prev, 'graphemeFolders'),
+        }));
+    }, [recordFailure]);
+
     const refresh = useCallback(() => {
         refreshGlyphs();
         refreshGraphemes();
         refreshLexicon();
-    }, [refreshGlyphs, refreshGraphemes, refreshLexicon]);
+        refreshFolders();
+        refreshGlyphFolders();
+        refreshGraphemeFolders();
+    }, [refreshGlyphs, refreshGraphemes, refreshLexicon, refreshFolders, refreshGlyphFolders, refreshGraphemeFolders]);
 
     // Load data when database becomes ready
     useEffect(() => {
@@ -200,8 +236,11 @@ export function EtymologProvider({ children }: EtymologProviderProps) {
         }
         if (slice === 'glyphs') refreshGlyphs();
         else if (slice === 'graphemes') refreshGraphemes();
+        else if (slice === 'folders') refreshFolders();
+        else if (slice === 'glyphFolders') refreshGlyphFolders();
+        else if (slice === 'graphemeFolders') refreshGraphemeFolders();
         else refreshLexicon();
-    }, [refreshGlyphs, refreshGraphemes, refreshLexicon]);
+    }, [refreshGlyphs, refreshGraphemes, refreshLexicon, refreshFolders, refreshGlyphFolders, refreshGraphemeFolders]);
 
     const batchMutations = useCallback(<T,>(fn: () => T): T => {
         batchDepth.current += 1;
@@ -221,9 +260,12 @@ export function EtymologProvider({ children }: EtymologProviderProps) {
                 if (slices.has('glyphs')) refreshGlyphs();
                 if (slices.has('graphemes')) refreshGraphemes();
                 if (slices.has('lexicon')) refreshLexicon();
+                if (slices.has('folders')) refreshFolders();
+                if (slices.has('glyphFolders')) refreshGlyphFolders();
+                if (slices.has('graphemeFolders')) refreshGraphemeFolders();
             }
         }
-    }, [refreshGlyphs, refreshGraphemes, refreshLexicon]);
+    }, [refreshGlyphs, refreshGraphemes, refreshLexicon, refreshFolders, refreshGlyphFolders, refreshGraphemeFolders]);
 
     // Wrapped API: every mutation refreshes the slices it can have changed.
     const wrappedApi = useMemo((): EtymologApi => {
@@ -242,6 +284,11 @@ export function EtymologProvider({ children }: EtymologProviderProps) {
             }) as T;
         };
         const afterAll = <T extends AnyApiFn>(fn: T): T => after(fn, 'glyphs', 'graphemes', 'lexicon');
+        // A whole-database operation (clear / reset) wipes the folder tables too,
+        // so it must refresh the three folder slices as well — otherwise a cleared
+        // or reset database leaves a stale folder tree on screen until a reload.
+        const afterAllWithFolders = <T extends AnyApiFn>(fn: T): T =>
+            after(fn, 'glyphs', 'graphemes', 'lexicon', 'folders', 'glyphFolders', 'graphemeFolders');
 
         return {
             glyph: {
@@ -276,8 +323,8 @@ export function EtymologProvider({ children }: EtymologProviderProps) {
             settings: etymologApi.settings,
             database: {
                 ...etymologApi.database,
-                clear: afterAll(etymologApi.database.clear),
-                reset: afterAll(etymologApi.database.reset),
+                clear: afterAllWithFolders(etymologApi.database.clear),
+                reset: afterAllWithFolders(etymologApi.database.reset),
                 repair: ((...args: Parameters<typeof etymologApi.database.repair>) => {
                     const result = etymologApi.database.repair(...args);
                     if (result.success) {
@@ -299,6 +346,11 @@ export function EtymologProvider({ children }: EtymologProviderProps) {
             },
             lexicon: {
                 ...etymologApi.lexicon,
+                // A composite create CAN also make a symbol glyph + grapheme, but
+                // it stays a lexicon-slice refresh: the word form calls the full
+                // `refresh()` after a create anyway, and broadening this here
+                // would make every plain word create needlessly re-read glyphs
+                // and graphemes.
                 create: after(etymologApi.lexicon.create, 'lexicon'),
                 update: after(etymologApi.lexicon.update, 'lexicon'),
                 delete: after(etymologApi.lexicon.delete, 'lexicon'),
@@ -307,6 +359,52 @@ export function EtymologProvider({ children }: EtymologProviderProps) {
                 applyAutoSpelling: after(etymologApi.lexicon.applyAutoSpelling, 'lexicon'),
             },
             phrase: etymologApi.phrase,
+            // A word symbol is a glyph + grapheme; a re-drawn symbol changes the
+            // glyph the lexicon resolves through graphemesComplete.
+            wordSymbol: {
+                ...etymologApi.wordSymbol,
+                create: afterAll(etymologApi.wordSymbol.create),
+                updateDrawing: afterAll(etymologApi.wordSymbol.updateDrawing),
+            },
+            // The `folders` slice (added in 5b) backs the gallery tree and the
+            // form/move pickers, so every folder mutation refreshes it. The two
+            // that also touch WORD rows — filing a word, and deleting a folder
+            // (which reparents its words to the parent) — refresh the lexicon
+            // slice too so a word's `folder_id` stays current.
+            folder: {
+                ...etymologApi.folder,
+                create: after(etymologApi.folder.create, 'folders'),
+                update: after(etymologApi.folder.update, 'folders'),
+                rename: after(etymologApi.folder.rename, 'folders'),
+                move: after(etymologApi.folder.move, 'folders'),
+                delete: after(etymologApi.folder.delete, 'folders', 'lexicon'),
+                setItemFolder: after(etymologApi.folder.setItemFolder, 'lexicon'),
+                setLexiconFolder: after(etymologApi.folder.setLexiconFolder, 'lexicon'),
+            },
+            // Glyph folders (schema v8), mirroring the lexicon `folder` wiring.
+            // Filing a glyph and deleting a folder (reparents its glyphs) both
+            // change a glyph's `folder_id`, so they refresh the `glyphs` slice.
+            glyphFolder: {
+                ...etymologApi.glyphFolder,
+                create: after(etymologApi.glyphFolder.create, 'glyphFolders'),
+                update: after(etymologApi.glyphFolder.update, 'glyphFolders'),
+                rename: after(etymologApi.glyphFolder.rename, 'glyphFolders'),
+                move: after(etymologApi.glyphFolder.move, 'glyphFolders'),
+                delete: after(etymologApi.glyphFolder.delete, 'glyphFolders', 'glyphs'),
+                setItemFolder: after(etymologApi.glyphFolder.setItemFolder, 'glyphs'),
+            },
+            // Grapheme folders (schema v8); a grapheme's `folder_id` lives in the
+            // `graphemes` slice (graphemesComplete), so item moves and folder
+            // deletes refresh it.
+            graphemeFolder: {
+                ...etymologApi.graphemeFolder,
+                create: after(etymologApi.graphemeFolder.create, 'graphemeFolders'),
+                update: after(etymologApi.graphemeFolder.update, 'graphemeFolders'),
+                rename: after(etymologApi.graphemeFolder.rename, 'graphemeFolders'),
+                move: after(etymologApi.graphemeFolder.move, 'graphemeFolders'),
+                delete: after(etymologApi.graphemeFolder.delete, 'graphemeFolders', 'graphemes'),
+                setItemFolder: after(etymologApi.graphemeFolder.setItemFolder, 'graphemes'),
+            },
         };
     }, [refresh, requestRefresh]);
 
@@ -323,8 +421,11 @@ export function EtymologProvider({ children }: EtymologProviderProps) {
         refreshGlyphs,
         refreshGraphemes,
         refreshLexicon,
+        refreshFolders,
+        refreshGlyphFolders,
+        refreshGraphemeFolders,
         batchMutations,
-    }), [wrappedApi, data, settings, persistence, health, isLoading, isReady, error, refresh, refreshGlyphs, refreshGraphemes, refreshLexicon, batchMutations]);
+    }), [wrappedApi, data, settings, persistence, health, isLoading, isReady, error, refresh, refreshGlyphs, refreshGraphemes, refreshLexicon, refreshFolders, refreshGlyphFolders, refreshGraphemeFolders, batchMutations]);
 
     return (
         <EtymologContext.Provider value={contextValue}>

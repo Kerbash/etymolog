@@ -12,8 +12,8 @@
  * touches an anchor — the Graphemes/Glyphs tab strip is exactly that.
  */
 
-import { useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useMemo } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 // NAMED import: that index re-exports the component by name only, and a default
 // import resolves to `undefined` at RUNTIME while typechecking cleanly.
@@ -38,8 +38,22 @@ function GuardCard({ children }: { closeModal: () => void; children: React.React
 export default function NewGlyphPage() {
     const navigate = useNavigate();
     const notify = useNotify();
-    const { isReady, error } = useEtymolog();
+    const [searchParams] = useSearchParams();
+    const { data, isReady, error } = useEtymolog();
     const { registerField, unregisterField, registerForm } = useSmartForm({ mode: "onChange" });
+
+    // `/script-maker/glyphs/create?folder=…` — the glyph gallery's "New glyph"
+    // default (create-in-folder). Validated against the glyph folder slice here:
+    // an unknown or non-numeric id files the glyph at the root rather than
+    // handing the API a dangling folder_id that would reject the create.
+    const initialFolderId = useMemo<number | null>(() => {
+        const raw = searchParams.get("folder");
+        if (raw === null) return null;
+        const parsed = Number.parseInt(raw, 10);
+        return Number.isInteger(parsed) && (data.glyphFolders ?? []).some((f) => f.id === parsed)
+            ? parsed
+            : null;
+    }, [searchParams, data.glyphFolders]);
 
     const handleSuccess = useCallback(
         (glyph: Glyph) => {
@@ -49,7 +63,7 @@ export default function NewGlyphPage() {
         [navigate, notify],
     );
 
-    const submitFunc = useGlyphSubmit({ mode: "create", onSuccess: handleSuccess });
+    const submitFunc = useGlyphSubmit({ mode: "create", folderId: initialFolderId, onSuccess: handleSuccess });
 
     const formProps = registerForm("createGlyphForm", {
         submitFunc,

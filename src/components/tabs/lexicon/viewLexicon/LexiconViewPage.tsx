@@ -9,7 +9,7 @@
  * link, bookmark or come back to, and a reload discarded it without asking.
  */
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import EmptyState from 'cyber-components/display/emptyState';
@@ -21,7 +21,8 @@ import type { LexiconComplete } from '../../../../db/types';
 import { ROUTES, resolveUrl } from '../../../../url_mapping';
 import { DetailedLexiconDisplay } from '../../../display/lexicon/detailed';
 import { EtymologyTree } from '../../../display/lexicon/etymologyTree';
-import { LoadingState, PageHeader, useApiAction, useConfirm } from '../../../shared';
+import { LoadingState, PageHeader, useApiAction, useConfirm, useNotify } from '../../../shared';
+import { MoveToFolderDialog } from '../folders';
 import { lexiconDisplayName } from '../lexiconIdentity';
 
 import styles from './LexiconViewPage.module.scss';
@@ -32,6 +33,8 @@ export default function LexiconViewPage() {
     const { api, data, refresh, isReady, error } = useEtymolog();
     const confirm = useConfirm();
     const runApiAction = useApiAction();
+    const notify = useNotify();
+    const [moveOpen, setMoveOpen] = useState(false);
 
     const lexiconId = id ? Number.parseInt(id, 10) : Number.NaN;
     const validId = Number.isInteger(lexiconId);
@@ -92,6 +95,24 @@ export default function LexiconViewPage() {
         }
     }, [api, confirm, runApiAction, lexicon, lexiconId, validId, refresh, navigate]);
 
+    const handleMove = useCallback(
+        async (folderId: number | null) => {
+            if (!validId) return;
+            const result = await runApiAction(
+                () => api.folder.setLexiconFolder({ lexiconId, folderId }),
+                { errorTitle: 'Could not move the word' },
+            );
+            if (result.success) {
+                refresh();
+                const dest = folderId === null
+                    ? 'the root level'
+                    : `"${(data.folders ?? []).find((f) => f.id === folderId)?.name ?? 'folder'}"`;
+                notify.success(`Moved to ${dest}.`);
+            }
+        },
+        [api, runApiAction, lexiconId, validId, refresh, notify, data.folders],
+    );
+
     const handleTreeNodeClick = useCallback(
         (nodeId: number) => navigate(resolveUrl(ROUTES.lexiconView, { id: nodeId })),
         [navigate],
@@ -147,6 +168,13 @@ export default function LexiconViewPage() {
                 back={{ to: ROUTES.lexicon, label: 'Lexicon' }}
                 actions={
                     <>
+                        <IconButton
+                            iconName="folder-symlink"
+                            className={buttonStyles.secondary}
+                            onClick={() => setMoveOpen(true)}
+                        >
+                            Move to folder
+                        </IconButton>
                         <IconButton
                             as={Link}
                             to={resolveUrl(ROUTES.lexiconEdit, { id: lexicon.id })}
@@ -237,6 +265,14 @@ export default function LexiconViewPage() {
                     </section>
                 )}
             </div>
+
+            <MoveToFolderDialog
+                isOpen={moveOpen}
+                setIsOpen={setMoveOpen}
+                folders={data.folders ?? []}
+                currentFolderId={lexicon.folder_id ?? null}
+                onMove={(folderId) => void handleMove(folderId)}
+            />
         </>
     );
 }

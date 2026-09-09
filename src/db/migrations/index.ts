@@ -31,7 +31,17 @@
 import type { Database } from 'sql.js';
 import { dbLog } from '../utils/logger';
 import { withTransaction } from '../utils/transaction';
-import { createLexiconAncestryIndexes, createLexiconAncestryTable, createSchema } from './schema';
+import {
+    createGlyphFoldersIndex,
+    createGlyphFoldersTable,
+    createGraphemeFoldersIndex,
+    createGraphemeFoldersTable,
+    createLexiconAncestryIndexes,
+    createLexiconAncestryTable,
+    createLexiconFoldersIndex,
+    createLexiconFoldersTable,
+    createSchema,
+} from './schema';
 import { repairOrphans } from './repair';
 import { CURRENT_SCHEMA_VERSION } from './version';
 
@@ -347,6 +357,60 @@ export const MIGRATIONS: Migration[] = [
             const violations = foreignKeyViolationCount(database);
             if (violations > 0) {
                 throw new Error(`Migration v6 left ${violations} foreign-key violation(s)`);
+            }
+        },
+    },
+    {
+        version: 7,
+        description: 'Add lexicon_folders table and lexicon.folder_id for nested organisation',
+        up(database) {
+            // New table + its index (shared DDL with createSchema).
+            createLexiconFoldersTable(database);
+            createLexiconFoldersIndex(database);
+
+            // SQLite permits ADD COLUMN with a REFERENCES clause when the column
+            // defaults to NULL — no table rebuild, so no `foreignKeysOff` needed.
+            database.run(
+                `ALTER TABLE lexicon ADD COLUMN folder_id INTEGER NULL REFERENCES lexicon_folders(id) ON DELETE SET NULL`
+            );
+            database.run(`CREATE INDEX IF NOT EXISTS idx_lexicon_folder ON lexicon(folder_id)`);
+
+            // Registry convention: end with a foreign-key check so an
+            // inconsistent result rolls the whole migration back.
+            const violations = foreignKeyViolationCount(database);
+            if (violations > 0) {
+                throw new Error(`Migration v7 left ${violations} foreign-key violation(s)`);
+            }
+        },
+    },
+    {
+        version: 8,
+        description: 'Add glyph_folders + grapheme_folders tables and glyphs.folder_id / graphemes.folder_id',
+        up(database) {
+            // New folder tables + their indexes (shared DDL with createSchema).
+            // Both tables MUST exist before the ALTER TABLE below so the new
+            // REFERENCES clauses resolve.
+            createGlyphFoldersTable(database);
+            createGlyphFoldersIndex(database);
+            createGraphemeFoldersTable(database);
+            createGraphemeFoldersIndex(database);
+
+            // SQLite permits ADD COLUMN with a REFERENCES clause when the column
+            // defaults to NULL — no table rebuild, so no `foreignKeysOff` needed.
+            database.run(
+                `ALTER TABLE glyphs ADD COLUMN folder_id INTEGER NULL REFERENCES glyph_folders(id) ON DELETE SET NULL`
+            );
+            database.run(`CREATE INDEX IF NOT EXISTS idx_glyphs_folder ON glyphs(folder_id)`);
+            database.run(
+                `ALTER TABLE graphemes ADD COLUMN folder_id INTEGER NULL REFERENCES grapheme_folders(id) ON DELETE SET NULL`
+            );
+            database.run(`CREATE INDEX IF NOT EXISTS idx_graphemes_folder ON graphemes(folder_id)`);
+
+            // Registry convention: end with a foreign-key check so an
+            // inconsistent result rolls the whole migration back.
+            const violations = foreignKeyViolationCount(database);
+            if (violations > 0) {
+                throw new Error(`Migration v8 left ${violations} foreign-key violation(s)`);
             }
         },
     },

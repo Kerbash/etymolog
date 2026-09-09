@@ -27,6 +27,7 @@ import {
     cascadeDeleteGlyph as serviceCascadeDeleteGlyph,
     glyphNameExists as serviceGlyphNameExists,
 } from '../glyphService';
+import { glyphFolderDomain } from '../folderDomain';
 import { isDatabaseInitialized } from '../database';
 
 /**
@@ -77,6 +78,12 @@ function create(request: CreateGlyphRequest): ApiResponse<Glyph> {
     if (!request.svg_data || request.svg_data.trim() === '') {
         return errorResponse('VALIDATION_ERROR', 'SVG data is required');
     }
+    // Validate an explicit folder up front — a bad id is rejected here rather
+    // than reaching the FK. Import paths never go through this create; they
+    // coerce a dangling folder_id to null in `validateExport`.
+    if (request.folder_id != null && !glyphFolderDomain.getFolderById(request.folder_id)) {
+        return errorResponse('VALIDATION_ERROR', `Folder with id ${request.folder_id} not found`);
+    }
 
     try {
         const glyph = serviceCreateGlyph({
@@ -84,6 +91,7 @@ function create(request: CreateGlyphRequest): ApiResponse<Glyph> {
             svg_data: request.svg_data,
             category: request.category?.trim(),
             notes: request.notes?.trim(),
+            folder_id: request.folder_id ?? null,
         });
         return successResponse(glyph);
     } catch (error) {

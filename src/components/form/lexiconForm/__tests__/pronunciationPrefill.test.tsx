@@ -98,11 +98,17 @@ vi.mock('../../customInput/ancestryInput', () => ({
 
 const { LexiconFormFields } = await import('../LexiconFormFields');
 const { SmartForm, useSmartForm } = await import('smart-form/smartForm');
+// LexiconFormFields calls useConfirm() (the "Build spelling from ancestors"
+// overwrite guard), which requires a ConfirmDialogProvider above it — the same
+// dependency the real app and the LexiconEditor tests already satisfy.
+const { default: ConfirmDialogProvider } = await import('../../../shared/confirmDialog/ConfirmDialogProvider');
 
 let container: HTMLDivElement;
 let root: Root;
 /** The live form state, captured on every render. */
 let formState: Record<string, unknown> = {};
+/** The latest name-source flag the fields reported. */
+let hasNameSource = false;
 
 function Host({ prefill, mode = 'create' as const }: { prefill?: string; mode?: 'create' | 'edit' }) {
     const { registerField, registerForm } = useSmartForm({ mode: 'onChange' });
@@ -118,13 +124,16 @@ function Host({ prefill, mode = 'create' as const }: { prefill?: string; mode?: 
     });
 
     return (
-        <SmartForm {...formProps} registerField={registerField}>
-            <LexiconFormFields
-                registerField={registerField}
-                mode={mode}
-                initialPronunciation={prefill}
-            />
-        </SmartForm>
+        <ConfirmDialogProvider>
+            <SmartForm {...formProps} registerField={registerField}>
+                <LexiconFormFields
+                    registerField={registerField}
+                    mode={mode}
+                    initialPronunciation={prefill}
+                    onHasNameSourceChange={(v) => { hasNameSource = v; }}
+                />
+            </SmartForm>
+        </ConfirmDialogProvider>
     );
 }
 
@@ -154,6 +163,7 @@ beforeEach(() => {
     document.body.appendChild(container);
     root = createRoot(container);
     previewAutoSpelling.mockClear();
+    hasNameSource = false;
 });
 
 afterEach(() => {
@@ -182,12 +192,13 @@ describe('LexiconFormFields — create-mode prefill', () => {
     it('makes the form submittable without another keystroke', async () => {
         mount(<Host prefill="kato" />);
         await settle();
-        // Pronunciation is a REQUIRED field: seeded properly it validates, and
-        // `isSubmittable` (`isValid && !isEmpty`) goes true. A prefill that
-        // only painted the DOM would leave the submit button dead under a
+        // Pronunciation is optional now, but a prefilled value is still a name
+        // source: `hasNameSource` goes true, and the form stays valid. A prefill
+        // that only painted the DOM would leave the submit button dead under a
         // filled-in form.
         expect(formState.isValid).toBe(true);
         expect(formState.isSubmittable).toBe(true);
+        expect(hasNameSource).toBe(true);
     });
 
     it('lets auto-spell read the value immediately', async () => {
@@ -226,16 +237,17 @@ describe('LexiconFormFields — create-mode prefill', () => {
         await settle();
         expect(pronunciationInput().value).toBe('');
         expect(formState.isChanged).toBe(false);
-        // Required and unfilled: not submittable, which is the whole point of
-        // the field being required.
-        expect(formState.isSubmittable).toBe(false);
+        // Empty pronunciation and (stubbed) empty meanings: no name source, so
+        // the editor's submit gate stays closed even though pronunciation is no
+        // longer a required field.
+        expect(hasNameSource).toBe(false);
     });
 
     it('ignores a whitespace-only prefill', async () => {
         mount(<Host prefill="   " />);
         await settle();
         expect(pronunciationInput().value).toBe('');
-        expect(formState.isSubmittable).toBe(false);
+        expect(hasNameSource).toBe(false);
     });
 
     it('applies the prefill once, not on every render', async () => {

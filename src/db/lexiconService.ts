@@ -71,7 +71,7 @@ function lexiconColumns(alias = ''): string {
     const p = alias ? `${alias}.` : '';
     return [
         'id', 'lemma', 'pronunciation', 'is_native', 'auto_spell', 'meaning',
-        'part_of_speech', 'notes', 'glyph_order', 'needs_attention', 'created_at', 'updated_at',
+        'part_of_speech', 'notes', 'glyph_order', 'needs_attention', 'folder_id', 'created_at', 'updated_at',
     ].map(c => `${p}${c}`).join(', ');
 }
 
@@ -87,6 +87,7 @@ function mapLexiconRecord(rec: SqlRecord): Lexicon {
         notes: (rec.notes as string | null) ?? null,
         glyph_order: (rec.glyph_order as string | null) ?? '[]',
         needs_attention: rec.needs_attention === 1,
+        folder_id: (rec.folder_id as number | null) ?? null,
         created_at: rec.created_at as string,
         updated_at: rec.updated_at as string,
     };
@@ -179,8 +180,8 @@ export function createLexicon(input: CreateLexiconInput): LexiconComplete {
 
     const lexiconId = withTransaction(db, () => {
         db.run(
-            `INSERT INTO lexicon (lemma, pronunciation, is_native, auto_spell, meaning, part_of_speech, notes, glyph_order, needs_attention)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+            `INSERT INTO lexicon (lemma, pronunciation, is_native, auto_spell, meaning, part_of_speech, notes, glyph_order, needs_attention, folder_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
             [
                 input.lemma ?? null,
                 input.pronunciation ?? null,
@@ -190,6 +191,7 @@ export function createLexicon(input: CreateLexiconInput): LexiconComplete {
                 input.part_of_speech ?? null,
                 input.notes ?? null,
                 serializeGlyphOrder(glyphOrder),
+                input.folder_id ?? null,
             ],
         );
         const id = lastInsertId(db);
@@ -442,6 +444,7 @@ export function updateLexicon(id: number, input: UpdateLexiconInput): Lexicon | 
     if (input.notes !== undefined) set('notes', input.notes);
     if (input.glyph_order !== undefined) set('glyph_order', serializeGlyphOrder(input.glyph_order));
     if (input.needs_attention !== undefined) set('needs_attention', input.needs_attention ? 1 : 0);
+    if (input.folder_id !== undefined) set('folder_id', input.folder_id);
 
     if (updates.length === 0 && input.meanings === undefined) {
         return getLexiconById(id);
@@ -895,7 +898,23 @@ export function handleGraphemeDeletion(
             const glyphOrder = deserializeGlyphOrder(entry.glyph_order).map(e => (e === target ? fallback : e));
             // A manually spelled word needs review; a word that was ALREADY
             // flagged stays flagged — this is not the place to clear it.
-            const needsAttention = !entry.auto_spell || entry.needs_attention;
+            //
+            // One more case must be flagged, newly reachable this epic: an
+            // auto-spelled word left with the bare `?` placeholder that the
+            // respell pass cannot repair. That happens when (a) the deleted
+            // grapheme has no pronunciation to substitute — precisely a Phase-3
+            // LOGOGRAM word-symbol grapheme — so `fallback` is `?`, and (b) the
+            // word itself has no usable pronunciation, so the respell pass skips
+            // it (`getAutoSpelledLexiconMentioning` requires a non-empty
+            // pronunciation). Phase 1 made auto_spell + null-pronunciation
+            // reachable; without this the word would keep a meaningless `?`
+            // spelling forever with nothing surfacing it. A word that CAN be
+            // respelled (auto_spell + a pronunciation) is left unflagged as
+            // before — the respell pass replaces the `?` from its pronunciation.
+            const canRespell =
+                !!entry.auto_spell && !!entry.pronunciation && entry.pronunciation.trim() !== '';
+            const strandedPlaceholder = fallback === '?' && !canRespell;
+            const needsAttention = !entry.auto_spell || entry.needs_attention || strandedPlaceholder;
             updateLexicon(entry.id, { glyph_order: glyphOrder, needs_attention: needsAttention });
             if (needsAttention) markedForAttentionCount++;
             else respelledLexiconIds.push(entry.id);

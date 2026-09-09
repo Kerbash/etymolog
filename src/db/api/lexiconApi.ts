@@ -45,7 +45,12 @@ import {
     type AutoSpellResult,
 } from '../autoSpellService';
 import type { AutoSpellResultExtended } from '../types';
-import { isDatabaseInitialized } from '../database';
+import { isDatabaseInitialized, getDatabase } from '../database';
+import { LIMITS } from '../utils/sanitize';
+import { withTransaction } from '../utils/transaction';
+import { createGraphemeEntry } from '../utils/spellingUtils';
+import { createWordSymbol } from '../wordSymbolService';
+import { getFolderById } from '../folderService';
 
 // =============================================================================
 // HELPER FUNCTIONS
@@ -85,6 +90,82 @@ function checkDbInitialized<T>(): ApiResponse<T> | null {
     return null;
 }
 
+/**
+ * The first meaning with non-empty text, trimmed — the third link in the lemma
+ * fallback chain (pronunciation → meaning). Reads the `meanings` array first
+ * and the legacy single `meaning` field second, matching how the service
+ * itself picks its primary meaning.
+ */
+function firstNonEmptyMeaning(
+    request: { meanings?: { meaning?: string }[]; meaning?: string | null },
+): string | undefined {
+    if (request.meanings) {
+        for (const m of request.meanings) {
+            const text = m.meaning?.trim();
+            if (text) return text;
+        }
+    }
+    const legacy = request.meaning?.trim();
+    return legacy ? legacy : undefined;
+}
+
+/**
+ * Derive the NOT-NULL `lemma` from a meaning. A meaning may be up to
+ * `LIMITS.MEANING` (2000) characters, but `lemma` is capped at `LIMITS.LEMMA`
+ * (500) and the service validates that cap — so a raw meaning would make the
+ * whole create/update fail with a confusing "Lemma exceeds maximum length"
+ * error the user cannot act on (they never typed a lemma). The lemma is a
+ * derived display name, so truncating it is correct and non-destructive: the
+ * meaning row keeps its full text.
+ */
+function lemmaFromMeaning(meaning: string | undefined): string | undefined {
+    return meaning ? meaning.slice(0, LIMITS.LEMMA) : undefined;
+}
+
+/**
+ * Trim every meaning row and DROP the ones that are empty after trimming. Empty
+ * rows are junk: they persist blank entries in `lexicon_meanings` and, because
+ * the service takes `meanings[0]` as the primary/legacy `meaning`, a leading
+ * blank row would blank out the primary meaning even when a real meaning
+ * follows. Keeping this in step with `firstNonEmptyMeaning` (which already skips
+ * empties for the lemma) means what is stored matches what names the word.
+ * Returns `undefined` when the request carried no `meanings` array at all, so
+ * the "omitted vs cleared" distinction the update path relies on survives.
+ */
+/**
+ * Coerce a `folder_id` that no longer names an existing folder down to the root
+ * (null), instead of letting it reach the `lexicon.folder_id` foreign key and
+ * fail the whole save with a raw "FOREIGN KEY constraint failed". A stale id is
+ * reachable through a `?folder=<id>` deep link whose folder was deleted after
+ * the link was made: the create form seeds that id, the folder picker (which
+ * only lists existing folders) never fires an onChange to clear it, so the id
+ * survives to submit. The plan's stated intent for that case is "the word
+ * simply files at the root" — this makes that actually happen.
+ *
+ * `undefined` is preserved (leave the column untouched on update); `null`
+ * (explicit root) passes through; a real, existing id passes through.
+ */
+function resolveExistingFolderId(
+    folderId: number | null | undefined,
+): number | null | undefined {
+    if (folderId === undefined || folderId === null) return folderId;
+    return getFolderById(folderId) ? folderId : null;
+}
+
+function cleanMeanings(
+    meanings: CreateLexiconInput['meanings'],
+): CreateLexiconInput['meanings'] {
+    if (meanings === undefined) return undefined;
+    return meanings
+        .map(m => ({
+            ...m,
+            meaning: m.meaning.trim(),
+            part_of_speech: m.part_of_speech?.trim(),
+            usage_notes: m.usage_notes?.trim(),
+        }))
+        .filter(m => m.meaning.length > 0);
+}
+
 // =============================================================================
 // LEXICON API IMPLEMENTATION
 // =============================================================================
@@ -96,34 +177,66 @@ function createLexicon(request: CreateLexiconInput): ApiResponse<LexiconComplete
     const dbError = checkDbInitialized<LexiconComplete>();
     if (dbError) return dbError;
 
-    // Validation
-    // Lemma is deprecated in forms; derive from pronunciation when missing to preserve DB constraint
+    // Lemma is deprecated in FORMS but still NOT NULL in the DB, so it is
+    // derived here from whatever the word can be named by. The chain is
+    // explicit lemma → pronunciation → first non-empty meaning: pronunciation
+    // is now optional (a symbol-first word may have none), and a word with a
+    // meaning but no pronunciation is still nameable by that meaning.
     const lemmaValue = (request.lemma && request.lemma.trim())
         ? request.lemma.trim()
         : (request.pronunciation && request.pronunciation.trim())
             ? request.pronunciation.trim()
-            : undefined;
+            : lemmaFromMeaning(firstNonEmptyMeaning(request));
 
     if (!lemmaValue) {
-        return errorResponse('VALIDATION_ERROR', 'Lemma or pronunciation is required');
+        // Nothing to name the word by — neither a pronunciation nor a meaning.
+        return errorResponse('VALIDATION_ERROR', 'A word needs a pronunciation or at least one meaning');
     }
 
+    // A whole-word symbol wins ONLY when the caller sent no explicit spelling —
+    // an explicit `glyph_order`/`spelling` is a deliberate composition and takes
+    // precedence over the symbol shortcut.
+    const symbolSvg = request.symbol?.svgData?.trim();
+    const hasExplicitSpelling =
+        (request.glyph_order?.length ?? 0) > 0 || (request.spelling?.length ?? 0) > 0;
+    const wantsSymbol = !!symbolSvg && !hasExplicitSpelling;
+
     try {
-        const lexicon = serviceCreateLexicon({
-            ...request,
+        // The `symbol` field is an api-layer concern; strip it before the
+        // service call either way (the service ignores it, but this keeps the
+        // service input honest).
+        const { symbol: _symbol, ...rest } = request;
+        const baseInput = {
+            ...rest,
             lemma: lemmaValue,
             pronunciation: request.pronunciation?.trim(),
             meaning: request.meaning?.trim(),
             part_of_speech: request.part_of_speech?.trim(),
             notes: request.notes?.trim(),
-            meanings: request.meanings?.map(m => ({
-                ...m,
-                meaning: m.meaning.trim(),
-                part_of_speech: m.part_of_speech?.trim(),
-                usage_notes: m.usage_notes?.trim(),
-            })),
-        });
+            meanings: cleanMeanings(request.meanings),
+            folder_id: resolveExistingFolderId(request.folder_id),
+        };
 
+        if (wantsSymbol) {
+            // ONE transaction spanning symbol create + word insert: the symbol
+            // create and `serviceCreateLexicon` each open their own
+            // `withTransaction`, which nest here as savepoints, so a failure in
+            // EITHER (e.g. a bad meaning row) rolls back the whole thing and no
+            // orphan glyph/grapheme survives. Symbol words are always manually
+            // spelled, so `auto_spell` is forced off regardless of the request.
+            const lexicon = withTransaction(getDatabase(), () => {
+                const symbolName = request.symbol!.name?.trim() || lemmaValue;
+                const { graphemeId } = createWordSymbol({ name: symbolName, svgData: symbolSvg! });
+                return serviceCreateLexicon({
+                    ...baseInput,
+                    auto_spell: false,
+                    glyph_order: [createGraphemeEntry(graphemeId)],
+                });
+            });
+            return successResponse(lexicon);
+        }
+
+        const lexicon = serviceCreateLexicon(baseInput);
         return successResponse(lexicon);
     } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to create lexicon entry';
@@ -296,19 +409,46 @@ function updateLexicon(id: number, request: UpdateLexiconInput): ApiResponse<Lex
     if (dbError) return dbError;
 
     try {
+        const existing = serviceGetLexiconById(id);
+        if (!existing) {
+            return errorResponse('NOT_FOUND', `Lexicon entry with id ${id} not found`);
+        }
+
+        // `pronunciation` distinguishes three intents: `undefined` leaves the
+        // column untouched, `null` (or an empty/whitespace string) CLEARS it,
+        // and a real string is stored trimmed. Without this, an empty edit
+        // resolved to `undefined` and the old pronunciation silently survived.
+        const pronunciation =
+            request.pronunciation === undefined
+                ? undefined
+                : (request.pronunciation?.trim() || null);
+
+        // The lemma must never be nulled out by an edit. Recompute it with the
+        // same chain create uses — explicit lemma → pronunciation → first
+        // non-empty meaning — but resolved against the word AFTER the edit
+        // (so an omitted pronunciation keeps naming the word by its unchanged
+        // value) and with the EXISTING lemma as the final fallback, so clearing
+        // the pronunciation of a word with no meaning keeps its current name
+        // rather than emptying the NOT NULL column.
+        const effectivePron =
+            request.pronunciation === undefined ? existing.pronunciation : pronunciation;
+        const trimmedLemma = request.lemma?.trim();
+        const trimmedPron = effectivePron?.trim();
+        const lemmaValue = trimmedLemma
+            ? trimmedLemma
+            : trimmedPron
+                ? trimmedPron
+                : lemmaFromMeaning(firstNonEmptyMeaning(request)) ?? existing.lemma;
+
         const lexicon = serviceUpdateLexicon(id, {
             ...request,
-            lemma: request.lemma?.trim(),
-            pronunciation: request.pronunciation?.trim(),
+            lemma: lemmaValue,
+            pronunciation,
             meaning: request.meaning?.trim(),
             part_of_speech: request.part_of_speech?.trim(),
             notes: request.notes?.trim(),
-            meanings: request.meanings?.map(m => ({
-                ...m,
-                meaning: m.meaning.trim(),
-                part_of_speech: m.part_of_speech?.trim(),
-                usage_notes: m.usage_notes?.trim(),
-            })),
+            meanings: cleanMeanings(request.meanings),
+            folder_id: resolveExistingFolderId(request.folder_id),
         });
 
         if (!lexicon) {

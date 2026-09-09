@@ -301,6 +301,8 @@ export interface CreateGlyphRequest {
     svg_data: string;
     category?: string;
     notes?: string;
+    /** Nesting folder id (schema v8); validated at the API layer. */
+    folder_id?: number | null;
 }
 
 /**
@@ -350,6 +352,8 @@ export interface CreateGraphemeRequest {
         use_in_auto_spelling?: boolean;
         context?: string;
     }>;
+    /** Nesting folder id (schema v8); validated at the API layer. */
+    folder_id?: number | null;
 }
 
 /**
@@ -442,6 +446,27 @@ export interface ReplacePhonemesResult {
 export type CreateGraphemeResult = import('../types').GraphemeComplete & {
     lexiconRespelled: number;
 };
+
+// =============================================================================
+// WORD SYMBOL API TYPES
+// =============================================================================
+
+/** The backing glyph + grapheme ids a word symbol resolves to. */
+export type WordSymbolRefs = import('../wordSymbolService').WordSymbolRefs;
+
+/** Create a whole-word symbol (backing logogram glyph + grapheme). */
+export interface CreateWordSymbolRequest {
+    /** Symbol name; defaults, at the composite-create layer, to the display name. */
+    name: string;
+    /** The symbol SVG — a drawing or an imported image. */
+    svgData: string;
+}
+
+/** Replace the drawing of an existing word symbol grapheme. */
+export interface UpdateWordSymbolDrawingRequest {
+    graphemeId: number;
+    svgData: string;
+}
 
 // =============================================================================
 // DATABASE API TYPES
@@ -555,6 +580,20 @@ export interface PhonemeApi {
 }
 
 /**
+ * Word Symbol API interface (Phase 3, UC-B1).
+ *
+ * A word symbol is a whole-word logograph — one drawn/imported symbol backed by
+ * a single-glyph `'logogram'` grapheme. `create` makes that glyph + grapheme in
+ * one transaction; the composite `lexicon.create` uses the SAME primitive from
+ * inside its own transaction so a failed word insert rolls the symbol back.
+ * `updateDrawing` re-draws an existing symbol's glyph.
+ */
+export interface WordSymbolApi {
+    create(request: CreateWordSymbolRequest): ApiResponse<WordSymbolRefs>;
+    updateDrawing(request: UpdateWordSymbolDrawingRequest): ApiResponse<WordSymbolRefs>;
+}
+
+/**
  * Settings API interface - application settings management.
  */
 export interface SettingsImportResult {
@@ -601,4 +640,11 @@ export interface EtymologApi {
     database: DatabaseApi;
     lexicon: import('./lexiconApi').LexiconApi;
     phrase: import('./phraseApi').PhraseApi;
+    wordSymbol: WordSymbolApi;
+    /** Lexicon folders (carries the historical `setLexiconFolder` alias). */
+    folder: import('./folderApi').LexiconFolderApi;
+    /** Glyph folders (schema v8). */
+    glyphFolder: import('./folderApi').FolderApi;
+    /** Grapheme folders (schema v8). */
+    graphemeFolder: import('./folderApi').FolderApi;
 }

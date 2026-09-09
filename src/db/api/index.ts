@@ -37,6 +37,10 @@ export type {
     CreateGraphemeResult,
     DeleteGraphemeOptions,
     DeleteGraphemeResult,
+    CreateWordSymbolRequest,
+    UpdateWordSymbolDrawingRequest,
+    WordSymbolRefs,
+    WordSymbolApi,
     DatabaseStatus,
     ExportFormat,
     GlyphApi,
@@ -82,6 +86,16 @@ export type {
     PhraseApi,
 } from './phraseApi';
 
+// Re-export folder API types
+export type {
+    FolderApi,
+    LexiconFolderApi,
+    CreateFolderRequest,
+    UpdateFolderRequest,
+    SetItemFolderRequest,
+    SetLexiconFolderRequest,
+} from './folderApi';
+
 // Import API implementations
 import { glyphApi } from './glyphApi';
 import { graphemeApi, phonemeApi } from './graphemeApi';
@@ -89,6 +103,8 @@ import { settingsApi, getCurrentSettings, subscribeToSettings } from './settings
 import { databaseApi, initDatabase } from './databaseApi';
 import { lexiconApi } from './lexiconApi';
 import { phraseApi } from './phraseApi';
+import { wordSymbolApi } from './wordSymbolApi';
+import { folderApi, glyphFolderApi, graphemeFolderApi } from './folderApi';
 
 /**
  * Complete Etymolog API.
@@ -102,10 +118,14 @@ export const etymologApi = {
     database: databaseApi,
     lexicon: lexiconApi,
     phrase: phraseApi,
+    wordSymbol: wordSymbolApi,
+    folder: folderApi,
+    glyphFolder: glyphFolderApi,
+    graphemeFolder: graphemeFolderApi,
 } as const;
 
 // Re-export individual APIs for direct access if needed
-export { glyphApi, graphemeApi, phonemeApi, settingsApi, databaseApi, lexiconApi, phraseApi };
+export { glyphApi, graphemeApi, phonemeApi, settingsApi, databaseApi, lexiconApi, phraseApi, wordSymbolApi, folderApi, glyphFolderApi, graphemeFolderApi };
 
 // Re-export utility functions
 export { getCurrentSettings, subscribeToSettings, initDatabase };

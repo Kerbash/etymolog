@@ -53,10 +53,13 @@ type TableSpec = Record<string, ColumnSpec>;
 export type InsertableTable = Exclude<keyof ExportTables, 'lexicon_ancestry_closure'>;
 
 export const INSERTABLE_TABLES: readonly InsertableTable[] = [
+    'glyph_folders',
     'glyphs',
+    'grapheme_folders',
     'graphemes',
     'grapheme_glyphs',
     'phonemes',
+    'lexicon_folders',
     'lexicon',
     'lexicon_spelling',
     'lexicon_meanings',
@@ -65,21 +68,38 @@ export const INSERTABLE_TABLES: readonly InsertableTable[] = [
 
 const NOW = "datetime('now')"; // marker: column omitted so SQLite applies its DEFAULT
 
+/** Column spec shared by every folder table (lexicon/glyph/grapheme). */
+const FOLDER_TABLE_SPEC: TableSpec = {
+    id: { type: 'id' },
+    name: { type: 'text' },
+    // Self-referencing; null at the root. Older envelopes have no folders at all.
+    parent_id: { type: 'int?', default: null },
+    position: { type: 'int', default: 0 },
+    created_at: { type: 'text', default: NOW },
+    updated_at: { type: 'text', default: NOW },
+};
+
 const TABLE_SPECS: Record<InsertableTable, TableSpec> = {
+    glyph_folders: FOLDER_TABLE_SPEC,
     glyphs: {
         id: { type: 'id' },
         name: { type: 'text' },
         svg_data: { type: 'text' },
         category: { type: 'text?', default: null },
         notes: { type: 'text?', default: null },
+        // Absent (null) in a v1–v2 envelope; a real folder id in a v3 one.
+        folder_id: { type: 'int?', default: null },
         created_at: { type: 'text', default: NOW },
         updated_at: { type: 'text', default: NOW },
     },
+    grapheme_folders: FOLDER_TABLE_SPEC,
     graphemes: {
         id: { type: 'id' },
         name: { type: 'text' },
         category: { type: 'text?', default: null },
         notes: { type: 'text?', default: null },
+        // Absent (null) in a v1–v2 envelope; a real folder id in a v3 one.
+        folder_id: { type: 'int?', default: null },
         created_at: { type: 'text', default: NOW },
         updated_at: { type: 'text', default: NOW },
     },
@@ -97,6 +117,15 @@ const TABLE_SPECS: Record<InsertableTable, TableSpec> = {
         use_in_auto_spelling: { type: 'bool', default: 0 },
         context: { type: 'text?', default: null },
     },
+    lexicon_folders: {
+        id: { type: 'id' },
+        name: { type: 'text' },
+        // Self-referencing; null at the root. A v1 export has no folders at all.
+        parent_id: { type: 'int?', default: null },
+        position: { type: 'int', default: 0 },
+        created_at: { type: 'text', default: NOW },
+        updated_at: { type: 'text', default: NOW },
+    },
     lexicon: {
         id: { type: 'id' },
         lemma: { type: 'text' },
@@ -108,6 +137,8 @@ const TABLE_SPECS: Record<InsertableTable, TableSpec> = {
         notes: { type: 'text?', default: null },
         glyph_order: { type: 'jsonArray', default: '[]' },
         needs_attention: { type: 'bool', default: 0 },
+        // Absent (null) in a v1 envelope; a real folder id in a v2 one.
+        folder_id: { type: 'int?', default: null },
         created_at: { type: 'text', default: NOW },
         updated_at: { type: 'text', default: NOW },
     },
@@ -302,6 +333,46 @@ export function validateExportData(data: EtymologExportData): ValidatedExport {
         ids[table] = new Set(tables[table].map(row => row.id as number));
         accepted[table] = tables[table].length;
     }
+
+    // Each `<folder>.parent_id` and `<item>.folder_id` is a NULLABLE self/cross
+    // reference, so the REFERENCES prune loop above (which assumes a non-null
+    // FK) cannot police them without dropping every root folder and every
+    // unfiled item. Repair dangling ones in place instead — a corrupt file that
+    // names a missing parent/folder becomes null rather than aborting the whole
+    // import at the final foreign_key_check. A well-formed export has none, and
+    // an older envelope has no such folders at all so this is a no-op there.
+    const coerceFolderDomain = (
+        folderTable: InsertableTable,
+        itemTable: InsertableTable,
+        itemNoun: string,
+    ) => {
+        const folderIds = ids[folderTable]!;
+        let orphanedFolders = 0;
+        for (const row of tables[folderTable]) {
+            const parentId = row.parent_id as number | null;
+            if (parentId !== null && !folderIds.has(parentId)) {
+                row.parent_id = null;
+                orphanedFolders++;
+            }
+        }
+        if (orphanedFolders > 0) {
+            warnings.push(`${orphanedFolders} folder(s) referenced a missing parent folder and were moved to the root`);
+        }
+        let unfiledItems = 0;
+        for (const row of tables[itemTable]) {
+            const folderId = row.folder_id as number | null;
+            if (folderId !== null && !folderIds.has(folderId)) {
+                row.folder_id = null;
+                unfiledItems++;
+            }
+        }
+        if (unfiledItems > 0) {
+            warnings.push(`${unfiledItems} ${itemNoun}(s) referenced a missing folder and were moved to the root`);
+        }
+    };
+    coerceFolderDomain('lexicon_folders', 'lexicon', 'word');
+    coerceFolderDomain('glyph_folders', 'glyphs', 'glyph');
+    coerceFolderDomain('grapheme_folders', 'graphemes', 'grapheme');
 
     // `lexicon.glyph_order` is a JSON column, so no foreign key can see inside
     // it. Resolve every "grapheme-<id>" entry against the graphemes that are

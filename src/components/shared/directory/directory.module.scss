@@ -1,0 +1,199 @@
+/**
+ * Directory UI (shared/directory) — breadcrumb, inline folder tree, the tree
+ * select, and the name/move dialogs. Colours come only from the semantic tokens
+ * in index.css (the token ratchet rejects any literal); layout leans on
+ * utils-styles at the call sites, so this module holds only what a utility class
+ * cannot express.
+ *
+ * Ported from `tabs/lexicon/folders/folders.module.scss` in Phase 3 and extended
+ * with the inline-tree node chrome the old one-level FolderBrowser did not need.
+ */
+
+/* ---- Tree select ------------------------------------------------------- */
+
+.selectField {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.selectLabel {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.select {
+    width: 100%;
+    padding: 0.5rem 0.65rem;
+    font-family: var(--font-body);
+    font-size: 0.95rem;
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+    border: var(--border-width) solid var(--border-primary);
+    border-radius: var(--radius-control);
+}
+
+.select:focus-visible {
+    outline: var(--border-width-strong) solid var(--interactive-base);
+    outline-offset: 1px;
+}
+
+/* ---- Toggle + breadcrumb bar ------------------------------------------ */
+
+.toggleRow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.5rem 0.65rem;
+    background: var(--surface-base);
+    border: var(--border-width) solid var(--border-primary);
+    border-radius: var(--radius-surface);
+}
+
+.breadcrumb {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.9rem;
+}
+
+.crumb {
+    padding: 0.15rem 0.4rem;
+    color: var(--interactive-base);
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-control);
+    cursor: pointer;
+    font: inherit;
+}
+
+.crumb:hover {
+    color: var(--interactive-hover);
+    background: var(--surface-hover);
+}
+
+.crumbCurrent {
+    color: var(--text-primary);
+    font-weight: 600;
+    padding: 0.15rem 0.4rem;
+}
+
+.separator {
+    color: var(--text-secondary-muted);
+}
+
+/* ---- Inline folder tree ----------------------------------------------- */
+
+.tree {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+/* The header content the caller renders INSIDE the tree toggle button. */
+.nodeHeader {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.nodeName {
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text-primary);
+}
+
+.nodeMeta {
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    white-space: nowrap;
+}
+
+.nodeActions {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+/* The capped card grid a folder shows when expanded. The track sizing and gap
+   arrive as inline styles from the caller's minItemWidth / itemGap (no CSS
+   custom properties — the token ratchet allows neither an undefined property
+   nor a var() fallback). */
+.itemGrid {
+    display: grid;
+    padding: 0.35rem 0 0.5rem;
+}
+
+.showAllRow {
+    display: flex;
+    padding: 0.15rem 0 0.4rem;
+}
+
+.showAll {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.5rem;
+    color: var(--interactive-base);
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-control);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.85rem;
+}
+
+.showAll:hover {
+    color: var(--interactive-hover);
+    background: var(--surface-hover);
+}
+
+.emptyNote {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin: 0;
+    padding: 0.35rem 0;
+}
+
+/* ---- Name dialog ------------------------------------------------------- */
+
+.nameField {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.nameLabel {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.nameInput {
+    width: 100%;
+    padding: 0.55rem 0.7rem;
+    font-family: var(--font-body);
+    font-size: 1rem;
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+    border: var(--border-width) solid var(--border-primary);
+    border-radius: var(--radius-control);
+}
+
+.nameInput:focus-visible {
+    outline: var(--border-width-strong) solid var(--interactive-base);
+    outline-offset: 1px;
+}

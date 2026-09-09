@@ -6,7 +6,7 @@
  * database types (e.g. integers for booleans, TEXT for dates). This ensures
  * lossless round-trip fidelity when exporting and re-importing data.
  *
- * The `EtymologExportData` envelope wraps all 8 tables plus the user's settings
+ * The `EtymologExportData` envelope wraps all tables plus the user's settings
  * into a single versioned, self-identifying JSON structure (magic + version).
  */
 
@@ -22,6 +22,8 @@ export interface GlyphRow {
     svg_data: string;
     category: string | null;
     notes: string | null;
+    /** Nesting folder (schema v8); null / absent in a v1–v2 envelope. */
+    folder_id: number | null;
     created_at: string;
     updated_at: string;
 }
@@ -35,6 +37,8 @@ export interface GraphemeRow {
     name: string;
     category: string | null;
     notes: string | null;
+    /** Nesting folder (schema v8); null / absent in a v1–v2 envelope. */
+    folder_id: number | null;
     created_at: string;
     updated_at: string;
 }
@@ -81,6 +85,48 @@ export interface LexiconRow {
     notes: string | null;
     glyph_order: string;
     needs_attention: number;
+    /** Nesting folder (schema v7); null / absent in a v1 envelope. */
+    folder_id: number | null;
+    created_at: string;
+    updated_at: string;
+}
+
+/**
+ * Raw row from the `lexicon_folders` table (schema v7 / export version 2).
+ * Nested folders for organising lexicon entries; `parent_id` self-references
+ * (null at the root level).
+ */
+export interface LexiconFolderRow {
+    id: number;
+    name: string;
+    parent_id: number | null;
+    position: number;
+    created_at: string;
+    updated_at: string;
+}
+
+/**
+ * Raw row from the `glyph_folders` table (schema v8 / export version 3).
+ * Structural clone of `LexiconFolderRow` for glyphs.
+ */
+export interface GlyphFolderRow {
+    id: number;
+    name: string;
+    parent_id: number | null;
+    position: number;
+    created_at: string;
+    updated_at: string;
+}
+
+/**
+ * Raw row from the `grapheme_folders` table (schema v8 / export version 3).
+ * Structural clone of `LexiconFolderRow` for graphemes.
+ */
+export interface GraphemeFolderRow {
+    id: number;
+    name: string;
+    parent_id: number | null;
+    position: number;
     created_at: string;
     updated_at: string;
 }
@@ -137,10 +183,13 @@ export interface LexiconAncestryClosureRow {
  * Used as the `tables` field inside `EtymologExportData`.
  */
 export interface ExportTables {
+    glyph_folders: GlyphFolderRow[];
     glyphs: GlyphRow[];
+    grapheme_folders: GraphemeFolderRow[];
     graphemes: GraphemeRow[];
     grapheme_glyphs: GraphemeGlyphRow[];
     phonemes: PhonemeRow[];
+    lexicon_folders: LexiconFolderRow[];
     lexicon: LexiconRow[];
     lexicon_spelling: LexiconSpellingRow[];
     lexicon_meanings: LexiconMeaningRow[];
@@ -161,7 +210,7 @@ export interface ExportTables {
  * - `exportedAt` — ISO 8601 timestamp of when the export was created.
  * - `conlangName` — human-readable name of the conlang, from settings.
  * - `settings` — full `EtymologSettings` snapshot (persisted in localStorage).
- * - `tables` — all 8 SQLite tables as raw row arrays.
+ * - `tables` — all SQLite tables as raw row arrays.
  */
 export interface EtymologExportData {
     magic: 'ETYMOLOG_EXPORT';
@@ -182,10 +231,17 @@ export interface EtymologExportData {
  * violations when restoring a database from an export.
  */
 export const TABLE_INSERTION_ORDER: (keyof ExportTables)[] = [
+    // Each folder table precedes the item table it references, so the item's
+    // `folder_id` FK resolves on insert; folder rows are read in id (=
+    // parent-before-child) order, so `parent_id` self-references are FK-safe
+    // within each folder table too.
+    'glyph_folders',
     'glyphs',
+    'grapheme_folders',
     'graphemes',
     'grapheme_glyphs',
     'phonemes',
+    'lexicon_folders',
     'lexicon',
     'lexicon_spelling',
     'lexicon_meanings',
@@ -199,10 +255,13 @@ export const TABLE_INSERTION_ORDER: (keyof ExportTables)[] = [
  * after import could collide with imported IDs.
  */
 export const AUTOINCREMENT_TABLES: (keyof ExportTables)[] = [
+    'glyph_folders',
     'glyphs',
+    'grapheme_folders',
     'graphemes',
     'grapheme_glyphs',
     'phonemes',
+    'lexicon_folders',
     'lexicon',
     'lexicon_spelling',
     'lexicon_meanings',

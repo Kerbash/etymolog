@@ -21,6 +21,7 @@ import type {
     GlyphWithUsage,
     GraphemeComplete,
     LexiconComplete,
+    FolderRecord,
 } from '../types';
 
 // =============================================================================
@@ -29,7 +30,7 @@ import type {
 
 export interface RefreshError {
     /** Which slice failed to load */
-    slice: 'glyphs' | 'graphemes' | 'lexicon';
+    slice: 'glyphs' | 'graphemes' | 'lexicon' | 'folders' | 'glyphFolders' | 'graphemeFolders';
     message: string;
     at: string;
 }
@@ -46,6 +47,12 @@ export interface EtymologData {
     graphemesComplete: GraphemeComplete[];
     /** All lexicon entries with complete data */
     lexiconComplete: LexiconComplete[];
+    /** All nested lexicon folders (schema v7); the caller assembles the tree */
+    folders: FolderRecord[];
+    /** All nested glyph folders (schema v8); the caller assembles the tree */
+    glyphFolders: FolderRecord[];
+    /** All nested grapheme folders (schema v8); the caller assembles the tree */
+    graphemeFolders: FolderRecord[];
     glyphCount: number;
     graphemeCount: number;
     lexiconCount: number;
@@ -78,6 +85,9 @@ export interface EtymologContextValue {
     refreshGlyphs: () => void;
     refreshGraphemes: () => void;
     refreshLexicon: () => void;
+    refreshFolders: () => void;
+    refreshGlyphFolders: () => void;
+    refreshGraphemeFolders: () => void;
     /**
      * Run `fn` with the per-mutation refreshes COALESCED into one per slice.
      *
@@ -110,6 +120,9 @@ export const EMPTY_DATA: EtymologData = {
     glyphsWithUsage: [],
     graphemesComplete: [],
     lexiconComplete: [],
+    folders: [],
+    glyphFolders: [],
+    graphemeFolders: [],
     glyphCount: 0,
     graphemeCount: 0,
     lexiconCount: 0,

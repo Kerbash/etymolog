@@ -108,6 +108,14 @@ const COLOUR_LITERAL_ALLOWLIST: ReadonlyArray<{ file: string; reason: string }> 
             'currentColor on the way into the database — so a file without them could not ' +
             'test the rule this ratchet exists to enforce.',
     },
+    {
+        file: 'components/form/glyphImport/__tests__/rasterToGlyphSvg.test.ts',
+        reason:
+            'SVG fixture strings fed to the image-import codec. The literals are test ' +
+            'INPUT: the assertions prove a hardcoded colour in an imported SVG file is ' +
+            'normalised to currentColor (or rejected) before storage, which is the very ' +
+            'rule this ratchet enforces.',
+    },
 ];
 
 const ALLOWED_LITERAL_FILES = new Set(COLOUR_LITERAL_ALLOWLIST.map((e) => e.file));

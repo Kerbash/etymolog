@@ -211,3 +211,53 @@ Kept only as a record of what these entries used to say.
 - ~~The header's Export and Import dropdown toggles are `<div aria-haspopup>`~~ —
   real `<button>`s with accessible names, covered by
   `src/components/exportImport/__tests__/ExportImportButtons.test.tsx`.
+
+## From the logograph epic (2026-09-09, feat/etymolog-logograph)
+
+- **Push + mirror deploy + notify the feedback author.** The epic (pronunciation-optional
+  words, image import, word symbols, compound builder, nested folders — LOGOGRAPH_PLAN.md)
+  is merged-ready on the branch with docs/ rebuilt at v0.4.0. Pushing master and
+  re-snapshotting the Kerbash/etymolog mirror are human steps (see
+  README §Deployment); the feedback author offered to re-test — worth taking up once live.
+- **Symbol mode-switch on edit can orphan a grapheme on retry.** Switching a word INTO
+  Symbol mode on edit mints the symbol grapheme before the word update; a failed save +
+  retry mints another (unreferenced only, no corruption). Tightening (mint inside the
+  update, or reuse the last-minted id) is a small follow-up.
+  *Done instead:* documented; final audit verified no data corruption.
+- **Corrupt-import folder cycles.** A hand-crafted v2 export with a parent_id cycle
+  imports successfully but those folders are unreachable (never at root). All tree walks
+  carry visited-guards so nothing hangs. A cycle-break pass in validateExport would be
+  more complete.
+- **Custom phoneme inventory (beyond-human-anatomy sounds).** The free-text IPA field
+  already accepts any character (the feedback author uses this); a first-class custom
+  phoneme inventory is a separate epic.
+- **Logograph-friendly mode setting** (re-ordering form sections symbol-first) and
+  **folder drag-and-drop reordering** (position column exists; UI is click-to-move) —
+  deliberate scope cuts.
+
+## From the tree-explorer epic (2026-09-09, feat/etymolog-tree-explorer)
+
+The epic (folders for words, glyphs AND graphemes, rendered as an inline
+collapsible tree — `TREE_EXPLORER_PLAN.md`) is merged-ready on the branch with
+`docs/` rebuilt at v0.5.0.
+
+- **Push `master` to origin** (human decision).
+- **Re-snapshot the Kerbash/etymolog Pages mirror** after the merge (see
+  README §Deployment).
+- **Tell the feedback author** folders now cover **glyphs and graphemes too, not
+  just words**, and are browsed as an inline collapsible tree (expand a folder in
+  place, cap-and-focus at 12 items, deep-linkable `?folder=`). They offered to
+  re-test — worth taking up once live.
+- **Fix the permanently-mounted-`Modal` pattern in cyber `Modal` itself.** Three
+  unrelated modals — `exportImport/ImportJsonModal.tsx`,
+  `exportImport/ImportImageModal.tsx`, `display/customChart/CreateChartModal.tsx`
+  — still carry the same latent shape that stranded an invisible click-eating
+  overlay for the folder dialogs (fixed locally in `339ec01` by gating the whole
+  `<Modal>` on `isOpen`). The durable fix belongs in cyber `<Modal>` (own the
+  mount/unmount so consumers can keep the `{isOpen && ...}` inner gate); it was
+  out of scope here (additive-only `packages/` constraint). **Separate task.**
+- **Pre-existing lexicon v7 folder-persistence bug was also fixed by `b085b24`.**
+  Folder rename / move and `setLexiconFolder` (move-word-to-folder) never marked
+  the DB dirty in v0.3.x, so those mutations did not survive a reload. The engine
+  fix closes it for all three domains at once — worth mentioning to the feedback
+  author, since v0.3.x users could have lost folder renames/moves.

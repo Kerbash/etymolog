@@ -38,7 +38,7 @@ import type {
 // ROW MAPPING
 // =============================================================================
 
-const GRAPHEME_COLUMNS = 'id, name, category, notes, created_at, updated_at';
+const GRAPHEME_COLUMNS = 'id, name, category, notes, folder_id, created_at, updated_at';
 const PHONEME_COLUMNS = 'id, grapheme_id, phoneme, use_in_auto_spelling, context';
 
 function mapGrapheme(rec: SqlRecord): Grapheme {
@@ -47,6 +47,7 @@ function mapGrapheme(rec: SqlRecord): Grapheme {
         name: rec.name as string,
         category: (rec.category as string | null) ?? null,
         notes: (rec.notes as string | null) ?? null,
+        folder_id: (rec.folder_id as number | null) ?? null,
         created_at: rec.created_at as string,
         updated_at: rec.updated_at as string,
     };
@@ -59,6 +60,7 @@ function mapGlyph(rec: SqlRecord): Glyph {
         svg_data: rec.svg_data as string,
         category: (rec.category as string | null) ?? null,
         notes: (rec.notes as string | null) ?? null,
+        folder_id: (rec.folder_id as number | null) ?? null,
         created_at: rec.created_at as string,
         updated_at: rec.updated_at as string,
     };
@@ -97,8 +99,8 @@ export function createGrapheme(input: CreateGraphemeInput): GraphemeComplete {
 
     const graphemeId = withTransaction(db, () => {
         db.run(
-            `INSERT INTO graphemes (name, category, notes) VALUES (?, ?, ?)`,
-            [input.name, input.category ?? null, input.notes ?? null],
+            `INSERT INTO graphemes (name, category, notes, folder_id) VALUES (?, ?, ?, ?)`,
+            [input.name, input.category ?? null, input.notes ?? null, input.folder_id ?? null],
         );
         const id = lastInsertId(db);
         for (const glyphInput of input.glyphs) {
@@ -174,7 +176,7 @@ export function getAllGraphemesComplete(): GraphemeComplete[] {
 function loadGlyphsByGrapheme(): Map<number, Glyph[]> {
     const out = new Map<number, Glyph[]>();
     for (const rec of execRows(getDatabase(), `
-        SELECT gg.grapheme_id, g.id, g.name, g.svg_data, g.category, g.notes, g.created_at, g.updated_at
+        SELECT gg.grapheme_id, g.id, g.name, g.svg_data, g.category, g.notes, g.folder_id, g.created_at, g.updated_at
         FROM grapheme_glyphs gg
         JOIN glyphs g ON g.id = gg.glyph_id
         ORDER BY gg.grapheme_id, gg.position ASC
@@ -277,7 +279,7 @@ export function getGraphemeCount(): number {
 /** Glyphs for a grapheme, ordered by position. */
 export function getGlyphsByGraphemeId(graphemeId: number): Glyph[] {
     return execRows(getDatabase(), `
-        SELECT g.id, g.name, g.svg_data, g.category, g.notes, g.created_at, g.updated_at
+        SELECT g.id, g.name, g.svg_data, g.category, g.notes, g.folder_id, g.created_at, g.updated_at
         FROM glyphs g
         JOIN grapheme_glyphs gg ON g.id = gg.glyph_id
         WHERE gg.grapheme_id = ?

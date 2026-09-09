@@ -472,10 +472,15 @@ export const ALL_TABLES_CHILDREN_FIRST = [
     'lexicon_spelling',
     'lexicon_meanings',
     'lexicon',
+    'lexicon_folders',
     'phonemes',
     'grapheme_glyphs',
     'graphemes',
+    // grapheme_folders after graphemes (graphemes.folder_id → grapheme_folders)
+    'grapheme_folders',
     'glyphs',
+    // glyph_folders after glyphs (glyphs.folder_id → glyph_folders)
+    'glyph_folders',
 ] as const;
 
 /**

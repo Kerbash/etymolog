@@ -42,8 +42,16 @@ export default function DetailedLexiconDisplay({
                         No spelling
                     </div>
                 )}
-                {/* Primary title: pronunciation in slashes, or lemma fallback */}
+                {/* Primary title: pronunciation in slashes, or the lemma (which
+                    is derived from the first meaning when there is no
+                    pronunciation) as the fallback name. */}
                 <h2 className={styles.detailedLexiconLemma}>{lexiconData.pronunciation ? `/${lexiconData.pronunciation}/` : lexiconData.lemma}</h2>
+
+                {/* Make the absence explicit rather than silent — this word is
+                    named by its meaning; a pronunciation can be added later. */}
+                {!lexiconData.pronunciation && (
+                    <p className={styles.detailedLexiconNoPronunciation}>No pronunciation yet</p>
+                )}
 
                 {/* A LABELLED group: "External" and "Auto-spell" sat here as
                     bare chips with no indication of what dimension they

@@ -11,6 +11,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import type { Database } from 'sql.js';
 import { createDetachedDatabase } from '../database';
+import { withTransaction } from '../utils/transaction';
 import {
     CURRENT_SCHEMA_VERSION,
     MIGRATIONS,
@@ -82,7 +83,7 @@ describe('migration registry', () => {
         expect(MIGRATIONS.map(m => m.version)).toEqual(
             Array.from({ length: CURRENT_SCHEMA_VERSION }, (_, i) => i + 1)
         );
-        expect(CURRENT_SCHEMA_VERSION).toBe(6);
+        expect(CURRENT_SCHEMA_VERSION).toBe(8);
     });
 
     it('only v6 needs foreign keys off', () => {
@@ -162,16 +163,20 @@ describe('runMigrations across every legacy fixture', () => {
                 const db = await openFixture(key);
                 runMigrations(db);
                 for (const table of [
-                    'glyphs', 'graphemes', 'grapheme_glyphs', 'phonemes',
+                    'glyph_folders', 'glyphs', 'grapheme_folders', 'graphemes',
+                    'grapheme_glyphs', 'phonemes',
                     'lexicon', 'lexicon_spelling', 'lexicon_ancestry',
-                    'lexicon_ancestry_closure', 'lexicon_meanings',
+                    'lexicon_ancestry_closure', 'lexicon_meanings', 'lexicon_folders',
                 ]) {
                     expect(tableExists(db, table), table).toBe(true);
                 }
                 expect(columnExists(db, 'glyphs', 'category')).toBe(true);
                 expect(columnExists(db, 'graphemes', 'category')).toBe(true);
+                expect(columnExists(db, 'glyphs', 'folder_id')).toBe(true);
+                expect(columnExists(db, 'graphemes', 'folder_id')).toBe(true);
                 expect(columnExists(db, 'lexicon', 'glyph_order')).toBe(true);
                 expect(columnExists(db, 'lexicon', 'needs_attention')).toBe(true);
+                expect(columnExists(db, 'lexicon', 'folder_id')).toBe(true);
                 expect(ancestorFkOnDelete(db)).toBe('CASCADE');
                 expect(fkViolations(db)).toBe(0);
                 expect(scalar(db, 'PRAGMA foreign_keys')).toBe(1);
@@ -290,7 +295,7 @@ describe('specific migration behaviours', () => {
         expect(fkViolations(db)).toBeGreaterThan(0);
 
         const result = runMigrations(db);
-        expect(result.applied).toEqual([6]);
+        expect(result.applied).toEqual([6, 7, 8]);
         expect(fkViolations(db)).toBe(0);
         // The repair resyncs the derived spelling index from the (repaired) glyph_order.
         const expectedSpellingRows = [glyphOrderOf(db, 1), glyphOrderOf(db, 2)]
@@ -324,5 +329,191 @@ describe('specific migration behaviours', () => {
         const db = await openFresh();
         db.run(`PRAGMA user_version = ${CURRENT_SCHEMA_VERSION + 1}`);
         expect(() => runMigrations(db)).toThrow(/newer than this build/);
+    });
+});
+
+// =============================================================================
+// SCHEMA-STRUCTURE SNAPSHOT (formatting-independent fresh-vs-migrated equality)
+// =============================================================================
+
+/**
+ * A structural fingerprint of the whole schema that ignores the SQL TEXT (so
+ * `IF NOT EXISTS`, whitespace, and inline-vs-ALTER column placement do not
+ * matter) but captures everything that affects behaviour: the set of tables,
+ * each table's columns (name/type/notnull/default/pk), its foreign keys, and
+ * its indexes with their columns. Two databases with the same fingerprint are
+ * schema-equivalent.
+ */
+function schemaFingerprint(db: Database): unknown {
+    const tableRows = db.exec(
+        `SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`
+    );
+    const tables = tableRows.length > 0 ? tableRows[0].values.map(r => r[0] as string) : [];
+
+    const perTable: Record<string, unknown> = {};
+    for (const table of tables) {
+        const columns = (db.exec(`PRAGMA table_info(${table})`)[0]?.values ?? [])
+            .map(r => ({ name: r[1], type: r[2], notnull: r[3], dflt: r[4], pk: r[5] }))
+            .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+
+        const fks = (db.exec(`PRAGMA foreign_key_list(${table})`)[0]?.values ?? [])
+            .map(r => ({ table: r[2], from: r[3], to: r[4], on_update: r[5], on_delete: r[6] }))
+            .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+
+        const indexes = (db.exec(`PRAGMA index_list(${table})`)[0]?.values ?? [])
+            .map(r => {
+                const indexName = r[1] as string;
+                const cols = (db.exec(`PRAGMA index_info(${indexName})`)[0]?.values ?? []).map(c => c[2]);
+                return { name: indexName, unique: r[2], origin: r[3], columns: cols };
+            })
+            .sort((a, b) => a.name.localeCompare(b.name));
+
+        perTable[table] = { columns, fks, indexes };
+    }
+
+    return { tables, perTable };
+}
+
+describe('fresh createSchema vs fully-migrated schema equality', () => {
+    it('a fresh v7 database is structurally identical to a migrated one (modulo SQL text)', async () => {
+        const fresh = await openFresh();
+        const migrated = await openFixture('preV6');
+        runMigrations(migrated);
+
+        expect(readUserVersion(fresh)).toBe(CURRENT_SCHEMA_VERSION);
+        expect(readUserVersion(migrated)).toBe(CURRENT_SCHEMA_VERSION);
+        expect(schemaFingerprint(migrated)).toEqual(schemaFingerprint(fresh));
+    });
+});
+
+describe('migration v7 (nested folders) on a populated v6 database', () => {
+    /** Bring an unversioned preV6 fixture to a stamped, populated schema v6. */
+    async function openPopulatedV6(): Promise<Database> {
+        const db = await openFixture('preV6');
+        const v6 = MIGRATIONS.find(m => m.version === 6)!;
+        db.run('PRAGMA foreign_keys = OFF');
+        try {
+            withTransaction(db, () => {
+                v6.up(db);
+                db.run('PRAGMA user_version = 6');
+            });
+        } finally {
+            db.run('PRAGMA foreign_keys = ON');
+        }
+        return db;
+    }
+
+    it('a populated v6 DB has neither the folders table nor folder_id yet', async () => {
+        const db = await openPopulatedV6();
+        expect(readUserVersion(db)).toBe(6);
+        expect(tableExists(db, 'lexicon_folders')).toBe(false);
+        expect(columnExists(db, 'lexicon', 'folder_id')).toBe(false);
+    });
+
+    it('applies exactly v7 (then v8) and adds the folders table + column, data intact', async () => {
+        const db = await openPopulatedV6();
+        const result = runMigrations(db);
+        expect(result).toEqual({ from: 6, to: CURRENT_SCHEMA_VERSION, applied: [7, 8] });
+
+        expect(tableExists(db, 'lexicon_folders')).toBe(true);
+        expect(columnExists(db, 'lexicon', 'folder_id')).toBe(true);
+        expect(fkViolations(db)).toBe(0);
+        expect(scalar(db, 'PRAGMA foreign_keys')).toBe(1);
+
+        // The seeded words survive and default to the root (folder_id NULL).
+        expect(count(db, 'lexicon')).toBe(SEED.lexiconCount);
+        expect(scalar(db, 'SELECT COUNT(*) FROM lexicon WHERE folder_id IS NULL')).toBe(SEED.lexiconCount);
+        expect(count(db, 'lexicon_folders')).toBe(0);
+
+        // folder_id honours the FK once folders exist.
+        db.run(`INSERT INTO lexicon_folders (id, name) VALUES (1, 'Nouns')`);
+        db.run('UPDATE lexicon SET folder_id = 1 WHERE id = 1');
+        expect(scalar(db, 'SELECT folder_id FROM lexicon WHERE id = 1')).toBe(1);
+        // Deleting the folder SET-NULLs the word (never deletes it).
+        db.run('DELETE FROM lexicon_folders WHERE id = 1');
+        expect(scalar(db, 'SELECT folder_id FROM lexicon WHERE id = 1')).toBe(null);
+        expect(count(db, 'lexicon')).toBe(SEED.lexiconCount);
+        expect(fkViolations(db)).toBe(0);
+    });
+
+    it('is idempotent: a second run after v7 applies nothing', async () => {
+        const db = await openPopulatedV6();
+        runMigrations(db);
+        expect(runMigrations(db)).toEqual({
+            from: CURRENT_SCHEMA_VERSION,
+            to: CURRENT_SCHEMA_VERSION,
+            applied: [],
+        });
+    });
+});
+
+describe('migration v8 (glyph + grapheme folders) on a populated v7 database', () => {
+    /** Bring an unversioned preV6 fixture to a stamped, populated schema v7. */
+    async function openPopulatedV7(): Promise<Database> {
+        const db = await openFixture('preV6');
+        for (const version of [6, 7]) {
+            const migration = MIGRATIONS.find(m => m.version === version)!;
+            if (migration.foreignKeysOff) db.run('PRAGMA foreign_keys = OFF');
+            try {
+                withTransaction(db, () => {
+                    migration.up(db);
+                    db.run(`PRAGMA user_version = ${version}`);
+                });
+            } finally {
+                if (migration.foreignKeysOff) db.run('PRAGMA foreign_keys = ON');
+            }
+        }
+        return db;
+    }
+
+    it('a populated v7 DB has neither glyph/grapheme folder tables nor their folder_id yet', async () => {
+        const db = await openPopulatedV7();
+        expect(readUserVersion(db)).toBe(7);
+        expect(tableExists(db, 'glyph_folders')).toBe(false);
+        expect(tableExists(db, 'grapheme_folders')).toBe(false);
+        expect(columnExists(db, 'glyphs', 'folder_id')).toBe(false);
+        expect(columnExists(db, 'graphemes', 'folder_id')).toBe(false);
+        // The lexicon side (v7) is already there.
+        expect(tableExists(db, 'lexicon_folders')).toBe(true);
+        expect(columnExists(db, 'lexicon', 'folder_id')).toBe(true);
+    });
+
+    it('applies exactly v8 and adds the two folder tables + columns, data intact', async () => {
+        const db = await openPopulatedV7();
+        const result = runMigrations(db);
+        expect(result).toEqual({ from: 7, to: CURRENT_SCHEMA_VERSION, applied: [8] });
+
+        expect(tableExists(db, 'glyph_folders')).toBe(true);
+        expect(tableExists(db, 'grapheme_folders')).toBe(true);
+        expect(columnExists(db, 'glyphs', 'folder_id')).toBe(true);
+        expect(columnExists(db, 'graphemes', 'folder_id')).toBe(true);
+        expect(fkViolations(db)).toBe(0);
+        expect(scalar(db, 'PRAGMA foreign_keys')).toBe(1);
+
+        // The seeded glyphs/graphemes survive and default to the root (NULL).
+        expect(count(db, 'glyphs')).toBe(SEED.glyphCount);
+        expect(count(db, 'graphemes')).toBe(SEED.graphemeCount);
+        expect(scalar(db, 'SELECT COUNT(*) FROM glyphs WHERE folder_id IS NULL')).toBe(SEED.glyphCount);
+        expect(scalar(db, 'SELECT COUNT(*) FROM graphemes WHERE folder_id IS NULL')).toBe(SEED.graphemeCount);
+        expect(count(db, 'glyph_folders')).toBe(0);
+        expect(count(db, 'grapheme_folders')).toBe(0);
+
+        // folder_id honours the FK once folders exist; deleting the folder
+        // SET-NULLs the item (never deletes it).
+        db.run(`INSERT INTO glyph_folders (id, name) VALUES (1, 'Shapes')`);
+        db.run('UPDATE glyphs SET folder_id = 1 WHERE id = 1');
+        expect(scalar(db, 'SELECT folder_id FROM glyphs WHERE id = 1')).toBe(1);
+        db.run('DELETE FROM glyph_folders WHERE id = 1');
+        expect(scalar(db, 'SELECT folder_id FROM glyphs WHERE id = 1')).toBe(null);
+        expect(count(db, 'glyphs')).toBe(SEED.glyphCount);
+        expect(fkViolations(db)).toBe(0);
+    });
+
+    it('is a full path from v6: preV6 migrates straight to v8', async () => {
+        const db = await openFixture('preV6');
+        const result = runMigrations(db);
+        expect(result).toEqual({ from: 5, to: CURRENT_SCHEMA_VERSION, applied: [6, 7, 8] });
+        expect(tableExists(db, 'glyph_folders')).toBe(true);
+        expect(tableExists(db, 'grapheme_folders')).toBe(true);
     });
 });

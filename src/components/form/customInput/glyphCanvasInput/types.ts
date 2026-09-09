@@ -12,6 +12,7 @@
 
 import type { CSSProperties, ReactNode } from 'react';
 import type { AutoSpellResultExtended, Glyph, GlyphWithUsage } from '../../../../db/types';
+import type { SpellingEntry } from '../../../../db/utils/spellingUtils';
 import type { registerFieldReturnType } from 'smart-form/types';
 
 // =============================================================================
@@ -348,6 +349,12 @@ export interface SetValueOptions {
 export interface GlyphCanvasInputRef {
     /** Current selected glyph IDs */
     readonly value: number[];
+    /**
+     * Current spelling in glyph_order format (Two-List Architecture):
+     * `["grapheme-123", "ə", ...]`. Real graphemes are referenced, IPA
+     * fallbacks are stored as the bare character.
+     */
+    readonly glyphOrder: SpellingEntry[];
     /** Reset the canvas view */
     resetCanvasView: () => void;
     /** Fit canvas to content */
@@ -358,4 +365,12 @@ export interface GlyphCanvasInputRef {
     closeKeyboard: () => void;
     /** Clear all selections */
     clear: () => void;
+    /** Replace the selection from a number[] value (SmartForm setValue pattern). */
+    setValue: (val: number[], options?: SetValueOptions) => void;
+    /**
+     * Replace the whole spelling from glyph_order format. Used by the
+     * "Build spelling from ancestors" action (Phase 4, UC-B2) to drop a
+     * compound word's concatenated ancestor spellings onto the canvas.
+     */
+    setGlyphOrder: (glyphOrder: SpellingEntry[]) => void;
 }

@@ -1,0 +1,82 @@
+/* GlyphImageImport / GlyphImagePreview — the image-import control + preview. */
+
+.control {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    border: var(--border-width) dashed var(--border-secondary);
+    border-radius: var(--radius-control);
+    background: var(--bg-secondary);
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+/* Drag-over affordance: the whole control is the drop target. */
+.dragActive {
+    border-color: var(--interactive-base);
+    border-style: solid;
+}
+
+/* The real file input is driven by the button; keep it out of the layout but
+   reachable by assistive tech and tests (not `display:none`). */
+.hiddenInput {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.dropHint {
+    color: var(--text-secondary-muted);
+    font-size: 0.85rem;
+}
+
+.keepColors {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+.help {
+    color: var(--text-secondary-muted);
+    font-size: 0.8rem;
+    line-height: 1.4;
+}
+
+.error {
+    color: var(--status-error);
+    font-size: 0.85rem;
+}
+
+/* The read-only imported-glyph frame shown in place of the canvas. */
+.preview {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 200px;
+    height: 200px;
+    max-width: 100%;
+    padding: 0.5rem;
+    color: var(--text-primary);
+    border: var(--border-width) solid var(--border-primary);
+    border-radius: var(--radius-media);
+    background: var(--surface-base);
+
+    svg {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+    }
+}
+
+.previewCaption {
+    margin: 0;
+    color: var(--text-secondary-muted);
+    font-size: 0.8rem;
+    text-align: center;
+}

@@ -1,14 +1,18 @@
 /**
  * LexiconGallery
  * --------------
- * The lexicon's binding of the shared {@link EntityGallery}: search, filter and
- * sort functions for a word, a card body, and the per-card actions.
+ * The lexicon's binding of the shared {@link DirectoryGallery}: search, filter
+ * and sort functions for a word, a card body, the per-card actions, and the
+ * folder-aware empty-state copy.
  *
- * Everything structural (toolbar, paging, the two empty states, the card chrome,
- * hover/focus, the delete confirmation) now lives in `shared/gallery`. This file
- * used to hold 17 inline style objects, a JS hover-mutation pair, a
- * `setCurPage()` call during render and a hand-rolled delete modal — all three
- * galleries did, in three slightly different ways.
+ * Everything structural — the toolbar, paging, the two empty states, the card
+ * chrome, the inline folder tree (breadcrumb + collapsible subfolders + folder
+ * CRUD), `?folder=` deep-linking and the "All words" flat-view toggle — lives in
+ * `shared/gallery` and `shared/directory`. This file only says what a WORD is.
+ *
+ * A live search always escapes the folder (it runs flat over every word,
+ * because a word you are searching for might live anywhere in the tree), and a
+ * picker (`selectionMode`) is a flat chooser with no folder chrome at all.
  */
 
 import { useCallback } from 'react';
@@ -24,10 +28,11 @@ import { ROUTES, resolveUrl } from '../../../../url_mapping';
 import { DetailedLexiconDisplay } from '../../../display/lexicon/detailed';
 import { CompactLexiconDisplay } from '../../../display/lexicon/compact';
 import {
-    EntityGallery,
+    DirectoryGallery,
     useGalleryState,
     useApiAction,
     useConfirm,
+    lexiconCreateHref,
     type GalleryAdapters,
     type GalleryFilterOption,
 } from '../../../shared';
@@ -100,7 +105,7 @@ export default function LexiconGallery({
     selectionMode = false,
     onSelect,
 }: LexiconGalleryProps) {
-    const { api, refresh } = useEtymolog();
+    const { api, refresh, data } = useEtymolog();
     const confirm = useConfirm();
     const runApiAction = useApiAction();
 
@@ -108,10 +113,7 @@ export default function LexiconGallery({
 
     /**
      * Deletion goes through the ONE app-wide confirmation dialog, and names the
-     * word EXACTLY as the view page titles it (see `lexiconDisplayName`) — the
-     * modal this replaces named `lemma` while the heading showed `pronunciation`,
-     * so on any word where the two differ the dialog asked about a different
-     * string than the one the user was looking at.
+     * word EXACTLY as the view page titles it (see `lexiconDisplayName`).
      */
     const handleDelete = useCallback(
         async (lexicon: LexiconComplete) => {
@@ -179,7 +181,7 @@ export default function LexiconGallery({
     );
 
     return (
-        <EntityGallery<LexiconComplete>
+        <DirectoryGallery<LexiconComplete>
             items={lexicons}
             state={state}
             adapters={ADAPTERS}
@@ -197,43 +199,52 @@ export default function LexiconGallery({
             sortOptions={SORT_OPTIONS}
             filterOptions={FILTER_OPTIONS}
             filterLabel="Word origin"
-            empty={{
-                icon: 'journal-text',
-                title: 'No words yet',
-                description:
-                    'A word needs graphemes to be spelled with — build a few in the Script Maker first if you have not. ' +
-                    'Or let the generator propose words from the sounds you already have.',
-                // Three ways out, not one. The copy used to NAME the Script
-                // Maker and the generator without linking to either, which is
-                // the dead end an empty state exists to prevent.
-                action: (
-                    <>
-                        <IconButton
-                            as={Link}
-                            to={ROUTES.scriptMaker}
-                            iconName="pencil-square"
-                            className={buttonStyles.secondary}
-                        >
-                            Open the Script Maker
-                        </IconButton>
-                        <IconButton
-                            as={Link}
-                            to={ROUTES.lexiconGenerate}
-                            iconName="shuffle"
-                            className={buttonStyles.secondary}
-                        >
-                            Generate words
-                        </IconButton>
-                        <IconButton
-                            as={Link}
-                            to={ROUTES.lexiconCreate}
-                            iconName="plus-lg"
-                            className={buttonStyles.primary}
-                        >
-                            Create your first word
-                        </IconButton>
-                    </>
-                ),
+            folders={data.folders ?? []}
+            getItemFolderId={(lexicon) => lexicon.folder_id ?? null}
+            folderApi={api.folder}
+            domainKey="lexicon"
+            createHref={lexiconCreateHref}
+            itemNoun="word"
+            allItemsLabel="All words"
+            browseFoldersLabel="Browse folders"
+            empty={({ flatView, currentFolderId, createHref }) => {
+                const atRoot = flatView || currentFolderId === null;
+                return {
+                    icon: 'journal-text',
+                    title: atRoot ? 'No words yet' : 'This folder is empty',
+                    description: atRoot
+                        ? 'A word needs graphemes to be spelled with — build a few in the Script Maker first if you have not. ' +
+                          'Or let the generator propose words from the sounds you already have.'
+                        : 'No words are filed in this folder yet. Create one here, or move a word into it from its page.',
+                    action: (
+                        <>
+                            <IconButton
+                                as={Link}
+                                to={ROUTES.scriptMaker}
+                                iconName="pencil-square"
+                                className={buttonStyles.secondary}
+                            >
+                                Open the Script Maker
+                            </IconButton>
+                            <IconButton
+                                as={Link}
+                                to={ROUTES.lexiconGenerate}
+                                iconName="shuffle"
+                                className={buttonStyles.secondary}
+                            >
+                                Generate words
+                            </IconButton>
+                            <IconButton
+                                as={Link}
+                                to={createHref(atRoot ? null : currentFolderId)}
+                                iconName="plus-lg"
+                                className={buttonStyles.primary}
+                            >
+                                {atRoot ? 'Create your first word' : 'Create a word here'}
+                            </IconButton>
+                        </>
+                    ),
+                };
             }}
             noMatch={{
                 title: 'No words match',

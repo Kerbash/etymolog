@@ -34,7 +34,7 @@
  */
 
 import classNames from "classnames";
-import { useEffect, useId, useMemo, useRef } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import HoverToolTip from "cyber-components/interactable/information/hoverToolTip/hoverToolTip.tsx";
 import NumberedSectionHeader from "cyber-components/graphics/decor/numbered-section-header";
@@ -46,9 +46,33 @@ import { flex, sizing } from "utils-styles";
 
 import type { Glyph } from "../../../db";
 import { GLYPH_GUIDE_INSET } from "../../../db/utils/glyphMetrics";
+import { GlyphImageImport, GlyphImagePreview, type GlyphImportMode } from "../glyphImport";
 import { GLYPH_INK } from "./glyphInk";
 
 import styles from "./glyphFormFields.module.scss";
+
+/**
+ * True when stored glyph markup is a raster IMPORT — it carries an `<image>`
+ * element the drawing canvas cannot parse back into pen strokes. Such a glyph
+ * is shown in the read-only preview, not loaded into the drawer, so opening it
+ * for edit doesn't silently blank it.
+ */
+function isImageImportSvg(svg: string | null | undefined): boolean {
+    return !!svg && /<image[\s>]/i.test(svg);
+}
+
+/** Classify an image-import SVG for the preview caption. */
+function detectImportMode(svg: string): GlyphImportMode {
+    // The line-art codec pairs a <mask> with a currentColor <rect>; a
+    // keep-colors import is a bare <image> with neither.
+    return /<mask[\s>]/i.test(svg) && /currentColor/i.test(svg) ? "line-art" : "keep-colors";
+}
+
+/** State for an active import being previewed in place of the canvas. */
+interface ActiveImport {
+    svg: string;
+    mode: GlyphImportMode;
+}
 
 export interface GlyphFormFieldsProps {
     /**
@@ -80,6 +104,15 @@ export default function GlyphFormFields({
     // Guards the one-shot "push the existing values into the DOM" effect below.
     const initializedRef = useRef(false);
 
+    // An imported image is previewed here rather than loaded into the canvas,
+    // which cannot render an `<image>`/`<mask>`. Edit mode opens straight into
+    // the preview when the stored glyph is itself an import.
+    const [imported, setImported] = useState<ActiveImport | null>(() =>
+        mode === "edit" && isImageImportSvg(initialData?.svg_data)
+            ? { svg: initialData!.svg_data, mode: detectImportMode(initialData!.svg_data) }
+            : null,
+    );
+
     const glyphNameValidation = useMemo(
         () =>
             TextInputValidatorFactory({
@@ -88,9 +121,61 @@ export default function GlyphFormFields({
         [],
     );
 
+    // The canvas seeds from the stored SVG only when that SVG is something the
+    // canvas can actually draw — an image-import glyph starts the drawer blank
+    // (its markup lives in the preview instead).
+    const drawerDefault =
+        mode === "edit" && initialData?.svg_data && !isImageImportSvg(initialData.svg_data)
+            ? initialData.svg_data
+            : undefined;
+
     const glyphSvgField = registerField("glyphSvg", {
-        defaultValue: mode === 'edit' && initialData?.svg_data ? initialData.svg_data : undefined,
+        defaultValue: drawerDefault,
     });
+
+    // The last SVG written into the hidden input. `registerField` returns a
+    // FRESH object every render, so this effect's deps change every render and
+    // it runs on every commit — the ref makes the body a no-op once a given
+    // import is written, which is what stops the state-setters below from
+    // looping (set → render → effect → set …). Reset when the import clears.
+    const writtenSvgRef = useRef<string | null>(null);
+
+    // Import mode binds `glyphSvg` to a hidden input we write imperatively;
+    // SmartForm collects the field from `ref.current.value` at submit, so the
+    // imported markup must sit in that node's value. Written in an effect (not
+    // during render) once the input has mounted.
+    useEffect(() => {
+        if (!imported) {
+            writtenSvgRef.current = null;
+            return;
+        }
+        if (writtenSvgRef.current === imported.svg) return;
+        const el = glyphSvgField.registerSmartFieldProps.ref?.current as
+            | HTMLInputElement
+            | null;
+        if (!el) return;
+        writtenSvgRef.current = imported.svg;
+        el.value = imported.svg;
+        glyphSvgField.fieldState.isEmpty.setIsEmpty(false);
+        glyphSvgField.fieldState.isTouched.setIsTouched(true);
+        // Prefilling an existing import on edit-open must NOT dirty the form (a
+        // create form or an untouched edit would trip the leave guard); a fresh
+        // user import must. The stored glyph, if any, is the baseline.
+        glyphSvgField.fieldState.isChanged.setIsChanged(imported.svg !== initialData?.svg_data);
+    }, [imported, glyphSvgField, initialData]);
+
+    const handleImport = useCallback((svg: string, importMode: GlyphImportMode) => {
+        setImported({ svg, mode: importMode });
+    }, []);
+
+    const handleClearImport = useCallback(() => {
+        setImported(null);
+        // Back to a blank canvas: the field's value now comes from the drawer,
+        // whose ref has no writable `.value`, so only the flags are reset here.
+        glyphSvgField.fieldState.isEmpty.setIsEmpty(true);
+        glyphSvgField.fieldState.isTouched.setIsTouched(true);
+        glyphSvgField.fieldState.isChanged.setIsChanged(initialData?.svg_data != null);
+    }, [glyphSvgField, initialData]);
 
     const glyphNameField = registerField("glyphName", {
         defaultValue: mode === 'edit' && initialData?.name ? initialData.name : undefined,
@@ -142,18 +227,42 @@ export default function GlyphFormFields({
                 />
 
                 <div className={classNames(sizing.parentWidth, flex.flex, flex.justifyContentCenter)}>
-                    <HoverToolTip
-                        className={styles.drawerField}
-                        content={mode === 'edit' ? "Edit your glyph drawing" : "Draw your glyph here"}
-                    >
-                        <SvgDrawerInput
-                            displayName="Glyph drawing"
-                            colors={GLYPH_INK}
-                            guideInset={GLYPH_GUIDE_INSET}
-                            {...glyphSvgField}
-                        />
-                    </HoverToolTip>
+                    {imported ? (
+                        <>
+                            <GlyphImagePreview
+                                svg={imported.svg}
+                                mode={imported.mode}
+                                onClear={handleClearImport}
+                                className={styles.drawerField}
+                            />
+                            {/* `glyphSvg` binds to this hidden input while an
+                                import is active; the effect above writes its
+                                value. */}
+                            <input
+                                type="hidden"
+                                ref={
+                                    glyphSvgField.registerSmartFieldProps
+                                        .ref as React.Ref<HTMLInputElement>
+                                }
+                                name={glyphSvgField.registerSmartFieldProps.name}
+                            />
+                        </>
+                    ) : (
+                        <HoverToolTip
+                            className={styles.drawerField}
+                            content={mode === 'edit' ? "Edit your glyph drawing" : "Draw your glyph here"}
+                        >
+                            <SvgDrawerInput
+                                displayName="Glyph drawing"
+                                colors={GLYPH_INK}
+                                guideInset={GLYPH_GUIDE_INSET}
+                                {...glyphSvgField}
+                            />
+                        </HoverToolTip>
+                    )}
                 </div>
+
+                <GlyphImageImport onImport={handleImport} />
             </section>
 
             <section className={styles.section} aria-labelledby={`${sectionId}-details`}>

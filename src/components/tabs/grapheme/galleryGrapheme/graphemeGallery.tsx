@@ -1,11 +1,18 @@
 /**
  * GraphemeGallery
  * ---------------
- * The grapheme binding of the shared {@link EntityGallery}.
+ * The grapheme binding of the shared {@link DirectoryGallery}: search and sort
+ * for a grapheme, its card body, the per-card delete, and the folder-aware
+ * empty-state copy. The inline folder tree (breadcrumb + collapsible subfolders
+ * + folder CRUD + per-card "Move to folder"), `?folder=` deep-linking and the
+ * "All graphemes" flat-view toggle all live in `shared/directory`.
  *
- * Behaviour preserved from the copy this replaces, because `PunctuationPage`
+ * Behaviour preserved from before the folder rollout, because `PunctuationPage`
  * depends on it: `selectionMode` turns every card into a single button that
- * calls `onSelect` instead of navigating, and suppresses the delete action.
+ * calls `onSelect` and suppresses the delete — and a picker is ALWAYS flat, so
+ * it gets no folder chrome at all. Deletion still runs the `useGraphemeDelete`
+ * two-stage flow (the ordinary danger confirmation, then — only when words are
+ * spelled with this grapheme — a second dialog offering to respell).
  */
 
 import { useCallback } from 'react';
@@ -19,7 +26,12 @@ import { useEtymolog, type GraphemeComplete } from '@src/db';
 import { ROUTES, resolveUrl } from '../../../../url_mapping';
 import DetailedGraphemeDisplay from '../../../display/grapheme/detailed/detailed.tsx';
 import CompactGraphemeDisplay from '../../../display/grapheme/compact/compact.tsx';
-import { EntityGallery, useGalleryState, type GalleryAdapters } from '../../../shared';
+import {
+    DirectoryGallery,
+    useGalleryState,
+    graphemeCreateHref,
+    type GalleryAdapters,
+} from '../../../shared';
 import { useGraphemeDelete } from '../useGraphemeDelete';
 
 interface GraphemeGalleryProps {
@@ -33,7 +45,7 @@ interface GraphemeGalleryProps {
     onGraphemeClick?: (grapheme: GraphemeComplete) => void;
     /**
      * Picker mode for modals: one `<button>` per card, no delete action, no
-     * "create the first one" CTA.
+     * "create the first one" CTA — and always flat (no folder tree).
      */
     selectionMode?: boolean;
     onSelect?: (grapheme: GraphemeComplete) => void;
@@ -77,12 +89,7 @@ export default function GraphemeGallery({
     selectionMode = false,
     onSelect,
 }: GraphemeGalleryProps) {
-    const { data, isReady: contextReady, error: contextError } = useEtymolog();
-    // The SAME two-stage flow the edit page uses: the ordinary danger
-    // confirmation, and — only when words are spelled with this grapheme — a
-    // second dialog naming them and offering to respell. The card used to ask
-    // one question whose message described behaviour the service does not have,
-    // and then fail with a raw constraint error the user could not act on.
+    const { api, data, isReady: contextReady, error: contextError } = useEtymolog();
     const deleteGrapheme = useGraphemeDelete();
 
     const items = graphemes ?? data.graphemesComplete ?? [];
@@ -119,7 +126,7 @@ export default function GraphemeGallery({
     );
 
     return (
-        <EntityGallery<GraphemeComplete>
+        <DirectoryGallery<GraphemeComplete>
             items={items}
             state={state}
             adapters={ADAPTERS}
@@ -142,22 +149,40 @@ export default function GraphemeGallery({
             error={error}
             searchPlaceholder="Search by name, phoneme or glyph…"
             sortOptions={SORT_OPTIONS}
-            empty={{
-                icon: 'type',
-                title: selectionMode ? 'No graphemes to choose from' : 'No graphemes yet',
-                description: selectionMode
-                    ? 'Create some graphemes in the Script Maker first.'
-                    : 'A grapheme is one or more glyphs standing for a sound. Add one to start the script.',
-                action: (
-                    <IconButton
-                        as={Link}
-                        to={ROUTES.scriptMakerCreate}
-                        iconName="plus-lg"
-                        className={buttonStyles.primary}
-                    >
-                        Create your first grapheme
-                    </IconButton>
-                ),
+            folders={data.graphemeFolders ?? []}
+            getItemFolderId={(grapheme) => grapheme.folder_id ?? null}
+            folderApi={api.graphemeFolder}
+            domainKey="grapheme"
+            createHref={graphemeCreateHref}
+            itemNoun="grapheme"
+            allItemsLabel="All graphemes"
+            browseFoldersLabel="Browse folders"
+            empty={({ flatView, currentFolderId, createHref }) => {
+                if (selectionMode) {
+                    return {
+                        icon: 'type',
+                        title: 'No graphemes to choose from',
+                        description: 'Create some graphemes in the Script Maker first.',
+                    };
+                }
+                const atRoot = flatView || currentFolderId === null;
+                return {
+                    icon: 'type',
+                    title: atRoot ? 'No graphemes yet' : 'This folder is empty',
+                    description: atRoot
+                        ? 'A grapheme is one or more glyphs standing for a sound. Add one to start the script.'
+                        : 'No graphemes are filed in this folder yet. Create one here, or move one into it from its card.',
+                    action: (
+                        <IconButton
+                            as={Link}
+                            to={createHref(atRoot ? null : currentFolderId)}
+                            iconName="plus-lg"
+                            className={buttonStyles.primary}
+                        >
+                            {atRoot ? 'Create your first grapheme' : 'Create a grapheme here'}
+                        </IconButton>
+                    ),
+                };
             }}
             noMatch={{
                 title: 'No graphemes match',

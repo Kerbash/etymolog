@@ -31,6 +31,12 @@ export interface UseGlyphSubmitOptions {
     mode: 'create' | 'edit';
     /** Required in `edit` mode. */
     initialData?: Glyph | null;
+    /**
+     * The folder a NEW glyph is filed into (create-in-folder, from the gallery's
+     * `?folder=`). Ignored in edit mode — a glyph's folder is changed from its
+     * card's "Move to folder", not this form.
+     */
+    folderId?: number | null;
     /** Called with the saved glyph. Navigation/closing belongs to the caller. */
     onSuccess?: (glyph: Glyph) => void;
 }
@@ -38,6 +44,7 @@ export interface UseGlyphSubmitOptions {
 export function useGlyphSubmit({
     mode,
     initialData,
+    folderId,
     onSuccess,
 }: UseGlyphSubmitOptions): (formData: Record<string, unknown>) => Promise<GlyphSubmitResult> {
     const { api } = useEtymolog();
@@ -63,7 +70,7 @@ export function useGlyphSubmit({
             const result = await runApiAction(
                 () =>
                     mode === 'create'
-                        ? api.glyph.create(payload)
+                        ? api.glyph.create({ ...payload, folder_id: folderId ?? null })
                         : api.glyph.update(initialData!.id, payload),
                 {
                     errorTitle:
@@ -78,7 +85,7 @@ export function useGlyphSubmit({
             onSuccess?.(result.data);
             return { success: true };
         },
-        [api, initialData, mode, onSuccess, runApiAction],
+        [api, initialData, mode, folderId, onSuccess, runApiAction],
     );
 }
 

@@ -58,6 +58,7 @@ import {
 } from '../graphemeService';
 import { getLexiconEntriesUsingGrapheme, handleGraphemeDeletion } from '../lexiconService';
 import { cleanupOrphanedGlyphs } from '../glyphService';
+import { graphemeFolderDomain } from '../folderDomain';
 import { phonemePatterns, respellAutoSpelledWords, type RespellReport } from '../respellService';
 import { isDatabaseInitialized, getDatabase } from '../database';
 import { withTransaction } from '../utils/transaction';
@@ -130,6 +131,12 @@ function createGrapheme(request: CreateGraphemeRequest): ApiResponse<CreateGraph
     if (!request.glyphs || request.glyphs.length === 0) {
         return errorResponse('VALIDATION_ERROR', 'At least one glyph is required');
     }
+    // Validate an explicit folder up front — a bad id is rejected here rather
+    // than reaching the FK. Import paths never go through this create; they
+    // coerce a dangling folder_id to null in `validateExport`.
+    if (request.folder_id != null && !graphemeFolderDomain.getFolderById(request.folder_id)) {
+        return errorResponse('VALIDATION_ERROR', `Folder with id ${request.folder_id} not found`);
+    }
 
     try {
         const result = withTransaction(getDatabase(), () => {
@@ -147,6 +154,7 @@ function createGrapheme(request: CreateGraphemeRequest): ApiResponse<CreateGraph
                     use_in_auto_spelling: p.use_in_auto_spelling,
                     context: p.context?.trim(),
                 })),
+                folder_id: request.folder_id ?? null,
             });
             // Only the auto-spelling phonemes can change a spelling.
             const patterns = phonemePatterns(grapheme.phonemes.filter(p => p.use_in_auto_spelling));

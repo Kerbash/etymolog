@@ -100,10 +100,12 @@ export function exportDataToJson(data: EtymologExportData): string {
 /**
  * Parse a JSON string and validate it as a well-formed Etymolog export envelope.
  *
- * Checks, in order: JSON syntax, magic string, version, `tables` object, every
- * expected table key (with `lexicon_meanings` and `lexicon_ancestry_closure`
- * optional for older exports), each table is an array, `settings` is an object.
- * Row CONTENT is validated later by `validateExportData()`.
+ * Checks, in order: JSON syntax, magic string, version (1..CURRENT), `tables`
+ * object, every expected table key (with `lexicon_meanings`,
+ * `lexicon_ancestry_closure`, `lexicon_folders`, `glyph_folders` and
+ * `grapheme_folders` optional for older exports), each table is an array,
+ * `settings` is an object. Row CONTENT is validated later by
+ * `validateExportData()`.
  *
  * @throws Error with a descriptive message if any check fails
  */
@@ -123,7 +125,16 @@ export function parseAndValidateJson(json: string): EtymologExportData {
     if (envelope.magic !== 'ETYMOLOG_EXPORT') {
         throw new Error('Not an Etymolog export file');
     }
-    if (envelope.version !== EXPORT_SCHEMA_VERSION) {
+    // Accept any version from 1 up to the CURRENT schema. Older envelopes
+    // predate some folder tables (v1: none; v2: only lexicon_folders), so the
+    // absent folder tables default to [] below and their `folder_id` columns
+    // are null — both handled below (optional table) and in `validateExport`.
+    if (
+        typeof envelope.version !== 'number' ||
+        !Number.isInteger(envelope.version) ||
+        envelope.version < 1 ||
+        envelope.version > EXPORT_SCHEMA_VERSION
+    ) {
         throw new Error(`Unsupported export version: ${String(envelope.version)}`);
     }
     if (!envelope.tables || typeof envelope.tables !== 'object') {
@@ -132,8 +143,17 @@ export function parseAndValidateJson(json: string): EtymologExportData {
     const tables = envelope.tables as Record<string, unknown>;
     for (const name of EXPECTED_TABLES) {
         if (!(name in tables)) {
-            // Optional for backward compatibility with older exports
-            if (name === 'lexicon_meanings' || name === 'lexicon_ancestry_closure') {
+            // Optional for backward compatibility with older exports:
+            // lexicon_meanings + closure (pre-v5/v6 exports), lexicon_folders
+            // (v1 exports, before nested folders existed), and glyph_folders /
+            // grapheme_folders (v1–v2 exports, before schema v8).
+            if (
+                name === 'lexicon_meanings' ||
+                name === 'lexicon_ancestry_closure' ||
+                name === 'lexicon_folders' ||
+                name === 'glyph_folders' ||
+                name === 'grapheme_folders'
+            ) {
                 tables[name] = [];
                 continue;
             }
@@ -233,6 +253,21 @@ export async function importExportData(data: EtymologExportData, onProgress?: Pr
     let legacyMeanings = 0;
     try {
         withTransaction(db, () => {
+            // Defer foreign-key enforcement to COMMIT for the whole import.
+            // Rows are inserted in id (rowid) order, which is NOT topological
+            // for the self-referencing folder tables once a folder has been
+            // MOVED under a later-created (higher-id) folder: the child row
+            // then carries a `parent_id` whose row is inserted later, and with
+            // immediate FK enforcement that INSERT fails with "FOREIGN KEY
+            // constraint failed", aborting an otherwise-valid restore. Deferring
+            // makes the explicit `countForeignKeyViolations()` scan below the
+            // sole integrity gate (it already was, intentionally) — a genuinely
+            // dangling reference still rolls the import back, and a corrupt
+            // cyclic parent chain imports intact (all rows exist, so the check
+            // passes) to be tamed by the tree walks' visited guards at render,
+            // matching how the app treats corrupt cycles everywhere else. The
+            // pragma auto-resets when the transaction commits or rolls back.
+            db.run('PRAGMA defer_foreign_keys = ON');
             onProgress?.('import', 0.2, 'Clearing existing data...');
             clearAllTables(db);
             insertValidatedRows(db, validated, onProgress);

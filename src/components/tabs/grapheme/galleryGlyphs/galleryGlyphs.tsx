@@ -1,18 +1,20 @@
 /**
  * GlyphGallery
  * ------------
- * The glyph binding of the shared {@link EntityGallery}.
+ * The glyph binding of the shared {@link DirectoryGallery}: search and sort for
+ * a glyph, its card body, the per-card delete, and the folder-aware empty-state
+ * copy. The inline folder tree (breadcrumb + collapsible subfolders + folder
+ * CRUD + per-card "Move to folder"), `?folder=` deep-linking and the "All
+ * glyphs" flat-view toggle all live in `shared/directory`.
  *
  * Two behaviours are preserved deliberately:
  *
  *  - deletion calls `api.glyph.cascadeDelete`, not `delete`: a glyph's
  *    graphemes cannot outlive it, and the context wrapper refreshes the
- *    affected slices — the original called the service directly and never
- *    refreshed, so a deleted glyph stayed on screen until a reload;
- *  - the "Auto-manage" switch stays in the toolbar, but it now has a real
- *    accessible name. The `<label htmlFor="auto-manage-glyphs">` it replaces
- *    pointed at an id `CyberSwitch` never renders, so the label was inert and
- *    the control announced as an unnamed switch.
+ *    affected slices;
+ *  - the "Auto-manage" switch stays in the toolbar (`toolbarEndSlot`), with a
+ *    real accessible name; `showViewToggle={false}` and `minItemWidth="160px"`
+ *    keep the glyph grid's compact, denser layout.
  */
 
 import { useCallback, useMemo } from 'react';
@@ -27,10 +29,11 @@ import { useEtymolog, type GlyphWithUsage, type GraphemeComplete } from '../../.
 import { ROUTES, resolveUrl } from '../../../../url_mapping';
 import GlyphCard from '../../../display/glyphs/glyphCard';
 import {
-    EntityGallery,
+    DirectoryGallery,
     useGalleryState,
     useApiAction,
     useConfirm,
+    glyphCreateHref,
     type GalleryAdapters,
 } from '../../../shared';
 
@@ -140,7 +143,7 @@ export default function GlyphGallery() {
     );
 
     return (
-        <EntityGallery<GlyphWithUsage>
+        <DirectoryGallery<GlyphWithUsage>
             items={glyphsWithUsage ?? []}
             state={state}
             adapters={ADAPTERS}
@@ -157,6 +160,14 @@ export default function GlyphGallery() {
             showViewToggle={false}
             minItemWidth="160px"
             maxItemWidth="1fr"
+            folders={data.glyphFolders ?? []}
+            getItemFolderId={(glyph) => glyph.folder_id ?? null}
+            folderApi={api.glyphFolder}
+            domainKey="glyph"
+            createHref={glyphCreateHref}
+            itemNoun="glyph"
+            allItemsLabel="All glyphs"
+            browseFoldersLabel="Browse folders"
             toolbarEndSlot={
                 <div className={styles.autoManage}>
                     {/* Visible text AND an aria-label: `CyberSwitch` renders a
@@ -171,20 +182,25 @@ export default function GlyphGallery() {
                     />
                 </div>
             }
-            empty={{
-                icon: 'pencil',
-                title: 'No glyphs yet',
-                description: 'A glyph is one drawn mark. Draw one to start building the script.',
-                action: (
-                    <IconButton
-                        as={Link}
-                        to={ROUTES.glyphCreate}
-                        iconName="plus-lg"
-                        className={buttonStyles.primary}
-                    >
-                        Draw your first glyph
-                    </IconButton>
-                ),
+            empty={({ flatView, currentFolderId, createHref }) => {
+                const atRoot = flatView || currentFolderId === null;
+                return {
+                    icon: 'pencil',
+                    title: atRoot ? 'No glyphs yet' : 'This folder is empty',
+                    description: atRoot
+                        ? 'A glyph is one drawn mark. Draw one to start building the script.'
+                        : 'No glyphs are filed in this folder yet. Draw one here, or move one into it from its card.',
+                    action: (
+                        <IconButton
+                            as={Link}
+                            to={createHref(atRoot ? null : currentFolderId)}
+                            iconName="plus-lg"
+                            className={buttonStyles.primary}
+                        >
+                            {atRoot ? 'Draw your first glyph' : 'Draw a glyph here'}
+                        </IconButton>
+                    ),
+                };
             }}
             noMatch={{
                 title: 'No glyphs match',

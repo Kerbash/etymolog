@@ -33,12 +33,25 @@ function GuardCard({ children }: { closeModal: () => void; children: React.React
 export default function NewGraphemePage() {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
-    const { isReady, error } = useEtymolog();
+    const { data, isReady, error } = useEtymolog();
     const { registerField, unregisterField, registerForm } = useSmartForm({ mode: "onChange" });
 
     // The glyph list is not a form FIELD — it is an ordered list of records —
     // so it lives here and is handed to the submit handler directly.
     const [selectedGlyphs, setSelectedGlyphs] = useState<Glyph[]>([]);
+
+    // `/script-maker/create?folder=…` — the grapheme gallery's "New grapheme"
+    // default (create-in-folder). Validated against the grapheme folder slice:
+    // an unknown or non-numeric id files the grapheme at the root rather than
+    // handing the API a dangling folder_id that would reject the create.
+    const initialFolderId = useMemo<number | null>(() => {
+        const raw = searchParams.get('folder');
+        if (raw === null) return null;
+        const parsed = Number.parseInt(raw, 10);
+        return Number.isInteger(parsed) && (data.graphemeFolders ?? []).some((f) => f.id === parsed)
+            ? parsed
+            : null;
+    }, [searchParams, data.graphemeFolders]);
 
     const prefilledPhoneme = searchParams.get('phoneme') || undefined;
     const defaultPronunciations = useMemo(
@@ -57,6 +70,7 @@ export default function NewGraphemePage() {
     const submitFunc = useGraphemeSubmit({
         mode: 'create',
         glyphs: selectedGlyphs,
+        folderId: initialFolderId,
         onSuccess: handleSuccess,
     });
 
