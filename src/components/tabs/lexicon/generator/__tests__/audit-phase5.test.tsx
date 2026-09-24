@@ -55,17 +55,15 @@ vi.mock('../../../../../generator', async (importOriginal) => {
 
 /** The word form's three composite inputs, stubbed — none is part of this contract. */
 vi.mock('../../../../form/customInput/glyphCanvasInput', () => ({
-    GlyphCanvasInput: ({ onRequestAutoSpell }: { onRequestAutoSpell?: () => void }) => (
-        <button type="button" data-testid="auto-spell" onClick={() => onRequestAutoSpell?.()}>
-            Auto-spell
-        </button>
+    // Reports the software-owned (auto-spell) spelling it is handed.
+    GlyphCanvasInput: ({ locked }: { locked?: { glyphOrder: string[] | null } | null }) => (
+        <output data-testid="locked-spelling">{locked ? JSON.stringify(locked.glyphOrder) : 'unlocked'}</output>
     ),
 }));
 vi.mock('@src/components/form/customInput/glyphCanvasInput', () => ({
-    GlyphCanvasInput: ({ onRequestAutoSpell }: { onRequestAutoSpell?: () => void }) => (
-        <button type="button" data-testid="auto-spell" onClick={() => onRequestAutoSpell?.()}>
-            Auto-spell
-        </button>
+    // Reports the software-owned (auto-spell) spelling it is handed.
+    GlyphCanvasInput: ({ locked }: { locked?: { glyphOrder: string[] | null } | null }) => (
+        <output data-testid="locked-spelling">{locked ? JSON.stringify(locked.glyphOrder) : 'unlocked'}</output>
     ),
 }));
 vi.mock('../../../../form/customInput/meaningTableInput', () => ({
@@ -998,8 +996,13 @@ describe('audit — words the lexicon already has', () => {
     it('treats ɡ and g as the same sound when comparing', async () => {
         open('/lexicon/generate', { script: ['g', 'a'] });
         await settle();
-        const shown = (checkboxes()[0].getAttribute('aria-label') ?? '').replace('Select ', '');
-        expect(shown).toContain('g');
+        // Not simply the FIRST word: with a g/a inventory the generator can
+        // also offer a vowel-only word ("a"), and when that came first this
+        // test failed at random (it looked like a load flake).
+        const offered = checkboxes().map((box) => (box.getAttribute('aria-label') ?? '').replace('Select ', ''));
+        const shown = offered.find((w) => w.includes('g'));
+        expect(shown, `no offered word contains g: ${offered.join(', ')}`).toBeDefined();
+        if (!shown) return;
 
         state.data.lexiconComplete = [word(shown.replace(/g/g, 'ɡ'))];
         act(() => {
@@ -1234,12 +1237,13 @@ describe('audit — the pronunciation prefill', () => {
         expect(formState.isSubmittable).toBe(true);
     });
 
-    it('lets auto-spell read it from the DOM immediately, under StrictMode', async () => {
+    it('auto-spells it immediately, under StrictMode', async () => {
         openForm('kato', { strict: true });
         await settle(3);
-        click(view.container.querySelector('[data-testid="auto-spell"]'));
 
+        // No click: auto-spell follows the pronunciation live.
         expect(previewAutoSpelling).toHaveBeenCalledWith('kato');
+        expect(view.container.querySelector('[data-testid="locked-spelling"]')!.textContent).not.toBe('unlocked');
     });
 
     it('carries a stressed, spaced pronunciation through the URL round trip', async () => {

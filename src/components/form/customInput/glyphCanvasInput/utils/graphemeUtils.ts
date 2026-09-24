@@ -8,7 +8,7 @@
  */
 
 import type { Glyph, GraphemeComplete, GlyphWithUsage } from '../../../../../db/types';
-import { GLYPH_CELL_FRACTION } from '../../../../../db/utils/glyphMetrics';
+import { combineSvgRow } from '../../../../../db/utils/svgCompose';
 
 /**
  * Represents a grapheme or glyph with SVG data for rendering.
@@ -26,46 +26,16 @@ export interface RenderableGlyph {
     updated_at?: string;
 }
 
-/** The `viewBox` of an SVG string, or a 0 0 100 100 default when absent/malformed. */
-export function parseSvgViewBox(svg: string): { x: number; y: number; width: number; height: number } {
-    const match = svg.match(/<svg\b[^>]*\bviewBox\s*=\s*["']\s*([-\d.eE+]+)[\s,]+([-\d.eE+]+)[\s,]+([-\d.eE+]+)[\s,]+([-\d.eE+]+)\s*["']/i);
-    if (!match) return { x: 0, y: 0, width: 100, height: 100 };
-    const [x, y, width, height] = match.slice(1).map(Number);
-    if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) {
-        return { x: 0, y: 0, width: 100, height: 100 };
-    }
-    return { x, y, width, height };
-}
+// The SVG composition primitives live in `db/utils/svgCompose` — the ONE
+// implementation, shared with the block-script engine (which sits below the
+// component layer and cannot import from here). Re-exported under their
+// historical names so this module's callers are unchanged.
+export { parseSvgViewBox, extractSvgInner } from '../../../../../db/utils/svgCompose';
 
 /**
- * Inner markup of an SVG document: everything between the first `>` after the
- * opening `<svg` and the LAST `</svg>`. Tolerates nested `<svg>` elements,
- * which a non-greedy regex does not.
- */
-export function extractSvgInner(svg: string): string {
-    const openStart = svg.search(/<svg\b/i);
-    if (openStart === -1) return svg;
-    const openEnd = svg.indexOf('>', openStart);
-    let closeStart = -1;
-    for (const match of svg.matchAll(/<\/svg\s*>/gi)) {
-        closeStart = match.index ?? -1;
-    }
-    if (openEnd === -1 || closeStart === -1 || closeStart < openEnd) return svg;
-    return svg.slice(openEnd + 1, closeStart);
-}
-
-/**
- * Combine multiple SVG strings into a single horizontal SVG.
- *
- * Each source is nested as its own `<svg>` with its ORIGINAL `viewBox`, placed
- * in a fixed-size box, so the browser rescales it — a glyph authored in a
- * 0 0 100 100 space and one in 0 0 48 48 come out the same size. (Splicing the
- * raw markup into a shared coordinate space, as this used to, rendered
- * multi-glyph graphemes several times too large.)
- *
- * Boxes advance by the glyph CELL (`GLYPH_CELL_FRACTION` of the box), exactly
- * as the layout strategies do, so a multi-glyph grapheme is drawn with its
- * glyphs' margins overlapping — the same picture the word display paints.
+ * Combine multiple SVG strings into a single horizontal SVG — see
+ * `combineSvgRow` in `db/utils/svgCompose` (each source nested with its
+ * ORIGINAL viewBox; boxes advance by the glyph CELL, like the word display).
  *
  * @param svgStrings - Array of SVG strings to combine
  * @param spacing - Horizontal spacing between cells (in output units)
@@ -76,22 +46,7 @@ export function combineSvgStrings(
     spacing: number = 2,
     glyphSize: number = 24
 ): string {
-    if (svgStrings.length === 0) {
-        return '';
-    }
-    if (svgStrings.length === 1) {
-        return svgStrings[0];
-    }
-
-    const step = glyphSize * GLYPH_CELL_FRACTION + spacing;
-    const totalWidth = (svgStrings.length - 1) * step + glyphSize;
-    const cells = svgStrings.map((svg, index) => {
-        const vb = parseSvgViewBox(svg);
-        const x = index * step;
-        return `<svg x="${x}" y="0" width="${glyphSize}" height="${glyphSize}" viewBox="${vb.x} ${vb.y} ${vb.width} ${vb.height}" preserveAspectRatio="xMidYMid meet">${extractSvgInner(svg)}</svg>`;
-    });
-
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalWidth} ${glyphSize}" width="${totalWidth}" height="${glyphSize}">${cells.join('')}</svg>`;
+    return combineSvgRow(svgStrings, spacing, glyphSize);
 }
 
 /**

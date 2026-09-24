@@ -129,3 +129,40 @@ describe('spelling source of truth', () => {
         expect(getLexiconSpellingEntries(word.id)).toHaveLength(1);
     });
 });
+
+describe('spelling source of truth — pinned variant entries (schema v9)', () => {
+    beforeAll(async () => {
+        await initDatabase();
+    });
+
+    beforeEach(() => {
+        clearDatabase();
+    });
+
+    it('a pinned entry is an ordinary grapheme occurrence for every writer and the index', () => {
+        const ka = makeGrapheme('ka', 'ka');
+        const pin = createGraphemeEntry(ka.id, ka.variants![0].id);
+        const word = createLexicon({ lemma: 'kaka', glyph_order: [pin, 'ə', createGraphemeEntry(ka.id)] });
+
+        expect(getLexiconSpellingEntries(word.id).map(e => [e.grapheme_id, e.position])).toEqual([[ka.id, 0], [ka.id, 2]]);
+        expect(getSpellingByLexiconId(word.id).map(g => g.id)).toEqual([ka.id, ka.id]);
+        expect(getLexiconEntriesUsingGrapheme(ka.id).map(l => l.id)).toEqual([word.id]);
+
+        // The display funnel keeps the pin on the entry, the index keeps the grapheme.
+        const display = getLexiconComplete(word.id)!.spellingDisplay;
+        expect(display.map(e => e.variantId)).toEqual([ka.variants![0].id, undefined, undefined]);
+
+        // An unrelated update keeps the pin (glyph_order is the truth).
+        updateLexicon(word.id, { notes: 'unrelated' });
+        expect(getLexiconComplete(word.id)!.glyph_order).toContain(pin);
+    });
+
+    it('addSpellingToLexicon keeps existing pins in place', () => {
+        const ka = makeGrapheme('ka', 'ka');
+        const to = makeGrapheme('to', 'to');
+        const pin = createGraphemeEntry(ka.id, ka.variants![0].id);
+        const word = createLexicon({ lemma: 'kato', glyph_order: [pin] });
+        addSpellingToLexicon(word.id, { grapheme_id: to.id, position: 1 });
+        expect(JSON.parse(getLexiconComplete(word.id)!.glyph_order)).toEqual([pin, createGraphemeEntry(to.id)]);
+    });
+});

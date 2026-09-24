@@ -34,6 +34,8 @@ export {
     useEtymologData,
     useEtymologSettings,
     useEtymologStatus,
+    // Non-throwing: the block scheme inside a provider, null outside one
+    useOptionalBlockScheme,
     // Types
     type EtymologContextValue,
     type EtymologData,
@@ -134,6 +136,14 @@ export type {
     GraphemeWithGlyphs,
     GraphemeWithPhonemes,
     GraphemeComplete,
+    // Grapheme variant types (schema v9)
+    VariantGroup,
+    GraphemeVariant,
+    GraphemeVariantWithGlyphs,
+    CreateGraphemeVariantInput,
+    UpdateGraphemeVariantInput,
+    CreateVariantGroupInput,
+    UpdateVariantGroupInput,
     // Phoneme types
     Phoneme,
     CreatePhonemeInput,
@@ -210,6 +220,43 @@ export {
 } from './graphemeService';
 
 // =============================================================================
+// GRAPHEME VARIANTS + VARIANT GROUPS (schema v9)
+// =============================================================================
+export {
+    DEFAULT_VARIANT_NAME,
+    createVariantGroup,
+    updateVariantGroup,
+    deleteVariantGroup,
+    getVariantGroupById,
+    getAllVariantGroups,
+    getVariantGroupUsageCount,
+    getVariantById,
+    getVariantsByGraphemeId,
+    getDefaultVariantId,
+    loadVariantsByGrapheme,
+    getVariantPinUsageCount,
+    createVariant,
+    updateVariant,
+    setVariantGlyphs,
+    setDefaultVariant,
+    deleteVariant,
+    type VariantGroupDeletionResult,
+    type VariantDeletionResult
+} from './variantService';
+
+// =============================================================================
+// BLOCK SCHEME (schema v9)
+// =============================================================================
+export {
+    BLOCK_SCHEME_ROW_ID,
+    getBlockScheme,
+    saveBlockScheme,
+    parseBlockSchemeDefinition,
+    serializeBlockScheme,
+    formatSchemeIssues
+} from './blockSchemeService';
+
+// =============================================================================
 // PHONEME CRUD OPERATIONS
 // =============================================================================
 export {
@@ -268,6 +315,8 @@ export {
     getLexiconEntriesUsingGrapheme,
     getAutoSpelledLexiconMentioning,
     handleGraphemeDeletion,
+    handleVariantDeletion,
+    getLexiconEntriesPinningVariant,
     getLexiconEntriesNeedingAttention,
     clearNeedsAttention
 } from './lexiconService';
@@ -287,8 +336,10 @@ export {
 // =============================================================================
 export {
     GRAPHEME_PREFIX,
+    GRAPHEME_ENTRY_RE,
     isGraphemeEntry,
     extractGraphemeId,
+    extractVariantId,
     createGraphemeEntry,
     parseSpellingEntry,
     parseGlyphOrder,
@@ -300,6 +351,7 @@ export {
     spellingContainsGrapheme,
     replaceGraphemeWithIpa,
     removeGraphemeFromSpelling,
+    stripVariantPins,
     serializeGlyphOrder,
     deserializeGlyphOrder,
     type SpellingEntry,

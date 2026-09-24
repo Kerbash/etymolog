@@ -24,6 +24,7 @@ export type {
     LayoutPreset,
     // Glyph types
     RenderableGlyph,
+    RenderableBlock,
     PositionedGlyph,
     // Component props
     GlyphSpellingDisplayProps,

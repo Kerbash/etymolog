@@ -20,6 +20,12 @@ import { SmartForm, useSmartForm } from "smart-form/smartForm";
 import { useEtymolog, type Glyph } from "../../../../db";
 import { ROUTES, resolveUrl } from "../../../../url_mapping";
 import { GraphemeFormFields, useGraphemeSubmit } from "../../../form/graphemeForm";
+// The pure forms model, imported from its own module (no React in it).
+import {
+    initialDefaultForm,
+    type DefaultFormDraft,
+    type VariantDraft,
+} from "../../../form/graphemeForm/variantDrafts";
 import { DialogPanel } from "../../../shared";
 import { useRegisterUnsaved } from "../../../shell";
 import EntityEditLayout from "../entityEdit/EntityEditLayout";
@@ -39,6 +45,11 @@ export default function NewGraphemePage() {
     // The glyph list is not a form FIELD — it is an ordered list of records —
     // so it lives here and is handed to the submit handler directly.
     const [selectedGlyphs, setSelectedGlyphs] = useState<Glyph[]>([]);
+    const [isLogogram, setIsLogogram] = useState(false);
+    // The grapheme's other forms, and the default form's identity (which only
+    // "Make default" changes) — page state like the glyph list.
+    const [variants, setVariants] = useState<VariantDraft[]>([]);
+    const [defaultForm, setDefaultForm] = useState<DefaultFormDraft>(() => initialDefaultForm('create'));
 
     // `/script-maker/create?folder=…` — the grapheme gallery's "New grapheme"
     // default (create-in-folder). Validated against the grapheme folder slice:
@@ -71,6 +82,9 @@ export default function NewGraphemePage() {
         mode: 'create',
         glyphs: selectedGlyphs,
         folderId: initialFolderId,
+        isLogogram,
+        variants,
+        defaultForm,
         onSuccess: handleSuccess,
     });
 
@@ -83,7 +97,7 @@ export default function NewGraphemePage() {
     // would say "nothing to lose" for a grapheme with three glyphs on it and no
     // text typed.
     const isDirty =
-        (formProps.formState.isChanged || selectedGlyphs.length > 0) &&
+        (formProps.formState.isChanged || selectedGlyphs.length > 0 || variants.length > 0) &&
         !formProps.formState.isSubmitting;
     useRegisterUnsaved("new-grapheme", isDirty);
 
@@ -128,6 +142,11 @@ export default function NewGraphemePage() {
                         selectedGlyphs={selectedGlyphs}
                         onSelectedGlyphsChange={setSelectedGlyphs}
                         defaultPronunciations={defaultPronunciations}
+                        onIsLogogramChange={setIsLogogram}
+                        variants={variants}
+                        onVariantsChange={setVariants}
+                        defaultForm={defaultForm}
+                        onDefaultFormChange={setDefaultForm}
                     />
                     {actionBar}
                 </SmartForm>

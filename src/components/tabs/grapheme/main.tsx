@@ -33,7 +33,7 @@ import graphic_template from "@styles/graphic_template.module.scss";
 
 import { useEtymolog } from "../../../db";
 import { ROUTES } from "../../../url_mapping";
-import { PageHeader } from "../../shared";
+import { NotFoundNotice, PageHeader } from "../../shared";
 import { GlyphEditPage } from "./editGlyph";
 import { GraphemeEditPage } from "./editGrapheme";
 import GlyphGallery from "./galleryGlyphs/galleryGlyphs.tsx";
@@ -158,6 +158,7 @@ function GraphemesTab() {
             <Route path="syllabary" element={<SyllabaryChartPage />} />
             <Route path="punctuation" element={<PunctuationPage />} />
             <Route path="custom-charts" element={<CustomChartsPage />} />
+            <Route path="*" element={<NotFoundNotice backTo={ROUTES.scriptMaker} backLabel="Go to the graphemes" />} />
         </Routes>
     );
 }
@@ -169,6 +170,7 @@ function GlyphsTab() {
             <Route index element={<GlyphsHome />} />
             <Route path="create" element={<NewGlyphPage />} />
             <Route path="db/:id" element={<GlyphEditPage />} />
+            <Route path="*" element={<NotFoundNotice backTo={ROUTES.glyphs} backLabel="Go to the glyphs" />} />
         </Routes>
     );
 }

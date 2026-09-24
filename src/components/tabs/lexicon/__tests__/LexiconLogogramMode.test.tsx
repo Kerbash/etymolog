@@ -1,19 +1,25 @@
 // @vitest-environment happy-dom
 /**
- * LexiconEditor — the Compose / Word-symbol spelling mode (Phase 3, UC-B1).
+ * LexiconEditor — the Compose / Logogram spelling mode.
  *
- * The Spelling section gains a segmented choice: compose from graphemes, or
- * draw/import ONE symbol that IS the word. What this pins:
+ * A logogram is ONE symbol that writes the whole word: an existing grapheme,
+ * an existing glyph, or a new drawing — a normal logogram grapheme underneath
+ * in every case. What this pins:
  *
- *  - create + Symbol mode submits a `symbol` composite create (svg + auto_spell
- *    forced OFF), NOT a glyph_order;
- *  - choosing Symbol mode disables the auto-spell checkbox;
- *  - edit mode INFERS Symbol mode from a stored word whose glyph_order is one
- *    logogram grapheme, and opening it does not dirty the form;
- *  - editing that word's drawing calls `api.wordSymbol.updateDrawing`.
+ *  - an existing GRAPHEME is referenced directly (glyph_order, no symbol);
+ *  - an existing GLYPH goes through the composite create as `symbol.glyphId`;
+ *  - a new DRAWING goes through it as `symbol.svgData`;
+ *  - auto-spell is forced OFF for every logogram word;
+ *  - nothing chosen = nothing submitted;
+ *  - edit mode INFERS Logogram mode (with that grapheme chosen) from a stored
+ *    one-logogram spelling, and saving it unchanged re-references it;
+ *  - a new drawing on edit makes a NEW logogram and never re-draws the shared
+ *    one in place (`updateDrawing` is never called).
  *
- * The real `LexiconFormFields` is mounted; only the leaf `SvgDrawerInput` (which
- * needs a real canvas) is stubbed to a button that reports a drawing.
+ * The real `LexiconFormFields` and `LogogramPanel` are mounted. Stubbed: the
+ * leaf `SvgDrawerInput` (needs a real canvas) and the two picker modals (the
+ * real ones mount the whole Script Maker gallery) — each stub exposes the same
+ * callback the real one fires.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -44,6 +50,28 @@ vi.mock('smart-form/input/basic/svgDrawerInput/svgDrawerInput.tsx', () => ({
     ),
 }));
 
+// The picker modals: when open, one button per choice, firing `onSelect` with
+// the same object the real gallery hands back. The grapheme picker's props are
+// recorded so the tab's "no marks" request (`hideMarks`) can be asserted; the
+// filtering itself is covered in `graphemeForm/__tests__/graphemePickerModal`.
+const graphemePicker = vi.hoisted(() => ({ hideMarks: undefined as boolean | undefined }));
+vi.mock('../../../form/graphemeForm', () => ({
+    GraphemePickerModal: ({ isOpen, onSelect, hideMarks }: { isOpen: boolean; onSelect: (g: unknown) => void; hideMarks?: boolean }) => {
+        graphemePicker.hideMarks = hideMarks;
+        return isOpen ? (
+            <button type="button" data-testid="pick-grapheme" onClick={() => onSelect(SYMBOL_GRAPHEME)}>
+                pick grapheme
+            </button>
+        ) : null;
+    },
+    GlyphPickerModal: ({ isOpen, onSelect }: { isOpen: boolean; onSelect: (g: unknown) => void }) =>
+        isOpen ? (
+            <button type="button" data-testid="pick-glyph" onClick={() => onSelect(LOOSE_GLYPH)}>
+                pick glyph
+            </button>
+        ) : null,
+}));
+
 const create = vi.fn(() => ({ success: true, data: { id: 42, lemma: 'night', pronunciation: null } }));
 const update = vi.fn(() => ({ success: true, data: { id: 7 } }));
 const updateDrawing = vi.fn(() => ({ success: true, data: { glyphId: 1, graphemeId: 5 } }));
@@ -51,6 +79,9 @@ const wordSymbolCreate = vi.fn(() => ({ success: true, data: { glyphId: 2, graph
 
 const argsOf = (mock: { mock: { calls: unknown[][] } }, call = 0): unknown[] =>
     mock.mock.calls[call] as unknown[];
+
+/** A glyph no logogram wraps yet. */
+const LOOSE_GLYPH = { id: 3, name: 'moon', svg_data: '<svg>moon</svg>', category: null, notes: null, created_at: '', updated_at: '', usageCount: 0 };
 
 const SYMBOL_GRAPHEME = {
     id: 5,
@@ -79,7 +110,11 @@ const etymologValue = {
         },
         wordSymbol: { create: wordSymbolCreate, updateDrawing },
     },
-    data: { lexiconComplete: [], graphemesComplete: [SYMBOL_GRAPHEME] },
+    data: {
+        lexiconComplete: [] as Array<{ id: number; glyph_order: string }>,
+        graphemesComplete: [SYMBOL_GRAPHEME],
+        glyphsWithUsage: [{ ...SYMBOL_GRAPHEME.glyphs[0], usageCount: 1 }, LOOSE_GLYPH],
+    },
     settings: { defaultGalleryView: 'detailed' },
     refresh: vi.fn(),
     batchMutations: <T,>(fn: () => T): T => fn(),
@@ -187,64 +222,122 @@ afterEach(() => {
     vi.clearAllMocks();
 });
 
-describe('LexiconEditor — word-symbol spelling mode', () => {
-    it('create: defaults to Compose; the drawer is not shown', async () => {
+async function chooseLogogramMode() {
+    mount('create');
+    await settle();
+    // A name source, so the word can be created at all.
+    typeInto(textInputs()[1], 'night');
+    await settle();
+    click(button('Logogram')!);
+    await settle();
+}
+
+describe('LexiconEditor — logogram spelling mode', () => {
+    it('create: defaults to Compose; the logogram panel is not shown', async () => {
         mount('create');
         await settle();
         expect(button('Compose from graphemes')?.getAttribute('aria-pressed')).toBe('true');
-        expect(button('Word symbol')?.getAttribute('aria-pressed')).toBe('false');
+        expect(button('Logogram')?.getAttribute('aria-pressed')).toBe('false');
+        expect(button('Use existing')).toBeUndefined();
         expect(testid('stub-draw')).toBeNull();
     });
 
-    it('create: choosing Word symbol reveals the drawer and disables auto-spell', async () => {
-        mount('create');
-        await settle();
-        click(button('Word symbol')!);
-        await settle();
+    it('create: Logogram opens on "Use existing", says auto-spell is off, and hides the wand', async () => {
+        await chooseLogogramMode();
 
-        expect(button('Word symbol')?.getAttribute('aria-pressed')).toBe('true');
-        expect(testid('stub-draw')).not.toBeNull();
-
-        const autoSpell = Array.from(container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'))
-            .find((c) => c.closest('label')?.textContent?.includes('Auto-spell'));
-        expect(autoSpell?.disabled).toBe(true);
+        expect(button('Logogram')?.getAttribute('aria-pressed')).toBe('true');
+        expect(button('Use existing')?.getAttribute('aria-pressed')).toBe('true');
+        expect(container.textContent).toContain('Logogram spelling: this word is written as one logogram');
+        // The auto-spell toggle lives on the compose canvas, which is gone.
+        expect(container.querySelector('button[aria-label="Auto-spell"]')).toBeNull();
     });
 
-    it('create: submits a symbol composite create with auto_spell off and no glyph_order', async () => {
-        mount('create');
+    it('create: an existing grapheme is referenced directly — no symbol, auto-spell off', async () => {
+        await chooseLogogramMode();
+        click(button('Choose a grapheme…')!);
         await settle();
-        // Give the word a name source (meaning) and a symbol drawing.
-        typeInto(textInputs()[1], 'night');
+        click(testid('pick-grapheme')!);
         await settle();
-        click(button('Word symbol')!);
+        // The choice card names it.
+        expect(container.textContent).toContain('Grapheme (logogram)');
+        // The tab never offers a mark (vowel-killer, accent) as a word.
+        expect(graphemePicker.hideMarks).toBe(true);
+        await submit();
+
+        expect(create).toHaveBeenCalledTimes(1);
+        const input = argsOf(create)[0] as { symbol?: unknown; glyph_order?: string[]; auto_spell?: boolean };
+        expect(input.glyph_order).toEqual(['grapheme-5']);
+        expect(input.symbol).toBeUndefined();
+        expect(input.auto_spell).toBe(false);
+    });
+
+    it('create: an existing glyph goes through the composite create as symbol.glyphId', async () => {
+        await chooseLogogramMode();
+        click(button('Choose a glyph…')!);
+        await settle();
+        click(testid('pick-glyph')!);
+        await settle();
+        // Not wrapped by any logogram yet, so the card says one will be made.
+        expect(container.textContent).toContain('Saving wraps it in a new logogram grapheme');
+        await submit();
+
+        expect(create).toHaveBeenCalledTimes(1);
+        const input = argsOf(create)[0] as { symbol?: { glyphId?: number; svgData?: string }; glyph_order?: string[]; auto_spell?: boolean };
+        expect(input.symbol?.glyphId).toBe(3);
+        expect(input.symbol?.svgData).toBeUndefined();
+        expect(input.glyph_order).toBeUndefined();
+        expect(input.auto_spell).toBe(false);
+    });
+
+    it('create: a new drawing goes through the composite create as symbol.svgData', async () => {
+        await chooseLogogramMode();
+        click(button('Draw new')!);
         await settle();
         click(testid('stub-draw')!);
         await settle();
         await submit();
 
         expect(create).toHaveBeenCalledTimes(1);
-        const input = argsOf(create)[0] as {
-            symbol?: { svgData: string };
-            glyph_order?: string[];
-            auto_spell?: boolean;
-        };
+        const input = argsOf(create)[0] as { symbol?: { svgData?: string; name?: string }; glyph_order?: string[]; auto_spell?: boolean };
         expect(input.symbol?.svgData).toBe(DRAWN_SVG);
+        expect(input.symbol?.name).toBe('night');
         expect(input.auto_spell).toBe(false);
         expect(input.glyph_order).toBeUndefined();
     });
 
-    it('edit: infers Symbol mode from a one-logogram spelling', async () => {
-        mount('edit');
+    it('create: the drawing survives a trip to the other tab', async () => {
+        await chooseLogogramMode();
+        click(button('Draw new')!);
         await settle();
-        expect(button('Word symbol')?.getAttribute('aria-pressed')).toBe('true');
-        expect(button('Compose from graphemes')?.getAttribute('aria-pressed')).toBe('false');
+        click(testid('stub-draw')!);
+        await settle();
+        click(button('Use existing')!);
+        await settle();
+        click(button('Draw new')!);
+        await settle();
+        await submit();
+
+        const input = argsOf(create)[0] as { symbol?: { svgData?: string } };
+        expect(input.symbol?.svgData).toBe(DRAWN_SVG);
     });
 
-    it('edit: a changed drawing updates the word and re-draws the symbol', async () => {
+    it('create: with nothing chosen, nothing is submitted', async () => {
+        await chooseLogogramMode();
+        await submit();
+        expect(create).not.toHaveBeenCalled();
+    });
+
+    it('edit: infers Logogram mode with the stored grapheme chosen', async () => {
         mount('edit');
         await settle();
-        // Re-draw the symbol, then save.
-        click(testid('stub-draw')!);
+        expect(button('Logogram')?.getAttribute('aria-pressed')).toBe('true');
+        expect(button('Compose from graphemes')?.getAttribute('aria-pressed')).toBe('false');
+        expect(button('Use existing')?.getAttribute('aria-pressed')).toBe('true');
+        expect(container.textContent).toContain('Edit in Script Maker');
+    });
+
+    it('edit: saving re-references the same logogram and creates nothing', async () => {
+        mount('edit');
         await settle();
         await submit();
 
@@ -252,12 +345,38 @@ describe('LexiconEditor — word-symbol spelling mode', () => {
         const [, updateInput] = argsOf(update) as [number, { glyph_order?: string[]; auto_spell?: boolean }];
         expect(updateInput.glyph_order).toEqual(['grapheme-5']);
         expect(updateInput.auto_spell).toBe(false);
-
-        expect(updateDrawing).toHaveBeenCalledTimes(1);
-        const draw = argsOf(updateDrawing)[0] as { graphemeId: number; svgData: string };
-        expect(draw.graphemeId).toBe(5);
-        expect(draw.svgData).toBe(DRAWN_SVG);
-        // A word already spelled by an existing symbol never mints a new one.
         expect(wordSymbolCreate).not.toHaveBeenCalled();
+        expect(updateDrawing).not.toHaveBeenCalled();
+    });
+
+    it('edit: a new drawing makes a NEW logogram — the shared one is never re-drawn', async () => {
+        mount('edit');
+        await settle();
+        click(button('Draw new')!);
+        await settle();
+        click(testid('stub-draw')!);
+        await settle();
+        await submit();
+
+        expect(wordSymbolCreate).toHaveBeenCalledTimes(1);
+        expect(argsOf(wordSymbolCreate)[0]).toEqual({ name: 'night', svgData: DRAWN_SVG });
+        const [, updateInput] = argsOf(update) as [number, { glyph_order?: string[] }];
+        expect(updateInput.glyph_order).toEqual(['grapheme-9']);
+        expect(updateDrawing).not.toHaveBeenCalled();
+    });
+
+    it('edit: the choice card warns when other words share the logogram', async () => {
+        etymologValue.data.lexiconComplete = [
+            { id: 7, glyph_order: '["grapheme-5"]' },
+            { id: 8, glyph_order: '["grapheme-5"]' },
+        ];
+        try {
+            mount('edit');
+            await settle();
+            // Word 7 is the one being edited; only word 8 is "another word".
+            expect(container.textContent).toContain('Also used by 1 other word');
+        } finally {
+            etymologValue.data.lexiconComplete = [];
+        }
     });
 });

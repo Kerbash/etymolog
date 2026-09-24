@@ -17,7 +17,8 @@ import GlyphSpellingDisplay from '../spelling/GlyphSpellingDisplay';
 import type { IPASyllabaryChartProps } from './types';
 import { guideTooltipLine } from './guideTiers';
 import type { GuideMap, GuideTier } from '../../../generator';
-import type { GraphemeComplete } from '../../../db/types';
+import type { GraphemeComplete, SpellingDisplayEntry } from '../../../db/types';
+import { ComposedSyllablePreview, useSyllablePreviewSpeller } from '../composedSyllable';
 import {
     SYLLABARY_VOWELS,
     SYLLABARY_CONSONANT_GROUPS,
@@ -28,9 +29,18 @@ import styles from './IPASyllabaryChart.module.scss';
 
 /**
  * Render the content of a single cell.
- * Assigned cells get a GlyphSpellingDisplay; unassigned get plain text.
+ * Assigned cells get a GlyphSpellingDisplay; an EMPTY cell gets the dimmed
+ * composed preview when the block scheme can spell it from existing signs
+ * (`preview`), and plain text otherwise.
  */
-function CellContent({ ipa, grapheme }: { ipa: string; grapheme: GraphemeComplete | null }) {
+function CellContent({ ipa, grapheme, preview }: {
+    ipa: string;
+    grapheme: GraphemeComplete | null;
+    preview?: { consonant: string; vowel: string; entries: SpellingDisplayEntry[] } | null;
+}) {
+    if (!grapheme && preview) {
+        return <ComposedSyllablePreview consonant={preview.consonant} vowel={preview.vowel} entries={preview.entries} />;
+    }
     if (grapheme && grapheme.glyphs.length > 0) {
         return (
             <div className={styles.cellAssigned}>
@@ -94,6 +104,10 @@ export default function IPASyllabaryChart({
     guide = null,
     guideLabel,
 }: IPASyllabaryChartProps) {
+    // Block script: empty cells preview the syllable composed from existing
+    // signs. Null (no previews, no spelling work) unless the scheme is on.
+    const spellPreview = useSyllablePreviewSpeller();
+
     // Event delegation: single handler on <tbody>
     const handleBodyClick = useCallback(
         (e: React.MouseEvent<HTMLTableSectionElement>) => {
@@ -164,13 +178,20 @@ export default function IPASyllabaryChart({
                         {SYLLABARY_VOWELS.map(vowel => {
                             const syllable = getSyllable(consonant, vowel);
                             const grapheme = phonemeMap.get(syllable) ?? null;
+                            // Only an EMPTY cell, and only while blocks are on
+                            // (`spellPreview` is null otherwise).
+                            const entries = !grapheme && spellPreview ? spellPreview(consonant, vowel) : null;
                             return (
                                 <td
                                     key={vowel}
                                     data-ipa={syllable}
                                     className={classNames(styles.syllableCell, grapheme && styles.assigned)}
                                 >
-                                    <CellContent ipa={syllable} grapheme={grapheme} />
+                                    <CellContent
+                                        ipa={syllable}
+                                        grapheme={grapheme}
+                                        preview={entries ? { consonant, vowel, entries } : null}
+                                    />
                                 </td>
                             );
                         })}
@@ -182,7 +203,8 @@ export default function IPASyllabaryChart({
         return rows;
         // The guide paints the ROW HEADERS, which are built in here — so a
         // flavour change has to invalidate this memo or the overlay freezes.
-    }, [phonemeMap, guide, guideLabel]);
+        // The preview speller changes with the scheme / graphemes.
+    }, [phonemeMap, guide, guideLabel, spellPreview]);
 
     // Backness group colSpan headers
     const backnessHeaders = useMemo(() => (

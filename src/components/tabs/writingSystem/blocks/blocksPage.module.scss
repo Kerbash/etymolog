@@ -1,0 +1,515 @@
+/**
+ * Block Designer — the Blocks page and its sections (RolesEditor,
+ * TemplateList, TemplateEditor, BlockPreview). One stylesheet for the page
+ * family: the sections share their card, chip and row vocabulary.
+ *
+ * Theme tokens only. A role's own tint arrives as the `--role-colour` custom
+ * property (inline style), declared locally here so the theme token is the
+ * default and no `var()` fallback is needed.
+ */
+
+.page {
+    display: flex;
+    flex-direction: column;
+    gap: var(--section-gap);
+    min-width: 0;
+}
+
+/* ── section cards ─────────────────────────────────────────────────────── */
+
+.section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    min-width: 0;
+    padding: var(--surface-padding);
+    background: var(--surface-base);
+    border: var(--border-width) solid var(--border-secondary);
+    border-radius: var(--radius-surface);
+    box-shadow: var(--shadow-surface);
+}
+
+.sectionHeader {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.sectionTitle {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    text-transform: var(--heading-transform);
+    letter-spacing: var(--heading-letter-spacing);
+}
+
+.hint {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.muted {
+    color: var(--text-primary-muted);
+}
+
+.actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* ── the enable / save bar ─────────────────────────────────────────────── */
+
+.toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    cursor: pointer;
+
+    input {
+        width: 1.1rem;
+        height: 1.1rem;
+        accent-color: var(--interactive-base);
+    }
+}
+
+.status {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.dirtyNote {
+    font-size: 0.85rem;
+    color: var(--status-warning);
+}
+
+.issueList {
+    margin: 0;
+    padding: 0.75rem 1rem 0.75rem 2rem;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    background: var(--status-warning-bg);
+    border: var(--border-width) solid var(--status-warning);
+    border-radius: var(--radius-control);
+}
+
+.issueTitle {
+    list-style: none;
+    margin: 0 0 0.25rem -1rem;
+    font-weight: 700;
+}
+
+/* ── form controls ─────────────────────────────────────────────────────── */
+
+.input,
+.select {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.9rem;
+    font-family: inherit;
+    color: var(--text-primary);
+    background: var(--surface-raised);
+    border: var(--border-width) solid var(--border-primary);
+    border-radius: var(--radius-control);
+    min-width: 0;
+    max-width: 100%;
+
+    &:focus-visible {
+        outline: 2px solid var(--interactive-base);
+        outline-offset: 2px;
+    }
+
+    &[aria-invalid='true'] {
+        border-color: var(--status-error);
+    }
+}
+
+.select {
+    cursor: pointer;
+}
+
+/* ── roles table ───────────────────────────────────────────────────────── */
+
+.tableScroll {
+    overflow-x: auto;
+    min-width: 0;
+}
+
+.rolesTable {
+    width: 100%;
+    border-collapse: collapse;
+
+    th {
+        padding: 0.4rem 0.5rem;
+        text-align: left;
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: var(--text-secondary);
+        border-bottom: var(--border-width) solid var(--border-secondary);
+    }
+
+    td {
+        padding: 0.4rem 0.5rem;
+        vertical-align: middle;
+    }
+}
+
+.matcherCell {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.swatches {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+
+.swatch {
+    --role-colour: var(--interactive-base);
+
+    width: 1.25rem;
+    height: 1.25rem;
+    padding: 0;
+    background: var(--role-colour);
+    border: var(--border-width-strong) solid transparent;
+    border-radius: 50%;
+    cursor: pointer;
+
+    &[aria-pressed='true'] {
+        border-color: var(--text-primary);
+        box-shadow: 0 0 0 2px var(--surface-base) inset;
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--interactive-base);
+        outline-offset: 2px;
+    }
+}
+
+.usedBy {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+/* ── chips (role labels) ───────────────────────────────────────────────── */
+
+.chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.chip {
+    --role-colour: var(--interactive-base);
+
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.15rem 0.55rem;
+    font-size: 0.85rem;
+    font-family: inherit;
+    font-weight: 600;
+    color: var(--text-primary);
+    background: color-mix(in srgb, var(--role-colour) 16%, transparent);
+    border: var(--border-width) solid var(--role-colour);
+    border-radius: var(--radius-pill);
+}
+
+.chipButton {
+    cursor: pointer;
+
+    &[aria-pressed='false'] {
+        background: transparent;
+        border-style: dashed;
+        color: var(--text-secondary);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--interactive-base);
+        outline-offset: 2px;
+    }
+}
+
+.chipDot {
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 50%;
+    background: var(--role-colour);
+}
+
+.patternArrow {
+    color: var(--text-secondary);
+}
+
+/* ── template list ─────────────────────────────────────────────────────── */
+
+.templateList {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.templateRow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem;
+    background: var(--surface-raised);
+    border: var(--border-width) solid var(--border-secondary);
+    border-radius: var(--radius-surface);
+    min-width: 0;
+}
+
+.templateRowEditing {
+    border-color: var(--interactive-base);
+}
+
+.dragHandle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.25rem;
+    color: var(--text-secondary);
+    cursor: grab;
+    border-radius: var(--radius-control);
+
+    &:focus-visible {
+        outline: 2px solid var(--interactive-base);
+        outline-offset: 2px;
+    }
+}
+
+.priority {
+    min-width: 1.5rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+.templateBody {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    flex: 1 1 10rem;
+    min-width: 0;
+}
+
+.templateName {
+    font-weight: 700;
+    color: var(--text-primary);
+    overflow-wrap: anywhere;
+}
+
+.thumbnail {
+    flex: 0 0 auto;
+    width: 3rem;
+    height: 3rem;
+    background: var(--surface-base);
+    border: var(--border-width) solid var(--border-primary);
+    border-radius: var(--radius-control);
+}
+
+.thumbRect {
+    fill: color-mix(in srgb, var(--role-colour) 30%, transparent);
+    stroke: var(--role-colour);
+    stroke-width: 2;
+}
+
+.thumbRectDefault {
+    --role-colour: var(--interactive-base);
+}
+
+.seedReport {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin: 0;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    background: var(--status-info-bg);
+    border: var(--border-width) solid var(--status-info);
+    border-radius: var(--radius-control);
+
+    ul {
+        margin: 0;
+        padding-left: 1.25rem;
+    }
+}
+
+/* ── template editor ───────────────────────────────────────────────────── */
+
+.editor {
+    border-color: var(--interactive-base);
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 0;
+}
+
+.fieldLabel {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.editorBody {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    align-items: flex-start;
+    min-width: 0;
+}
+
+.canvasColumn {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    flex: 0 1 20rem;
+    min-width: 0;
+}
+
+.slotSelect {
+    width: 100%;
+    font-size: 0.75rem;
+    padding: 0.15rem 0.25rem;
+    color: var(--text-primary);
+    background: var(--surface-raised);
+    border: var(--border-width) solid var(--border-primary);
+    border-radius: var(--radius-control);
+}
+
+.emptyCanvas {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    aspect-ratio: 1 / 1;
+    width: 100%;
+    max-width: 20rem;
+    padding: 1rem;
+    text-align: center;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    border: var(--border-width-strong) dashed var(--border-primary);
+    border-radius: var(--radius-control);
+}
+
+/* ── live preview ──────────────────────────────────────────────────────── */
+
+.preview {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    flex: 1 1 16rem;
+    min-width: 0;
+}
+
+.previewControls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.previewStage {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 8rem;
+    padding: 1rem;
+    overflow-x: auto;
+    color: var(--text-primary);
+    background: var(--page-background-primary);
+    border: var(--border-width) solid var(--border-secondary);
+    border-radius: var(--radius-control);
+}
+
+.caption {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+/* ── "Check all my words" (WordCheck.tsx) ─────────────────────────────── */
+
+.wordCheckReport {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.wordCheckGroup {
+    padding: 0.5rem 0.75rem;
+    background: var(--page-background-primary);
+    border: var(--border-width) solid var(--border-secondary);
+    border-radius: var(--radius-control);
+}
+
+.wordCheckSummary {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    cursor: pointer;
+
+    &:focus-visible {
+        outline: 2px solid var(--interactive-base);
+        outline-offset: 2px;
+    }
+}
+
+.wordCheckRows {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin: 0.5rem 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.wordCheckRow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 0.75rem;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+}
+
+.wordCheckLabel {
+    font-weight: 600;
+}
+
+.wordCheckReadout {
+    color: var(--text-secondary);
+}
+
+.wordCheckDetail {
+    flex: 1 1 12rem;
+    min-width: 0;
+    color: var(--text-secondary);
+}

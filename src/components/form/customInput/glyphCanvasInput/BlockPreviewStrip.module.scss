@@ -1,0 +1,30 @@
+/* The composed word above the canvas tiles (block scheme on only). */
+.strip {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border-secondary);
+    border-radius: var(--radius-control);
+    background: var(--surface-base);
+    min-width: 0;
+}
+
+.caption {
+    margin: 0;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.display {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    color: var(--text-primary);
+}
+
+.empty {
+    font-size: 0.8125rem;
+    font-style: italic;
+    color: var(--text-secondary);
+}

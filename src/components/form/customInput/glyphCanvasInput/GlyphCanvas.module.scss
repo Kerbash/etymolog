@@ -97,3 +97,140 @@
     }
 }
 
+
+/* ---------------------------------------------------------------------------
+   Block script (BLOCK_SCRIPT_PLAN Phase 6) — only rendered while the script's
+   block scheme is on.
+   --------------------------------------------------------------------------- */
+
+/* The `.` boundary entry (and the `‿` join entry, with the `join`
+   modifier): a slim dashed bar, never a text glyph. */
+.boundaryBackground {
+    fill: var(--surface-base);
+    stroke: var(--text-secondary);
+    stroke-width: 1;
+    stroke-dasharray: 2, 2;
+}
+
+/* The join: a solid bar in the interactive tone — it holds, it does not cut. */
+.joinBackground {
+    stroke: var(--interactive-base);
+    stroke-dasharray: none;
+}
+
+.boundaryNode {
+    cursor: default;
+}
+
+.boundaryMark {
+    fill: var(--text-secondary);
+    font-size: 20px;
+    font-weight: 700;
+    dominant-baseline: central;
+    text-anchor: middle;
+    user-select: none;
+}
+
+/* A pinned variant: a small dot on the tile's corner. */
+.pinMarker {
+    fill: var(--interactive-base);
+    stroke: var(--surface-raised);
+    stroke-width: 1;
+}
+
+/* Thin outline around a block's tiles; its colour is set inline (the role's). */
+.blockOutline {
+    fill: none;
+    stroke-width: 1.5;
+    pointer-events: none;
+}
+
+/* The outline's click target: its border only, widened so it is hittable. */
+.blockOutlineHit {
+    fill: none;
+    stroke: transparent;
+    stroke-width: 8;
+    pointer-events: stroke;
+    cursor: pointer;
+}
+
+/* A tap on a tile places the insertion point. */
+.cursorEnabled [data-tile-source] {
+    cursor: text;
+}
+
+.blockCaption {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    height: 100%;
+    font-size: 11px;
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.blockCaptionName {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.blockCaptionButton {
+    padding: 0.1rem 0.35rem;
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-control);
+    background: var(--surface-raised);
+    color: var(--text-primary);
+    font-size: 10px;
+    line-height: 1.2;
+    cursor: pointer;
+
+    &:hover {
+        border-color: var(--interactive-base);
+        color: var(--interactive-base);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--focus-ring);
+        outline-offset: 1px;
+    }
+}
+
+/* Keyboard-driven insertion point (see utils/canvasCursor.ts). */
+.cursorEnabled:focus-visible {
+    outline: 2px solid var(--interactive-base);
+    outline-offset: 2px;
+}
+
+.caret {
+    stroke: var(--interactive-base);
+    stroke-width: 2;
+    stroke-linecap: round;
+    pointer-events: none;
+    animation: caretBlink 1.1s steps(1, end) infinite;
+}
+
+@keyframes caretBlink {
+    50% {
+        opacity: 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .caret {
+        animation: none;
+    }
+}
+
+.srOnly {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}

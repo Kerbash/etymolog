@@ -1,0 +1,142 @@
+/**
+ * RectLayoutEditor styles.
+ *
+ * Theme tokens only. A rectangle's user-chosen tint arrives as the
+ * `--rect-colour` custom property (inline style); every tint below falls back
+ * to `--interactive-base` when it is absent.
+ */
+
+.editor {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5em;
+    min-width: 0;
+}
+
+.canvas {
+    position: relative;
+    max-width: 100%;
+    aspect-ratio: 1 / 1;
+    box-sizing: border-box;
+    /* Rect coordinates are percentages of the padding box — keep it bare. */
+    padding: 0;
+    border: 2px solid var(--border-primary);
+    border-radius: var(--radius-control);
+    background-color: var(--surface-base);
+    /* Faint 4×4 guide grid: one line per quarter on each axis. */
+    background-image:
+        linear-gradient(to right, color-mix(in srgb, var(--border-secondary) 60%, transparent) 1px, transparent 1px),
+        linear-gradient(to bottom, color-mix(in srgb, var(--border-secondary) 60%, transparent) 1px, transparent 1px);
+    background-size: 25% 25%;
+    /* Pointer drags must not scroll / zoom the page on touch screens. */
+    touch-action: none;
+    user-select: none;
+}
+
+.rect {
+    /* The rect's own tint. Declared LOCALLY (not as a var() fallback, which the
+       token ratchet bans) so the inline `--rect-colour` a caller sets wins and
+       the theme token is the default. */
+    --rect-colour: var(--interactive-base);
+    --_tint: var(--rect-colour);
+
+    position: absolute;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25em;
+    padding: 0.25em;
+    overflow: hidden;
+    border: 1px solid var(--_tint);
+    border-radius: 2px;
+    /* Translucent so an overlapped rectangle (an infix) still shows through. */
+    background-color: color-mix(in srgb, var(--_tint) 18%, transparent);
+    color: var(--text-primary);
+    cursor: grab;
+
+    &:active {
+        cursor: grabbing;
+    }
+
+    &:focus-visible {
+        outline: 2px dashed var(--interactive-hover);
+        outline-offset: 1px;
+    }
+}
+
+/* Overflow is not clipped for the selection: the handle overhangs the corner. */
+.selected {
+    overflow: visible;
+    border-width: 2px;
+    background-color: color-mix(in srgb, var(--_tint) 30%, transparent);
+    outline: 2px solid var(--interactive-active);
+    outline-offset: 1px;
+}
+
+.readOnly .rect {
+    cursor: default;
+}
+
+.label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1.1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
+}
+
+.content {
+    min-width: 0;
+    cursor: auto;
+    font-size: 0.75rem;
+
+    select,
+    input {
+        max-width: 100%;
+    }
+}
+
+/* Bottom-right resize grip. `z-index` lifts it above LATER rectangles without
+   changing the paint order of the rect bodies (a rect has no stacking context). */
+.handle {
+    position: absolute;
+    right: -6px;
+    bottom: -6px;
+    z-index: 2;
+    width: 12px;
+    height: 12px;
+    box-sizing: border-box;
+    border: 1px solid var(--surface-base);
+    border-radius: 2px;
+    background-color: var(--interactive-base);
+    cursor: nwse-resize;
+    touch-action: none;
+
+    &:hover {
+        background-color: var(--interactive-hover);
+    }
+}
+
+.readout {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Visually hidden, NOT `display: none` — the live region must stay in the
+   accessibility tree to be announced. */
+.visuallyHidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+}

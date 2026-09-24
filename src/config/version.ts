@@ -22,9 +22,12 @@
  *   v2 (schema v7, nested folders) bumped this so an export SELF-IDENTIFIES as
  *   carrying `lexicon_folders` + `lexicon.folder_id`. v3 (schema v8) added the
  *   `glyph_folders` + `grapheme_folders` tables and `glyphs.folder_id` /
- *   `graphemes.folder_id`. The import gate accepts versions 1..3: an older
- *   envelope imports with the newer folder tables empty and the newer
- *   `folder_id` columns null, so each bump stays backward-compatible.
+ *   `graphemes.folder_id`. v4 (schema v9, block script) added the
+ *   `variant_groups`, `grapheme_variants` and `block_scheme` tables and
+ *   `grapheme_glyphs.variant_id`. The import gate accepts versions 1..4: an
+ *   older envelope imports with the newer tables empty and the newer columns
+ *   null — a v1–v3 file's glyph rows are attached to a freshly created default
+ *   variant per grapheme — so each bump stays backward-compatible.
  *
  *   Deliberately INDEPENDENT of `APP_VERSION`: it describes a data format that
  *   importers must understand, not the build that happens to be running. Do not
@@ -69,7 +72,7 @@ export const BUILD_INFO: BuildInfo = createBuildInfo('etymolog', {
 
 export const APP_VERSION = BUILD_INFO.version;
 
-export const EXPORT_SCHEMA_VERSION = 3;
+export const EXPORT_SCHEMA_VERSION = 4;
 
 /** `v0.1.0 · a1b2c3d · 2026.07.24 20:54 UTC` for the footer. */
 export function formatBuildStamp(info: BuildInfo = BUILD_INFO): string {

@@ -17,60 +17,56 @@
 .emptyButton:focus { outline: 2px solid var(--status-info); outline-offset: 2px; }
 
 /* Auto-spell preview styles */
-.autoSpellPreview {
-    padding: 0.5rem 0.75rem;
-    border-radius: var(--radius-control);
-    background: var(--surface-raised);
+/* The wand toggle: reads as a switch, lit when auto-spell owns the spelling. */
+.autoSpellToggle {
     border: 1px solid var(--border-primary);
-}
-
-.previewSuccess {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.previewLabel {
+    border-radius: var(--radius-control);
+    padding: 0.2rem 0.6rem;
     font-size: 0.8125rem;
     color: var(--text-secondary);
-    margin-right: 0.25rem;
 }
 
-.previewGlyphs {
+.autoSpellToggleOn {
+    border-color: var(--interactive-base);
+    color: var(--interactive-base);
+    background: var(--surface-raised);
+}
+
+/* Visible explanation of the lock (never only a tooltip). */
+.lockNotice {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.25rem;
-    flex: 1;
-}
-
-.previewGlyph {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 1.5rem;
-    padding: 0.125rem 0.375rem;
-    border-radius: var(--radius-chip);
-    background: var(--surface-base);
-    border: 1px solid var(--border-primary);
-    font-size: 0.75rem;
-    color: var(--text-primary);
-}
-
-.previewVirtual {
-    border-style: dashed;
-    border-color: var(--status-warning);
-    background: var(--status-warning-bg);
-    font-family: "Doulos SIL", "Charis SIL", "DejaVu Sans", sans-serif;
-    font-size: 0.875rem;
-}
-
-.previewError {
-    color: var(--status-bad);
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius-control);
+    background: var(--status-info-bg);
+    border: 1px solid var(--status-info);
+    color: var(--status-info);
     font-size: 0.8125rem;
+    line-height: 1.4;
 }
 
-/* Info notice for IPA fallback characters */
+.lockNotice i {
+    flex-shrink: 0;
+    margin-top: 0.125rem;
+}
+
+/* Greyed, read-only canvas while auto-spell owns the spelling. Panning and
+   zooming still work (they change nothing); only editing is off. */
+.lockedCanvas {
+    display: block;
+    width: 100%;
+    opacity: 0.6;
+    filter: grayscale(0.6);
+    cursor: not-allowed;
+}
+
+.lockedEmpty {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    font-style: italic;
+}
+
 .virtualWarning {
     display: flex;
     align-items: flex-start;

@@ -155,6 +155,16 @@ function createGrapheme(request: CreateGraphemeRequest): ApiResponse<CreateGraph
                     context: p.context?.trim(),
                 })),
                 folder_id: request.folder_id ?? null,
+                variants: request.variants?.map(v => ({
+                    name: v.name.trim(),
+                    group_id: v.group_id ?? null,
+                    sort_order: v.sort_order,
+                    glyphs: v.glyphs.map(g => ({
+                        glyph_id: g.glyph_id,
+                        position: g.position,
+                        transform: g.transform,
+                    })),
+                })),
             });
             // Only the auto-spelling phonemes can change a spelling.
             const patterns = phonemePatterns(grapheme.phonemes.filter(p => p.use_in_auto_spelling));

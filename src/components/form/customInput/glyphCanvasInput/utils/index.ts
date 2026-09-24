@@ -30,5 +30,14 @@ export {
     createVirtualGlyphs,
     isVirtualGlyphId,
     isVirtualGlyph,
+    SPACE_CHARACTER,
+    createSpaceGlyph,
+    isWhitespaceGlyphName,
+    BOUNDARY_CHARACTER,
+    createBoundaryGlyph,
+    isBoundaryGlyphName,
+    JOIN_CHARACTER,
+    createJoinGlyph,
+    isJoinGlyphName,
 } from './virtualGlyphUtils';
 

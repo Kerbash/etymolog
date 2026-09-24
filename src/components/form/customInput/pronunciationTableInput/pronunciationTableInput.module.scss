@@ -192,3 +192,11 @@
     white-space: nowrap;
     border: 0;
 }
+
+/** The visible note under a row whose sound reads as several consonants. */
+.soundHint {
+    margin: 0.35rem 0 0;
+    font-size: 0.8rem;
+    line-height: 1.35;
+    color: var(--text-secondary-muted);
+}

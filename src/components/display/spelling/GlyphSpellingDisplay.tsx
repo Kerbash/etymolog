@@ -22,6 +22,9 @@ import { useGlyphPositions } from './hooks/useGlyphPositions';
 import { createComposedBlockStrategy } from './strategies';
 import { GlyphSpellingCore } from './GlyphSpellingCore';
 import { InteractiveGlyphDisplay } from './InteractiveGlyphDisplay';
+// Imported from the hook module directly (not the `db` barrel) so tests that
+// `vi.mock` the barrel need not know about it; outside a provider it is null.
+import { useOptionalBlockScheme, useOptionalGraphemeMap } from '../../../db/context/useOptionalBlockScheme';
 import styles from './GlyphSpellingDisplay.module.scss';
 
 /**
@@ -100,6 +103,7 @@ const GlyphSpellingDisplay = forwardRef<GlyphSpellingDisplayRef, GlyphSpellingDi
             zoom = 1,
             writingSystem,
             fit = 'natural',
+            blockScheme,
         },
         ref
     ) {
@@ -108,10 +112,26 @@ const GlyphSpellingDisplay = forwardRef<GlyphSpellingDisplayRef, GlyphSpellingDi
         // SVG ref for static mode
         const staticSvgRef = useRef<SVGSVGElement>(null);
 
-        // Memoize normalization context to prevent unnecessary re-renders
+        // Block script: the prop overrides (`null` = off), otherwise the
+        // provider's scheme — `null` outside a provider, so this component
+        // still renders anywhere (plan P7: the context is the transport, the
+        // prop only an override).
+        const contextBlockScheme = useOptionalBlockScheme();
+        const contextGraphemeMap = useOptionalGraphemeMap();
+        const effectiveBlockScheme = blockScheme === undefined ? contextBlockScheme : blockScheme;
+        const blocksOn = effectiveBlockScheme !== null && effectiveBlockScheme.enabled;
+        // Composition needs graphemes WITH variants. A caller's own map wins;
+        // with none, the provider's is borrowed — but ONLY while blocks are
+        // on, so a display without an enabled scheme resolves graphemes exactly
+        // as it always did (byte-identical output).
+        const effectiveGraphemeMap = graphemeMap ?? (blocksOn ? contextGraphemeMap ?? undefined : undefined);
+
+        // Memoize normalization context to prevent unnecessary re-renders.
+        // Every dependency is a whole value read out above (P8) — the scheme
+        // and maps are memoised by whoever owns them.
         const normalizationContext = useMemo(
-            () => ({ glyphMap, graphemeMap }),
-            [glyphMap, graphemeMap]
+            () => ({ glyphMap, graphemeMap: effectiveGraphemeMap, blockScheme: effectiveBlockScheme }),
+            [glyphMap, effectiveGraphemeMap, effectiveBlockScheme]
         );
 
         // Normalize input data to RenderableGlyph[]

@@ -42,6 +42,10 @@ export interface GlyphPickerModalProps {
      * silent no-op, and a control that does nothing is worse than a disabled one.
      */
     excludeIds?: readonly number[];
+    /** Dialog title. */
+    title?: string;
+    /** What to tell the user when there are no glyphs at all. */
+    emptyDescription?: string;
 }
 
 const SORT_OPTIONS: SortOption[] = [
@@ -73,6 +77,8 @@ export default function GlyphPickerModal({
     setIsOpen,
     onSelect,
     excludeIds,
+    title = 'Select an existing glyph',
+    emptyDescription = 'Draw one with "Add new glyph" — it will be reusable here afterwards.',
 }: GlyphPickerModalProps) {
     const { data, isReady, error } = useEtymolog();
     const state = useGalleryState({ defaultSort: 'name-asc', defaultViewMode: 'compact' });
@@ -103,7 +109,7 @@ export default function GlyphPickerModal({
 
     return (
         <Modal isOpen={isOpen} setIsOpen={setIsOpen} allowClose>
-            <DialogPanel size="lg" title="Select an existing glyph">
+            <DialogPanel size="lg" title={title}>
                 <EntityGallery<GlyphWithUsage>
                     items={items}
                     state={state}
@@ -126,7 +132,7 @@ export default function GlyphPickerModal({
                         description:
                             taken.size > 0
                                 ? 'Every glyph you have drawn is already on this grapheme. Use "Add new glyph" to draw another.'
-                                : 'Draw one with "Add new glyph" — it will be reusable here afterwards.',
+                                : emptyDescription,
                     }}
                     noMatch={{
                         title: 'No glyphs match',

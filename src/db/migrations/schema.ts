@@ -15,7 +15,10 @@
  *   glyph_folders    — nested folders for organising glyphs (schema v8)
  *   glyphs           — atomic visual symbols (SVG drawings)
  *   grapheme_folders — nested folders for organising graphemes (schema v8)
- *   graphemes        — compositions of glyphs (via grapheme_glyphs)
+ *   graphemes        — signs with a sound value and one or more visual variants
+ *   variant_groups   — script-level named buckets of variants (schema v9)
+ *   grapheme_variants — visual forms of a grapheme; exactly one default (schema v9)
+ *   grapheme_glyphs  — the ordered glyphs of ONE variant (rebuilt in schema v9)
  *   phonemes         — pronunciations linked to graphemes
  *   lexicon          — vocabulary entries; `glyph_order` is the spelling source of truth
  *   lexicon_spelling — derived junction (one row per grapheme occurrence)
@@ -23,6 +26,7 @@
  *   lexicon_ancestry_closure — derived transitive closure of the adjacency list
  *   lexicon_meanings — multiple meanings per entry
  *   lexicon_folders  — nested folders for organising lexicon entries (adjacency list)
+ *   block_scheme     — the single-row block-script scheme document (schema v9)
  */
 
 import type { Database } from 'sql.js';
@@ -96,34 +100,19 @@ export function createSchema(database: Database): void {
         ON graphemes(folder_id)
     `);
 
-    // Junction table: grapheme_glyphs
-    // Links glyphs to graphemes with position for ordering
-    database.run(`
-        CREATE TABLE IF NOT EXISTS grapheme_glyphs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            grapheme_id INTEGER NOT NULL,
-            glyph_id INTEGER NOT NULL,
-            position INTEGER NOT NULL DEFAULT 0,
-            transform TEXT,
-            FOREIGN KEY (grapheme_id) REFERENCES graphemes(id) ON DELETE CASCADE,
-            FOREIGN KEY (glyph_id) REFERENCES glyphs(id) ON DELETE RESTRICT,
-            UNIQUE(grapheme_id, glyph_id, position)
-        )
-    `);
+    // Grapheme variants (schema v9): every grapheme has one or more visual
+    // forms, exactly one of which is the default. Groups are created first so
+    // `grapheme_variants.group_id` resolves; variants after `graphemes`. All
+    // three creators are shared verbatim with migration v9.
+    createVariantGroupsTable(database);
+    createGraphemeVariantsTable(database);
+    createGraphemeVariantsIndexes(database);
 
-    // Indexes for junction table
-    database.run(`
-        CREATE INDEX IF NOT EXISTS idx_grapheme_glyphs_grapheme
-        ON grapheme_glyphs(grapheme_id)
-    `);
-    database.run(`
-        CREATE INDEX IF NOT EXISTS idx_grapheme_glyphs_glyph
-        ON grapheme_glyphs(glyph_id)
-    `);
-    database.run(`
-        CREATE INDEX IF NOT EXISTS idx_grapheme_glyphs_position
-        ON grapheme_glyphs(grapheme_id, position)
-    `);
+    // Junction table: grapheme_glyphs — the ordered glyphs of ONE variant
+    // (schema v9 rebuilt it with `variant_id` and re-keyed its UNIQUE on the
+    // variant). Shared verbatim with migration v9's rebuild.
+    createGraphemeGlyphsTable(database);
+    createGraphemeGlyphsIndexes(database);
 
     // Phonemes table - pronunciations for graphemes
     database.run(`
@@ -273,6 +262,10 @@ export function createSchema(database: Database): void {
         ON lexicon_ancestry_closure(descendant_id)
     `);
 
+    // The block scheme (schema v9): a single-row JSON document. A fresh
+    // database has NO row; the API returns the default scheme.
+    createBlockSchemeTable(database);
+
     database.run(`PRAGMA user_version = ${CURRENT_SCHEMA_VERSION}`);
 
     dbLog.info(`Schema created (user_version ${CURRENT_SCHEMA_VERSION})`);
@@ -391,5 +384,131 @@ export function createGraphemeFoldersIndex(database: Database): void {
     database.run(`
         CREATE INDEX IF NOT EXISTS idx_grapheme_folders_parent
         ON grapheme_folders(parent_id)
+    `);
+}
+
+/**
+ * The `variant_groups` table (schema v9): script-level named buckets
+ * ("head", "geometric", …). Referenced by `grapheme_variants.group_id` and by
+ * block-scheme template slots (inside the JSON document, so no FK there).
+ * Shared verbatim between `createSchema` and migration v9.
+ */
+export function createVariantGroupsTable(database: Database): void {
+    database.run(`
+        CREATE TABLE IF NOT EXISTS variant_groups (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now'))
+        )
+    `);
+}
+
+/**
+ * The `grapheme_variants` table (schema v9): one visual form of a grapheme.
+ * `group_id` is SET NULL when its group is deleted (the variant survives,
+ * ungrouped). Shared verbatim between `createSchema` and migration v9.
+ */
+export function createGraphemeVariantsTable(database: Database): void {
+    database.run(`
+        CREATE TABLE IF NOT EXISTS grapheme_variants (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            grapheme_id INTEGER NOT NULL,
+            group_id INTEGER NULL REFERENCES variant_groups(id) ON DELETE SET NULL,
+            name TEXT NOT NULL,
+            is_default INTEGER NOT NULL DEFAULT 0,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (grapheme_id) REFERENCES graphemes(id) ON DELETE CASCADE
+        )
+    `);
+}
+
+/**
+ * Indexes on `grapheme_variants`:
+ * - `idx_grapheme_variants_default` is a PARTIAL unique index — at most one
+ *   `is_default = 1` row per grapheme. Swapping the default must therefore
+ *   clear the old one BEFORE setting the new one (see `setDefaultVariant`).
+ * - `idx_grapheme_variants_group` — at most one variant per (grapheme, group);
+ *   NULL groups are exempt by SQL NULL semantics.
+ */
+export function createGraphemeVariantsIndexes(database: Database): void {
+    database.run(`
+        CREATE INDEX IF NOT EXISTS idx_grapheme_variants_grapheme
+        ON grapheme_variants(grapheme_id)
+    `);
+    database.run(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_grapheme_variants_default
+        ON grapheme_variants(grapheme_id) WHERE is_default = 1
+    `);
+    database.run(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_grapheme_variants_group
+        ON grapheme_variants(grapheme_id, group_id)
+    `);
+}
+
+/**
+ * The schema-v9 `grapheme_glyphs` definition: glyph rows belong to a VARIANT.
+ * `grapheme_id` is kept (denormalised, always equal to the variant's
+ * grapheme) so "which graphemes use glyph X" and the per-grapheme cascade stay
+ * one join away. The UNIQUE is keyed on the variant, so two variants of the
+ * same grapheme may reuse a glyph at the same position — the collision the
+ * pre-v9 `UNIQUE(grapheme_id, glyph_id, position)` made impossible.
+ *
+ * Shared verbatim between `createSchema` and migration v9, which renames the
+ * old table aside and calls this with the real name, so the fresh and migrated
+ * `sqlite_master` text is byte-identical.
+ */
+export function createGraphemeGlyphsTable(database: Database): void {
+    database.run(`
+        CREATE TABLE IF NOT EXISTS grapheme_glyphs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            grapheme_id INTEGER NOT NULL,
+            variant_id INTEGER NOT NULL,
+            glyph_id INTEGER NOT NULL,
+            position INTEGER NOT NULL DEFAULT 0,
+            transform TEXT,
+            FOREIGN KEY (grapheme_id) REFERENCES graphemes(id) ON DELETE CASCADE,
+            FOREIGN KEY (variant_id) REFERENCES grapheme_variants(id) ON DELETE CASCADE,
+            FOREIGN KEY (glyph_id) REFERENCES glyphs(id) ON DELETE RESTRICT,
+            UNIQUE(variant_id, glyph_id, position)
+        )
+    `);
+}
+
+/** Indexes on `grapheme_glyphs`; recreated by migration v9 after the rebuild. */
+export function createGraphemeGlyphsIndexes(database: Database): void {
+    database.run(`
+        CREATE INDEX IF NOT EXISTS idx_grapheme_glyphs_grapheme
+        ON grapheme_glyphs(grapheme_id)
+    `);
+    database.run(`
+        CREATE INDEX IF NOT EXISTS idx_grapheme_glyphs_glyph
+        ON grapheme_glyphs(glyph_id)
+    `);
+    database.run(`
+        CREATE INDEX IF NOT EXISTS idx_grapheme_glyphs_position
+        ON grapheme_glyphs(grapheme_id, position)
+    `);
+    database.run(`
+        CREATE INDEX IF NOT EXISTS idx_grapheme_glyphs_variant
+        ON grapheme_glyphs(variant_id, position)
+    `);
+}
+
+/**
+ * The `block_scheme` table (schema v9): ONE row (`id = 1`, enforced by the
+ * CHECK) holding the block-script scheme as a JSON document validated in
+ * TypeScript. Shared verbatim between `createSchema` and migration v9.
+ */
+export function createBlockSchemeTable(database: Database): void {
+    database.run(`
+        CREATE TABLE IF NOT EXISTS block_scheme (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            definition TEXT NOT NULL,
+            updated_at TEXT DEFAULT (datetime('now'))
+        )
     `);
 }

@@ -44,15 +44,60 @@ export interface GraphemeRow {
 }
 
 /**
+ * Raw row from the `variant_groups` table (schema v9 / export version 4).
+ * Script-level named buckets of grapheme variants.
+ */
+export interface VariantGroupRow {
+    id: number;
+    name: string;
+    sort_order: number;
+    created_at: string;
+    updated_at: string;
+}
+
+/**
+ * Raw row from the `grapheme_variants` table (schema v9 / export version 4).
+ * One visual form of a grapheme; `is_default` is an integer boolean and
+ * exactly one row per grapheme carries 1.
+ */
+export interface GraphemeVariantRow {
+    id: number;
+    grapheme_id: number;
+    group_id: number | null;
+    name: string;
+    is_default: number;
+    sort_order: number;
+    created_at: string;
+    updated_at: string;
+}
+
+/**
  * Raw row from the `grapheme_glyphs` junction table.
- * Links glyphs to graphemes with a positional order and optional SVG transform.
+ * Links glyphs to one variant of a grapheme with a positional order and
+ * optional SVG transform.
  */
 export interface GraphemeGlyphRow {
     id: number;
     grapheme_id: number;
+    /**
+     * The variant the glyph belongs to (schema v9). Absent / null in a v1–v3
+     * envelope: import attaches such rows to the grapheme's default variant,
+     * which `backfillDefaultVariants` creates.
+     */
+    variant_id?: number | null;
     glyph_id: number;
     position: number;
     transform: string | null;
+}
+
+/**
+ * Raw row from the `block_scheme` table (schema v9 / export version 4).
+ * At most one row (`id = 1`); `definition` is the JSON scheme document.
+ */
+export interface BlockSchemeRow {
+    id: number;
+    definition: string;
+    updated_at: string;
 }
 
 /**
@@ -183,10 +228,12 @@ export interface LexiconAncestryClosureRow {
  * Used as the `tables` field inside `EtymologExportData`.
  */
 export interface ExportTables {
+    variant_groups: VariantGroupRow[];
     glyph_folders: GlyphFolderRow[];
     glyphs: GlyphRow[];
     grapheme_folders: GraphemeFolderRow[];
     graphemes: GraphemeRow[];
+    grapheme_variants: GraphemeVariantRow[];
     grapheme_glyphs: GraphemeGlyphRow[];
     phonemes: PhonemeRow[];
     lexicon_folders: LexiconFolderRow[];
@@ -195,6 +242,7 @@ export interface ExportTables {
     lexicon_meanings: LexiconMeaningRow[];
     lexicon_ancestry: LexiconAncestryRow[];
     lexicon_ancestry_closure: LexiconAncestryClosureRow[];
+    block_scheme: BlockSchemeRow[];
 }
 
 /**
@@ -231,6 +279,8 @@ export interface EtymologExportData {
  * violations when restoring a database from an export.
  */
 export const TABLE_INSERTION_ORDER: (keyof ExportTables)[] = [
+    // No foreign keys; `grapheme_variants.group_id` references it.
+    'variant_groups',
     // Each folder table precedes the item table it references, so the item's
     // `folder_id` FK resolves on insert; folder rows are read in id (=
     // parent-before-child) order, so `parent_id` self-references are FK-safe
@@ -239,6 +289,8 @@ export const TABLE_INSERTION_ORDER: (keyof ExportTables)[] = [
     'glyphs',
     'grapheme_folders',
     'graphemes',
+    // Variants after their graphemes, before the glyph rows that reference them.
+    'grapheme_variants',
     'grapheme_glyphs',
     'phonemes',
     'lexicon_folders',
@@ -247,6 +299,8 @@ export const TABLE_INSERTION_ORDER: (keyof ExportTables)[] = [
     'lexicon_meanings',
     'lexicon_ancestry',
     'lexicon_ancestry_closure',
+    // Single-row JSON document, no foreign keys.
+    'block_scheme',
 ];
 
 /**
@@ -255,10 +309,13 @@ export const TABLE_INSERTION_ORDER: (keyof ExportTables)[] = [
  * after import could collide with imported IDs.
  */
 export const AUTOINCREMENT_TABLES: (keyof ExportTables)[] = [
+    // `block_scheme` is deliberately absent: its id is pinned to 1 by a CHECK.
+    'variant_groups',
     'glyph_folders',
     'glyphs',
     'grapheme_folders',
     'graphemes',
+    'grapheme_variants',
     'grapheme_glyphs',
     'phonemes',
     'lexicon_folders',
@@ -279,6 +336,12 @@ export interface ImportReport {
     pruned: Record<keyof ExportTables, number>;
     /** `lexicon_meanings` rows synthesised from the legacy `lexicon.meaning` column. */
     legacyMeaningsCreated: number;
+    /**
+     * 'Default' variants created for graphemes the file carried no variant for
+     * (every grapheme of a v1–v3 envelope). Not a warning: that is simply how
+     * an older export becomes a v9 database.
+     */
+    defaultVariantsCreated: number;
     /** Human-readable notes (pruned rows, corrected settings, empty graphemes). */
     warnings: string[];
 }

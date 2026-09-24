@@ -48,7 +48,7 @@ import type {
 } from '../../../../db/types';
 import { createGraphemeEntry, type SpellingEntry } from '../../../../db/utils/spellingUtils';
 import { ROUTES, resolveUrl } from '../../../../url_mapping';
-import { LexiconFormFields, type LexiconSymbolState } from '../../../form/lexiconForm';
+import { LexiconFormFields, type LexiconLogogramState } from '../../../form/lexiconForm';
 import { FormActionBar, LoadingState, PageHeader, useApiAction, useNotify } from '../../../shared';
 import { useRegisterUnsaved } from '../../../shell';
 import DialogPanel from '../../../shared/dialogPanel';
@@ -90,14 +90,12 @@ export default function LexiconEditor({ mode, initialData }: LexiconEditorProps)
     // The folder the word is filed in (schema v7). Reported up by the fields —
     // seeded from the stored word (edit) or the `?folder=` param (create).
     const [folderId, setFolderId] = useState<number | null>(initialData?.folder_id ?? null);
-    // The word-symbol state (Phase 3): mode, the chosen SVG, and — on edit — the
-    // existing symbol grapheme inferred from the stored word. Starts in Compose
-    // mode; the fields flip it to Symbol when they infer or the user chooses it.
-    const [symbolState, setSymbolState] = useState<LexiconSymbolState>({
+    // The logogram state: the spelling mode and, in Logogram mode, what the
+    // logogram is. Starts in Compose mode; the fields flip it to Logogram when
+    // they infer one from the stored word or the user chooses it.
+    const [logogramState, setLogogramState] = useState<LexiconLogogramState>({
         mode: 'compose',
-        svg: null,
-        existingGraphemeId: null,
-        originalSvg: null,
+        source: null,
     });
 
     // Whether the word has something to be NAMED by — a pronunciation or a
@@ -157,14 +155,14 @@ export default function LexiconEditor({ mode, initialData }: LexiconEditorProps)
                     usage_notes: m.usage_notes?.trim(),
                 }));
 
-            const isSymbol = symbolState.mode === 'symbol';
-            const symbolSvg = symbolState.svg?.trim();
-            if (isSymbol && !symbolSvg) {
-                return { success: false, message: 'Draw or import a symbol for this word.' };
+            const isLogogram = logogramState.mode === 'logogram';
+            const source = logogramState.source;
+            if (isLogogram && !source) {
+                return { success: false, message: 'Choose or draw a logogram for this word.' };
             }
-            // The symbol name defaults to the word's display name.
-            const symbolName =
-                pronunciation || meanings?.[0]?.meaning || initialData?.lemma || 'Symbol';
+            // A NEW logogram (from a glyph or a drawing) is named after the word.
+            const logogramName =
+                pronunciation || meanings?.[0]?.meaning || initialData?.lemma || 'Logogram';
 
             if (mode === 'create') {
                 const ancestry = ancestors.map((a, index) => ({
@@ -172,23 +170,32 @@ export default function LexiconEditor({ mode, initialData }: LexiconEditorProps)
                     position: index,
                     ancestry_type: a.ancestryType,
                 }));
-                const input: CreateLexiconInput = isSymbol
+                // Logogram words are always manual (the api enforces this too).
+                // An existing grapheme is referenced directly; a glyph or a
+                // drawing goes through the composite create, which makes (or
+                // reuses) the logogram grapheme in the SAME transaction.
+                const input: CreateLexiconInput = !isLogogram
                     ? {
                           pronunciation: pronunciation || undefined,
                           is_native: isNative,
-                          // Symbol words are always manual (the api enforces this too).
-                          auto_spell: false,
+                          auto_spell: autoSpell,
                           meanings,
-                          symbol: { svgData: symbolSvg! },
+                          glyph_order: glyphOrder,
                           ancestry,
                           folder_id: folderId,
                       }
                     : {
                           pronunciation: pronunciation || undefined,
                           is_native: isNative,
-                          auto_spell: autoSpell,
+                          auto_spell: false,
                           meanings,
-                          glyph_order: glyphOrder,
+                          ...(source!.kind === 'grapheme'
+                              ? { glyph_order: [createGraphemeEntry(source!.graphemeId)] }
+                              : {
+                                    symbol: source!.kind === 'glyph'
+                                        ? { name: logogramName, glyphId: source!.glyphId }
+                                        : { name: logogramName, svgData: source!.svg },
+                                }),
                           ancestry,
                           folder_id: folderId,
                       };
@@ -210,28 +217,25 @@ export default function LexiconEditor({ mode, initialData }: LexiconEditorProps)
                 return { success: false, message: 'No word to update' };
             }
 
-            // Symbol mode on edit: the word's spelling is one logogram grapheme.
-            // Either it already exists (reuse it, and re-draw its glyph if the
-            // drawing changed) or the word is being switched INTO Symbol mode
-            // now (make a new symbol grapheme). The result is the glyph_order
-            // the word update pins.
+            // Logogram mode on edit: the word's spelling is one logogram
+            // grapheme — referenced directly, or made (reused, for a glyph)
+            // now from the chosen glyph / new drawing. A new drawing never
+            // re-draws an existing logogram in place: other words may share
+            // it, and its artwork is edited in the Script Maker.
             let editGlyphOrder = glyphOrder;
-            let redrawGraphemeId: number | null = null;
-            if (isSymbol) {
-                if (symbolState.existingGraphemeId != null) {
-                    editGlyphOrder = [createGraphemeEntry(symbolState.existingGraphemeId)];
-                    if (symbolSvg !== (symbolState.originalSvg ?? '').trim()) {
-                        redrawGraphemeId = symbolState.existingGraphemeId;
-                    }
+            if (isLogogram) {
+                if (source!.kind === 'grapheme') {
+                    editGlyphOrder = [createGraphemeEntry(source!.graphemeId)];
                 } else {
-                    const created = api.wordSymbol.create({
-                        name: symbolName,
-                        svgData: symbolSvg!,
-                    });
+                    const created = api.wordSymbol.create(
+                        source!.kind === 'glyph'
+                            ? { name: logogramName, glyphId: source!.glyphId }
+                            : { name: logogramName, svgData: source!.svg },
+                    );
                     if (!created.success || !created.data) {
                         return {
                             success: false,
-                            message: created.error?.message ?? 'Could not create the symbol',
+                            message: created.error?.message ?? 'Could not create the logogram',
                         };
                     }
                     editGlyphOrder = [createGraphemeEntry(created.data.graphemeId)];
@@ -250,9 +254,9 @@ export default function LexiconEditor({ mode, initialData }: LexiconEditorProps)
                 // once set.
                 pronunciation: pronunciation ? pronunciation : null,
                 is_native: isNative,
-                // Symbol mode forces auto-spell off (the fields already report
-                // false, but pin it here so a symbol word is never auto-spelled).
-                auto_spell: isSymbol ? false : autoSpell,
+                // Logogram mode forces auto-spell off (the fields already report
+                // false, but pin it here so a logogram word is never auto-spelled).
+                auto_spell: isLogogram ? false : autoSpell,
                 meanings,
                 glyph_order: editGlyphOrder,
                 folder_id: folderId,
@@ -263,21 +267,6 @@ export default function LexiconEditor({ mode, initialData }: LexiconEditorProps)
             });
             if (!result.success) {
                 return { success: false, message: result.error?.message ?? 'Update failed' };
-            }
-
-            if (redrawGraphemeId != null) {
-                const draw = api.wordSymbol.updateDrawing({
-                    graphemeId: redrawGraphemeId,
-                    svgData: symbolSvg!,
-                });
-                if (!draw.success) {
-                    // The word itself saved; the drawing did not. Warn rather
-                    // than fail the whole save (mirrors the ancestry warning).
-                    notify.warning(
-                        draw.error?.message ?? 'The symbol drawing could not be updated.',
-                        { title: 'Word saved, but its symbol was not re-drawn' },
-                    );
-                }
             }
 
             const ancestryResult = api.lexicon.updateAncestry(editingId, {
@@ -310,7 +299,7 @@ export default function LexiconEditor({ mode, initialData }: LexiconEditorProps)
             isNative,
             autoSpell,
             folderId,
-            symbolState,
+            logogramState,
             initialData,
             api,
             runApiAction,
@@ -404,7 +393,7 @@ export default function LexiconEditor({ mode, initialData }: LexiconEditorProps)
                     onIsNativeChange={setIsNative}
                     onAutoSpellChange={setAutoSpell}
                     onHasNameSourceChange={setHasNameSource}
-                    onSymbolStateChange={setSymbolState}
+                    onLogogramStateChange={setLogogramState}
                     onFolderIdChange={setFolderId}
                 />
 

@@ -50,6 +50,7 @@ import { LIMITS } from '../utils/sanitize';
 import { withTransaction } from '../utils/transaction';
 import { createGraphemeEntry } from '../utils/spellingUtils';
 import { createWordSymbol } from '../wordSymbolService';
+import { deriveAutoSpelledGlyphOrder } from '../respellService';
 import { getFolderById } from '../folderService';
 
 // =============================================================================
@@ -196,10 +197,11 @@ function createLexicon(request: CreateLexiconInput): ApiResponse<LexiconComplete
     // A whole-word symbol wins ONLY when the caller sent no explicit spelling —
     // an explicit `glyph_order`/`spelling` is a deliberate composition and takes
     // precedence over the symbol shortcut.
-    const symbolSvg = request.symbol?.svgData?.trim();
+    const symbolSvg = request.symbol?.svgData?.trim() || undefined;
+    const symbolGlyphId = request.symbol?.glyphId ?? undefined;
     const hasExplicitSpelling =
         (request.glyph_order?.length ?? 0) > 0 || (request.spelling?.length ?? 0) > 0;
-    const wantsSymbol = !!symbolSvg && !hasExplicitSpelling;
+    const wantsSymbol = (!!symbolSvg || symbolGlyphId !== undefined) && !hasExplicitSpelling;
 
     try {
         // The `symbol` field is an api-layer concern; strip it before the
@@ -226,7 +228,11 @@ function createLexicon(request: CreateLexiconInput): ApiResponse<LexiconComplete
             // spelled, so `auto_spell` is forced off regardless of the request.
             const lexicon = withTransaction(getDatabase(), () => {
                 const symbolName = request.symbol!.name?.trim() || lemmaValue;
-                const { graphemeId } = createWordSymbol({ name: symbolName, svgData: symbolSvg! });
+                const { graphemeId } = createWordSymbol({
+                    name: symbolName,
+                    svgData: symbolSvg,
+                    glyphId: symbolGlyphId,
+                });
                 return serviceCreateLexicon({
                     ...baseInput,
                     auto_spell: false,
@@ -236,7 +242,16 @@ function createLexicon(request: CreateLexiconInput): ApiResponse<LexiconComplete
             return successResponse(lexicon);
         }
 
-        const lexicon = serviceCreateLexicon(baseInput);
+        // An auto-spelled word's spelling is DERIVED, never taken from the
+        // request: the software owns it (and respells it whenever the script
+        // changes), so the stored value must be what the speller says now.
+        // `auto_spell` defaults to on, matching the service's insert.
+        const derived = baseInput.auto_spell !== false
+            ? deriveAutoSpelledGlyphOrder(baseInput.pronunciation)
+            : null;
+        const lexicon = serviceCreateLexicon(
+            derived ? { ...baseInput, glyph_order: derived, spelling: undefined } : baseInput,
+        );
         return successResponse(lexicon);
     } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to create lexicon entry';
@@ -440,8 +455,14 @@ function updateLexicon(id: number, request: UpdateLexiconInput): ApiResponse<Lex
                 ? trimmedPron
                 : lemmaFromMeaning(firstNonEmptyMeaning(request)) ?? existing.lemma;
 
+        // Same rule as create: when the word is (still) auto-spelled after this
+        // edit, its spelling is derived from the pronunciation it will have.
+        const effectiveAutoSpell = request.auto_spell ?? existing.auto_spell;
+        const derived = effectiveAutoSpell ? deriveAutoSpelledGlyphOrder(effectivePron) : null;
+
         const lexicon = serviceUpdateLexicon(id, {
             ...request,
+            ...(derived ? { glyph_order: derived } : {}),
             lemma: lemmaValue,
             pronunciation,
             meaning: request.meaning?.trim(),

@@ -18,6 +18,7 @@ import { withTransaction } from './utils/transaction';
 import { execRows, execOne, execScalar, lastInsertId, type SqlRecord } from './utils/sql';
 import { sanitizeSvg, validateStringLength, LIMITS } from './utils/sanitize';
 import { deleteGrapheme } from './graphemeService';
+import { deleteVariant } from './variantService';
 import type {
     Glyph,
     CreateGlyphInput,
@@ -148,11 +149,17 @@ export function updateGlyph(id: number, input: UpdateGlyphInput): Glyph | null {
     return getGlyphById(id);
 }
 
-/** Names of graphemes that use a glyph. */
+/**
+ * Names of graphemes that use a glyph (in any of their variants).
+ * `glyphCount` is the size of the grapheme's DEFAULT variant — the glyphs the
+ * grapheme is shown with everywhere.
+ */
 export function getGraphemesUsingGlyph(glyphId: number): { id: number; name: string; glyphCount: number }[] {
     return execRows(getDatabase(), `
         SELECT gr.id, gr.name,
-               (SELECT COUNT(*) FROM grapheme_glyphs x WHERE x.grapheme_id = gr.id) AS glyph_count
+               (SELECT COUNT(*) FROM grapheme_glyphs x
+                JOIN grapheme_variants xv ON xv.id = x.variant_id
+                WHERE x.grapheme_id = gr.id AND xv.is_default = 1) AS glyph_count
         FROM graphemes gr
         WHERE gr.id IN (SELECT grapheme_id FROM grapheme_glyphs WHERE glyph_id = ?)
         ORDER BY gr.name
@@ -179,17 +186,32 @@ export function deleteGlyph(id: number): boolean {
 }
 
 /**
- * Delete a glyph and unlink it from every grapheme that uses it.
+ * Delete a glyph and unlink it from every grapheme variant that uses it. A
+ * NON-default variant made up of nothing but this glyph is deleted with it
+ * (pins on it are stripped — `deleteVariant`); a DEFAULT variant that would be
+ * left empty refuses the whole operation.
  * @throws if any grapheme would be left with no glyphs
  */
 export function forceDeleteGlyph(id: number): boolean {
     const db = getDatabase();
     return withTransaction(db, () => {
-        const wouldEmpty = getGraphemesUsingGlyph(id).filter(g => g.glyphCount <= 1);
+        // Variants whose ONLY glyph (possibly repeated) is this one.
+        const emptied = execRows(db, `
+            SELECT v.id, v.is_default, gr.name
+            FROM grapheme_variants v
+            JOIN graphemes gr ON gr.id = v.grapheme_id
+            WHERE EXISTS (SELECT 1 FROM grapheme_glyphs gg WHERE gg.variant_id = v.id AND gg.glyph_id = ?)
+              AND NOT EXISTS (SELECT 1 FROM grapheme_glyphs gg WHERE gg.variant_id = v.id AND gg.glyph_id <> ?)
+            ORDER BY gr.name
+        `, [id, id]);
+        const wouldEmpty = emptied.filter(v => v.is_default === 1);
         if (wouldEmpty.length > 0) {
             throw new Error(
-                `Cannot remove glyph: it is the only glyph in ${wouldEmpty.map(g => `"${g.name}"`).join(', ')}. Delete or recompose those graphemes first.`,
+                `Cannot remove glyph: it is the only glyph in ${wouldEmpty.map(g => `"${g.name as string}"`).join(', ')}. Delete or recompose those graphemes first.`,
             );
+        }
+        for (const variant of emptied) {
+            deleteVariant(variant.id as number);
         }
         db.run('DELETE FROM grapheme_glyphs WHERE glyph_id = ?', [id]);
         db.run('DELETE FROM glyphs WHERE id = ?', [id]);

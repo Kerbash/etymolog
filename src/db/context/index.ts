@@ -19,3 +19,9 @@ export {
     type EtymologData,
     type RefreshError,
 } from './etymologContext';
+export {
+    BlockRenderingContext,
+    useOptionalBlockScheme,
+    useOptionalGraphemeMap,
+    type BlockRenderingValue,
+} from './useOptionalBlockScheme';

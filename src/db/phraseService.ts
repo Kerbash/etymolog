@@ -20,10 +20,11 @@ import type {
     SpellingDisplayEntry,
     GraphemeComplete,
     Grapheme,
+    AutoSpellResultExtended,
 } from './types';
 import type { PunctuationSettings, PunctuationConfig } from './api/types';
 import { PUNCTUATION_KEY_BY_CHARACTER } from './api/types';
-import { generateSpellingWithFallback } from './autoSpellService';
+import { generateSpellingWithFallback, type PhonemeMapping } from './autoSpellService';
 
 /**
  * Sentinel in the token list for an explicit line break.
@@ -170,8 +171,26 @@ export function translateWord(
     }
 
     const autoSpell = generateSpellingWithFallback(word.originalWord);
+    const { entries: spellingDisplay, hasVirtualGlyphs } = autoSpellToDisplayEntries(autoSpell, graphemeMap);
+
+    return { word, type: 'autospell', spellingDisplay, hasVirtualGlyphs };
+}
+
+/**
+ * An auto-spell result as display entries — THE mapping from the speller's
+ * output to `SpellingDisplayEntry[]`, shared by the translator and the
+ * syllabary preview so both draw a spelled string the same way.
+ *
+ * A real grapheme entry resolves through `graphemeMap` (a grapheme the map
+ * does not know becomes its IPA segment); every virtual entry is an IPA entry
+ * covering the span the speller consumed.
+ */
+export function autoSpellToDisplayEntries(
+    autoSpell: Pick<AutoSpellResultExtended, 'spelling' | 'segments'>,
+    graphemeMap?: ReadonlyMap<number, GraphemeComplete>,
+): { entries: SpellingDisplayEntry[]; hasVirtualGlyphs: boolean } {
     let hasVirtualGlyphs = false;
-    const spellingDisplay: SpellingDisplayEntry[] = autoSpell.spelling.map((entry, index) => {
+    const entries: SpellingDisplayEntry[] = autoSpell.spelling.map((entry, index) => {
         const segment = autoSpell.segments[index] ?? entry.ipaCharacter ?? '?';
         if (!entry.isVirtual) {
             const grapheme = graphemeMap?.get(entry.grapheme_id);
@@ -182,8 +201,29 @@ export function translateWord(
         hasVirtualGlyphs = true;
         return { type: 'ipa' as const, position: index, ipaCharacter: segment };
     });
+    return { entries, hasVirtualGlyphs };
+}
 
-    return { word, type: 'autospell', spellingDisplay, hasVirtualGlyphs };
+/**
+ * The spelling a syllabary cell `consonant + vowel` WOULD have if it were
+ * written with the script's existing signs — for the composed preview an
+ * empty chart cell shows when a block scheme is enabled.
+ *
+ * `null` unless every sound is covered by a real grapheme: a cell whose
+ * consonant or vowel has no sign stays empty, exactly as before. Pure given
+ * `mappings` (`autoSpellMappingsFromGraphemes`) — no database read.
+ */
+export function spellSyllablePreview(
+    consonant: string,
+    vowel: string,
+    mappings: PhonemeMapping[],
+    graphemeMap: ReadonlyMap<number, GraphemeComplete>,
+): SpellingDisplayEntry[] | null {
+    if (!consonant || !vowel) return null;
+    const autoSpell = generateSpellingWithFallback(consonant + vowel, mappings);
+    if (!autoSpell.success || autoSpell.hasVirtualGlyphs) return null;
+    const { entries, hasVirtualGlyphs } = autoSpellToDisplayEntries(autoSpell, graphemeMap);
+    return hasVirtualGlyphs || entries.length === 0 ? null : entries;
 }
 
 function configuredEntry(

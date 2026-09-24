@@ -13,6 +13,7 @@ import type { VirtualGlyph } from '../types';
 // The id hash is shared with the display normaliser and the auto-speller —
 // one function, one id per character everywhere.
 import { generateVirtualGlyphId, isVirtualGlyphId } from '../../../../../db/utils/virtualGlyph';
+import { BLOCK_BOUNDARY, BLOCK_JOIN } from '../../../../../blocks/classify';
 export { generateVirtualGlyphId, isVirtualGlyphId };
 
 /**
@@ -96,6 +97,65 @@ export function createVirtualGlyph(ipaCharacter: string, description?: string): 
         notes: description ?? null,
         source: 'virtual-ipa',
     };
+}
+
+/**
+ * The word separator a spelling stores for a space.
+ *
+ * A space is not a new entry kind: it is the same bare-character IPA entry
+ * the auto-speller already emits when a pronunciation has two words
+ * (`tokenizeIpa` returns whitespace as its own token, and `buildSkipUnits`
+ * turns it into one virtual glyph). The keyboard's space bar produces exactly
+ * that entry, so a hand-typed space and an auto-spelled one are identical in
+ * `glyph_order` and render the same way.
+ */
+export const SPACE_CHARACTER = ' ';
+
+/** Create the virtual glyph the keyboard's space bar inserts. */
+export function createSpaceGlyph(): VirtualGlyph {
+    return createVirtualGlyph(SPACE_CHARACTER, 'Word separator (space)');
+}
+
+/** True when a virtual glyph's character is whitespace (a word separator). */
+export function isWhitespaceGlyphName(name: string): boolean {
+    return name.length > 0 && name.trim().length === 0;
+}
+
+/**
+ * The explicit block break a spelling stores inside a word: the IPA syllable
+ * separator `.` (`BLOCK_BOUNDARY` in `src/blocks`). Like the space, it is not
+ * a new entry kind — a bare-character IPA entry — so a hand-typed boundary
+ * and one the auto-speller emitted from a `ka.ta` pronunciation are the same
+ * `glyph_order` value.
+ */
+export const BOUNDARY_CHARACTER = BLOCK_BOUNDARY;
+
+/** Create the virtual glyph the keyboard's boundary key (and the `.` key) inserts. */
+export function createBoundaryGlyph(): VirtualGlyph {
+    return createVirtualGlyph(BOUNDARY_CHARACTER, 'Block boundary');
+}
+
+/** True when a virtual glyph's character is the block boundary `.`. */
+export function isBoundaryGlyphName(name: string): boolean {
+    return name === BOUNDARY_CHARACTER;
+}
+
+/**
+ * The mirror of the boundary: the IPA undertie `‿` (`BLOCK_JOIN` in
+ * `src/blocks`) keeps the signs on both sides in ONE block. Also a
+ * bare-character IPA entry, so a hand-typed join and one the auto-speller
+ * carried over from an `a‿i` pronunciation are the same `glyph_order` value.
+ */
+export const JOIN_CHARACTER = BLOCK_JOIN;
+
+/** Create the virtual glyph the keyboard's Join key inserts. */
+export function createJoinGlyph(): VirtualGlyph {
+    return createVirtualGlyph(JOIN_CHARACTER, 'Block join');
+}
+
+/** True when a virtual glyph's character is the block join `‿`. */
+export function isJoinGlyphName(name: string): boolean {
+    return name === JOIN_CHARACTER;
 }
 
 /**

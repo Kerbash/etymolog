@@ -27,7 +27,9 @@ import {
     LEGACY_FIXTURE_KEYS,
     LEGACY_FIXTURES,
     SEED,
+    V8_SEED,
     buildLegacyBytes,
+    buildV8Bytes,
     openRawDatabase,
     type LegacyFixtureKey,
 } from './fixtures/legacySchemas';
@@ -83,11 +85,11 @@ describe('migration registry', () => {
         expect(MIGRATIONS.map(m => m.version)).toEqual(
             Array.from({ length: CURRENT_SCHEMA_VERSION }, (_, i) => i + 1)
         );
-        expect(CURRENT_SCHEMA_VERSION).toBe(8);
+        expect(CURRENT_SCHEMA_VERSION).toBe(9);
     });
 
-    it('only v6 needs foreign keys off', () => {
-        expect(MIGRATIONS.filter(m => m.foreignKeysOff).map(m => m.version)).toEqual([6]);
+    it('only the table rebuilds (v6 lexicon_ancestry, v9 grapheme_glyphs) need foreign keys off', () => {
+        expect(MIGRATIONS.filter(m => m.foreignKeysOff).map(m => m.version)).toEqual([6, 9]);
     });
 });
 
@@ -164,7 +166,7 @@ describe('runMigrations across every legacy fixture', () => {
                 runMigrations(db);
                 for (const table of [
                     'glyph_folders', 'glyphs', 'grapheme_folders', 'graphemes',
-                    'grapheme_glyphs', 'phonemes',
+                    'variant_groups', 'grapheme_variants', 'grapheme_glyphs', 'block_scheme', 'phonemes',
                     'lexicon', 'lexicon_spelling', 'lexicon_ancestry',
                     'lexicon_ancestry_closure', 'lexicon_meanings', 'lexicon_folders',
                 ]) {
@@ -177,6 +179,7 @@ describe('runMigrations across every legacy fixture', () => {
                 expect(columnExists(db, 'lexicon', 'glyph_order')).toBe(true);
                 expect(columnExists(db, 'lexicon', 'needs_attention')).toBe(true);
                 expect(columnExists(db, 'lexicon', 'folder_id')).toBe(true);
+                expect(columnExists(db, 'grapheme_glyphs', 'variant_id')).toBe(true);
                 expect(ancestorFkOnDelete(db)).toBe('CASCADE');
                 expect(fkViolations(db)).toBe(0);
                 expect(scalar(db, 'PRAGMA foreign_keys')).toBe(1);
@@ -188,6 +191,13 @@ describe('runMigrations across every legacy fixture', () => {
                 expect(count(db, 'glyphs')).toBe(SEED.glyphCount);
                 expect(count(db, 'graphemes')).toBe(SEED.graphemeCount);
                 expect(count(db, 'grapheme_glyphs')).toBe(3);
+                // v9: one default variant per grapheme, every glyph row on it.
+                expect(count(db, 'grapheme_variants')).toBe(SEED.graphemeCount);
+                expect(scalar(db, 'SELECT COUNT(*) FROM grapheme_variants WHERE is_default = 1')).toBe(SEED.graphemeCount);
+                expect(scalar(db, `
+                    SELECT COUNT(*) FROM grapheme_glyphs gg
+                    JOIN grapheme_variants v ON v.id = gg.variant_id AND v.grapheme_id = gg.grapheme_id AND v.is_default = 1
+                `)).toBe(3);
                 expect(count(db, 'phonemes')).toBe(SEED.phonemeCount);
                 if (fixture.hasLexicon) {
                     expect(count(db, 'lexicon')).toBe(SEED.lexiconCount);
@@ -295,7 +305,7 @@ describe('specific migration behaviours', () => {
         expect(fkViolations(db)).toBeGreaterThan(0);
 
         const result = runMigrations(db);
-        expect(result.applied).toEqual([6, 7, 8]);
+        expect(result.applied).toEqual([6, 7, 8, 9]);
         expect(fkViolations(db)).toBe(0);
         // The repair resyncs the derived spelling index from the (repaired) glyph_order.
         const expectedSpellingRows = [glyphOrderOf(db, 1), glyphOrderOf(db, 2)]
@@ -375,7 +385,7 @@ function schemaFingerprint(db: Database): unknown {
 }
 
 describe('fresh createSchema vs fully-migrated schema equality', () => {
-    it('a fresh v7 database is structurally identical to a migrated one (modulo SQL text)', async () => {
+    it('a fresh database is structurally identical to a migrated one (modulo SQL text)', async () => {
         const fresh = await openFresh();
         const migrated = await openFixture('preV6');
         runMigrations(migrated);
@@ -413,7 +423,7 @@ describe('migration v7 (nested folders) on a populated v6 database', () => {
     it('applies exactly v7 (then v8) and adds the folders table + column, data intact', async () => {
         const db = await openPopulatedV6();
         const result = runMigrations(db);
-        expect(result).toEqual({ from: 6, to: CURRENT_SCHEMA_VERSION, applied: [7, 8] });
+        expect(result).toEqual({ from: 6, to: CURRENT_SCHEMA_VERSION, applied: [7, 8, 9] });
 
         expect(tableExists(db, 'lexicon_folders')).toBe(true);
         expect(columnExists(db, 'lexicon', 'folder_id')).toBe(true);
@@ -481,7 +491,7 @@ describe('migration v8 (glyph + grapheme folders) on a populated v7 database', (
     it('applies exactly v8 and adds the two folder tables + columns, data intact', async () => {
         const db = await openPopulatedV7();
         const result = runMigrations(db);
-        expect(result).toEqual({ from: 7, to: CURRENT_SCHEMA_VERSION, applied: [8] });
+        expect(result).toEqual({ from: 7, to: CURRENT_SCHEMA_VERSION, applied: [8, 9] });
 
         expect(tableExists(db, 'glyph_folders')).toBe(true);
         expect(tableExists(db, 'grapheme_folders')).toBe(true);
@@ -509,11 +519,179 @@ describe('migration v8 (glyph + grapheme folders) on a populated v7 database', (
         expect(fkViolations(db)).toBe(0);
     });
 
-    it('is a full path from v6: preV6 migrates straight to v8', async () => {
+    it('is a full path from v6: preV6 migrates straight to the current version', async () => {
         const db = await openFixture('preV6');
         const result = runMigrations(db);
-        expect(result).toEqual({ from: 5, to: CURRENT_SCHEMA_VERSION, applied: [6, 7, 8] });
+        expect(result).toEqual({ from: 5, to: CURRENT_SCHEMA_VERSION, applied: [6, 7, 8, 9] });
         expect(tableExists(db, 'glyph_folders')).toBe(true);
         expect(tableExists(db, 'grapheme_folders')).toBe(true);
+    });
+});
+
+// =============================================================================
+// MIGRATION v9 (grapheme variants, variant groups, block scheme)
+// =============================================================================
+
+describe('migration v9 (grapheme variants) on a populated v8 database', () => {
+    async function openV8(mutate?: (db: Database) => void): Promise<Database> {
+        return openFresh(await buildV8Bytes(MIGRATIONS, mutate));
+    }
+
+    /** `sqlite_master.sql` with runs of whitespace collapsed. */
+    function masterSql(db: Database, type: 'table' | 'index', name: string): string | undefined {
+        const sql = scalar(db, 'SELECT sql FROM sqlite_master WHERE type = ? AND name = ?', [type, name]) as string | undefined;
+        return sql?.replace(/\s+/g, ' ').trim();
+    }
+
+    it('the v8 fixture is stamped v8 and has no variant tables yet', async () => {
+        const db = await openV8();
+        expect(readUserVersion(db)).toBe(8);
+        expect(tableExists(db, 'grapheme_variants')).toBe(false);
+        expect(tableExists(db, 'variant_groups')).toBe(false);
+        expect(tableExists(db, 'block_scheme')).toBe(false);
+        expect(columnExists(db, 'grapheme_glyphs', 'variant_id')).toBe(false);
+    });
+
+    it('applies exactly v9 and gives each grapheme one default variant holding its glyph rows', async () => {
+        const db = await openV8();
+        expect(runMigrations(db)).toEqual({ from: 8, to: CURRENT_SCHEMA_VERSION, applied: [9] });
+
+        const variants = db.exec(
+            'SELECT grapheme_id, name, is_default, sort_order, group_id FROM grapheme_variants ORDER BY grapheme_id'
+        )[0].values;
+        expect(variants).toEqual([
+            [1, 'Default', 1, 0, null],
+            [2, 'Default', 1, 0, null],
+        ]);
+
+        // Ids, graphemes, glyphs and positions preserved; each row points at
+        // its grapheme's default variant.
+        const rows = db.exec(`
+            SELECT gg.id, gg.grapheme_id, gg.glyph_id, gg.position, v.grapheme_id AS owner, v.is_default
+            FROM grapheme_glyphs gg JOIN grapheme_variants v ON v.id = gg.variant_id
+            ORDER BY gg.id
+        `)[0].values;
+        expect(rows).toEqual(V8_SEED.glyphRows.map(([id, graphemeId, glyphId, position]) =>
+            [id, graphemeId, glyphId, position, graphemeId, 1]
+        ));
+        expect(scalar(db, 'SELECT COUNT(*) FROM grapheme_glyphs WHERE variant_id IS NULL')).toBe(0);
+
+        expect(fkViolations(db)).toBe(0);
+        expect(scalar(db, 'PRAGMA foreign_keys')).toBe(1);
+        expect(tableExists(db, 'grapheme_glyphs_v8')).toBe(false);
+        expect(count(db, 'block_scheme')).toBe(0);
+        expect(count(db, 'variant_groups')).toBe(0);
+    });
+
+    it('keeps the words, their spellings and the derived index intact', async () => {
+        const db = await openV8();
+        runMigrations(db);
+        expect(glyphOrderOf(db, 1)).toEqual(SEED.word1GlyphOrder);
+        expect(glyphOrderOf(db, 2)).toEqual(SEED.word2GlyphOrder);
+        expect(glyphOrderOf(db, 3)).toEqual(V8_SEED.word3GlyphOrder);
+        expect(db.exec('SELECT grapheme_id, position FROM lexicon_spelling WHERE lexicon_id = 3 ORDER BY position')[0].values)
+            .toEqual([[2, 0], [1, 2]]);
+    });
+
+    it('preserves the grapheme_glyphs AUTOINCREMENT high-water mark across the rebuild', async () => {
+        const db = await openV8();
+        runMigrations(db);
+        expect(scalar(db, `SELECT seq FROM sqlite_sequence WHERE name = 'grapheme_glyphs'`)).toBe(V8_SEED.graphemeGlyphsSeq);
+        expect(scalar(db, `SELECT COUNT(*) FROM sqlite_sequence WHERE name = 'grapheme_glyphs_v8'`)).toBe(0);
+        const defaultOf1 = scalar(db, 'SELECT id FROM grapheme_variants WHERE grapheme_id = 1 AND is_default = 1') as number;
+        db.run('INSERT INTO grapheme_glyphs (grapheme_id, variant_id, glyph_id, position) VALUES (1, ?, 3, 2)', [defaultOf1]);
+        expect(scalar(db, 'SELECT MAX(id) FROM grapheme_glyphs')).toBe(V8_SEED.graphemeGlyphsSeq + 1);
+    });
+
+    it('recreates every grapheme_glyphs index on the rebuilt table', async () => {
+        const db = await openV8();
+        runMigrations(db);
+        const indexes = db.exec(
+            `SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'grapheme_glyphs' AND sql IS NOT NULL ORDER BY name`
+        )[0].values.map(r => r[0]);
+        expect(indexes).toEqual([
+            'idx_grapheme_glyphs_glyph',
+            'idx_grapheme_glyphs_grapheme',
+            'idx_grapheme_glyphs_position',
+            'idx_grapheme_glyphs_variant',
+        ]);
+    });
+
+    it('drops glyph rows of a grapheme that no longer exists (FK-off era orphans) instead of failing', async () => {
+        const db = await openV8(raw => {
+            raw.run('PRAGMA foreign_keys = OFF');
+            raw.run('INSERT INTO grapheme_glyphs (id, grapheme_id, glyph_id, position) VALUES (7, 99, 1, 0)');
+            raw.run('PRAGMA foreign_keys = ON');
+        });
+        expect(runMigrations(db).applied).toEqual([9]);
+        expect(scalar(db, 'SELECT COUNT(*) FROM grapheme_glyphs WHERE grapheme_id = 99')).toBe(0);
+        expect(count(db, 'grapheme_glyphs')).toBe(3);
+        expect(fkViolations(db)).toBe(0);
+    });
+
+    it('a failing v9 rolls back to an intact v8 file', async () => {
+        // A column the rebuild's INSERT ... SELECT reads is gone → it throws.
+        const db = await openV8(raw => {
+            raw.run('ALTER TABLE grapheme_glyphs DROP COLUMN transform');
+        });
+        expect(() => runMigrations(db)).toThrow(/transform/);
+        expect(readUserVersion(db)).toBe(8);
+        expect(tableExists(db, 'grapheme_variants')).toBe(false);
+        expect(tableExists(db, 'grapheme_glyphs_v8')).toBe(false);
+        expect(count(db, 'grapheme_glyphs')).toBe(3);
+        expect(scalar(db, 'PRAGMA foreign_keys')).toBe(1);
+    });
+
+    it('is idempotent: a second run applies nothing', async () => {
+        const db = await openV8();
+        runMigrations(db);
+        expect(runMigrations(db)).toEqual({ from: CURRENT_SCHEMA_VERSION, to: CURRENT_SCHEMA_VERSION, applied: [] });
+    });
+
+    it('fresh and migrated sqlite_master text match for grapheme_glyphs and grapheme_variants (modulo whitespace)', async () => {
+        const fresh = await openFresh();
+        const migrated = await openV8();
+        runMigrations(migrated);
+        for (const table of ['grapheme_glyphs', 'grapheme_variants', 'variant_groups', 'block_scheme']) {
+            const freshSql = masterSql(fresh, 'table', table);
+            expect(freshSql, table).toBeDefined();
+            expect(masterSql(migrated, 'table', table), table).toBe(freshSql);
+        }
+        for (const index of [
+            'idx_grapheme_glyphs_grapheme', 'idx_grapheme_glyphs_glyph', 'idx_grapheme_glyphs_position',
+            'idx_grapheme_glyphs_variant', 'idx_grapheme_variants_grapheme',
+            'idx_grapheme_variants_default', 'idx_grapheme_variants_group',
+        ]) {
+            expect(masterSql(migrated, 'index', index), index).toBe(masterSql(fresh, 'index', index));
+        }
+        expect(schemaFingerprint(migrated)).toEqual(schemaFingerprint(fresh));
+    });
+
+    it('after v9 a second variant may reuse a glyph at the same position (the UNIQUE the rebuild re-keyed)', async () => {
+        const db = await openV8();
+        runMigrations(db);
+        db.run(`INSERT INTO grapheme_variants (grapheme_id, name, is_default, sort_order) VALUES (1, 'Alt', 0, 1)`);
+        const alt = scalar(db, 'SELECT last_insert_rowid()') as number;
+        expect(() => db.run(
+            'INSERT INTO grapheme_glyphs (grapheme_id, variant_id, glyph_id, position) VALUES (1, ?, 1, 0)', [alt]
+        )).not.toThrow();
+        // …while the same slot twice in ONE variant is still rejected.
+        expect(() => db.run(
+            'INSERT INTO grapheme_glyphs (grapheme_id, variant_id, glyph_id, position) VALUES (1, ?, 1, 0)', [alt]
+        )).toThrow(/UNIQUE/);
+    });
+
+    it('enforces one default per grapheme and cascades a grapheme delete to its variants and glyph rows', async () => {
+        const db = await openV8();
+        runMigrations(db);
+        expect(() => db.run(
+            `INSERT INTO grapheme_variants (grapheme_id, name, is_default) VALUES (2, 'Second default', 1)`
+        )).toThrow(/UNIQUE/);
+        db.run('DELETE FROM lexicon_spelling WHERE grapheme_id = 2');
+        db.run('DELETE FROM phonemes WHERE grapheme_id = 2');
+        db.run('DELETE FROM graphemes WHERE id = 2');
+        expect(scalar(db, 'SELECT COUNT(*) FROM grapheme_variants WHERE grapheme_id = 2')).toBe(0);
+        expect(scalar(db, 'SELECT COUNT(*) FROM grapheme_glyphs WHERE grapheme_id = 2')).toBe(0);
+        expect(fkViolations(db)).toBe(0);
     });
 });

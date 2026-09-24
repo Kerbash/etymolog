@@ -23,9 +23,10 @@
 
 import { getDatabase } from './database';
 import { withTransaction } from './utils/transaction';
+import { execScalar } from './utils/sql';
 import { validateStringLength, LIMITS } from './utils/sanitize';
 import { extractGraphemeId, type SpellingEntry } from './utils/spellingUtils';
-import { createGlyph, updateGlyph } from './glyphService';
+import { createGlyph, getGlyphById, updateGlyph } from './glyphService';
 import { createGrapheme, getGlyphsByGraphemeId, getGraphemeById } from './graphemeService';
 
 /**
@@ -35,12 +36,33 @@ import { createGrapheme, getGlyphsByGraphemeId, getGraphemeById } from './graphe
  */
 export const WORD_SYMBOL_CATEGORY = 'logogram';
 
-/** Input for creating a word symbol. */
+/**
+ * The category of a MARK: a no-sound sign that is added to other signs — a
+ * vowel-killer, an accent, any diacritic — and never stands on its own. It is
+ * the OTHER kind of no-sound grapheme (the grapheme form's "No sound" →
+ * "A mark"), kept apart from {@link WORD_SYMBOL_CATEGORY} so a mark is never
+ * offered as a word's whole spelling. Only the category tells the two kinds
+ * apart; both carry no phonemes. See `isMarkGrapheme` /
+ * `isLogogramGrapheme` in `components/form/graphemeForm/logogramOption.ts`.
+ */
+export const MARK_CATEGORY = 'mark';
+
+/**
+ * Input for creating a word symbol. EXACTLY ONE source: a new drawing
+ * (`svgData`) or a glyph that already exists in the script (`glyphId`).
+ */
 export interface CreateWordSymbolInput {
     /** Symbol name — defaults, at the caller, to the word's display name. */
     name: string;
-    /** The symbol SVG (a drawing or an imported image). */
-    svgData: string;
+    /** The symbol SVG (a drawing or an imported image) — becomes a NEW glyph. */
+    svgData?: string;
+    /**
+     * An existing glyph to use as the logogram. No glyph is created: the glyph
+     * is wrapped in a logogram grapheme, or the logogram grapheme that already
+     * wraps it on its own is reused (so picking the same glyph for two words
+     * yields ONE shared logogram, not two copies).
+     */
+    glyphId?: number;
 }
 
 /** The backing glyph + grapheme ids a word symbol resolves to. */
@@ -66,6 +88,13 @@ export function createWordSymbol(input: CreateWordSymbolInput): WordSymbolRefs {
     validateStringLength(name, LIMITS.GRAPHEME_NAME, 'Symbol name');
 
     const svg = input.svgData?.trim() ?? '';
+    const hasGlyph = input.glyphId !== undefined && input.glyphId !== null;
+    if (svg && hasGlyph) {
+        throw new Error('A word symbol takes a drawing or an existing glyph, not both');
+    }
+    if (hasGlyph) {
+        return logogramForGlyph(input.glyphId!, name);
+    }
     if (!svg) {
         throw new Error('A word symbol needs a drawing or an image');
     }
@@ -88,6 +117,44 @@ export function createWordSymbol(input: CreateWordSymbolInput): WordSymbolRefs {
             glyphs: [{ glyph_id: glyph.id, position: 0 }],
         });
         return { glyphId: glyph.id, graphemeId: grapheme.id };
+    });
+}
+
+/**
+ * The logogram grapheme standing for an EXISTING glyph: the one that already
+ * wraps exactly this glyph (a phoneme-less, single-glyph `'logogram'`
+ * grapheme), or a new one made now. Reuse is what keeps "pick this glyph as
+ * the word's logogram" from minting a duplicate grapheme every time.
+ *
+ * @throws if the glyph does not exist.
+ */
+export function logogramForGlyph(glyphId: number, name: string): WordSymbolRefs {
+    const db = getDatabase();
+    return withTransaction(db, () => {
+        if (!getGlyphById(glyphId)) {
+            throw new Error(`Glyph ${glyphId} not found`);
+        }
+        const existing = execScalar<number>(
+            db,
+            `SELECT g.id FROM graphemes g
+               JOIN grapheme_glyphs gg ON gg.grapheme_id = g.id
+              WHERE g.category = ? AND gg.glyph_id = ?
+                AND (SELECT COUNT(*) FROM grapheme_glyphs x WHERE x.grapheme_id = g.id) = 1
+                AND NOT EXISTS (SELECT 1 FROM phonemes p WHERE p.grapheme_id = g.id)
+              ORDER BY g.id
+              LIMIT 1`,
+            [WORD_SYMBOL_CATEGORY, glyphId],
+        );
+        if (typeof existing === 'number') {
+            return { glyphId, graphemeId: existing };
+        }
+        // Created at ROOT, like every auto-created backing grapheme (see above).
+        const grapheme = createGrapheme({
+            name,
+            category: WORD_SYMBOL_CATEGORY,
+            glyphs: [{ glyph_id: glyphId, position: 0 }],
+        });
+        return { glyphId, graphemeId: grapheme.id };
     });
 }
 

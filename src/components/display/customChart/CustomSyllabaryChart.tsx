@@ -11,10 +11,23 @@ import { useMemo, useCallback } from 'react';
 import classNames from 'classnames';
 import GlyphSpellingDisplay from '../spelling/GlyphSpellingDisplay';
 import type { CustomSyllabaryChartProps } from './types';
-import type { GraphemeComplete } from '../../../db/types';
+import type { GraphemeComplete, SpellingDisplayEntry } from '../../../db/types';
+import { ComposedSyllablePreview, useSyllablePreviewSpeller } from '../composedSyllable';
 import styles from './CustomSyllabaryChart.module.scss';
 
-function CellContent({ ipa, grapheme }: { ipa: string; grapheme: GraphemeComplete | null }) {
+/**
+ * Assigned cells draw their grapheme; an EMPTY cell draws the dimmed composed
+ * preview when the block scheme can spell it from existing signs, and its IPA
+ * label otherwise.
+ */
+function CellContent({ ipa, grapheme, preview }: {
+    ipa: string;
+    grapheme: GraphemeComplete | null;
+    preview?: { consonant: string; vowel: string; entries: SpellingDisplayEntry[] } | null;
+}) {
+    if (!grapheme && preview) {
+        return <ComposedSyllablePreview consonant={preview.consonant} vowel={preview.vowel} entries={preview.entries} />;
+    }
     if (grapheme && grapheme.glyphs.length > 0) {
         return (
             <div className={styles.cellAssigned}>
@@ -54,28 +67,43 @@ export default function CustomSyllabaryChart({
         [onCellClick, phonemeMap]
     );
 
+    // Block script: empty cells preview the syllable composed from existing
+    // signs. Null (no previews, no spelling work) unless the scheme is on.
+    const spellPreview = useSyllablePreviewSpeller();
+
+    // The axes are read out of `chart` first: member expressions as memo
+    // dependencies defeat the React compiler (plan P8).
+    const xAxis = chart.xAxis;
+    const yAxis = chart.yAxis;
+
     const tableBody = useMemo(() => {
-        return chart.yAxis.map(consonant => (
+        return yAxis.map(consonant => (
             <tr key={consonant}>
                 <th className={styles.rowHeader} scope="row" title={consonant}>
                     {consonant}
                 </th>
-                {chart.xAxis.map(vowel => {
+                {xAxis.map(vowel => {
                     const syllable = consonant + vowel;
                     const grapheme = phonemeMap.get(syllable) ?? null;
+                    // Only an EMPTY cell, and only while blocks are on.
+                    const entries = !grapheme && spellPreview ? spellPreview(consonant, vowel) : null;
                     return (
                         <td
                             key={vowel}
                             data-ipa={syllable}
                             className={classNames(styles.syllableCell, grapheme && styles.assigned)}
                         >
-                            <CellContent ipa={syllable} grapheme={grapheme} />
+                            <CellContent
+                                ipa={syllable}
+                                grapheme={grapheme}
+                                preview={entries ? { consonant, vowel, entries } : null}
+                            />
                         </td>
                     );
                 })}
             </tr>
         ));
-    }, [chart.xAxis, chart.yAxis, phonemeMap]);
+    }, [xAxis, yAxis, phonemeMap, spellPreview]);
 
     return (
         <div className={classNames(styles.syllabaryChart, className)}>

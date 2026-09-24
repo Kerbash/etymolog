@@ -5,6 +5,10 @@
  * gallery's action footer (edit / delete) spanned the whole cell, so on any
  * cell wider than 200px the card sat flush left under a wider footer and the
  * glyphs looked off-centre.
+ *
+ * Every row has a FIXED height (one line each, empty rows included), so every
+ * card in the grid is the same size; `height: 100%` fills a stretched grid
+ * cell as well.
  */
 
 .compactCard {
@@ -12,6 +16,7 @@
     flex-direction: column;
     align-items: center;
     width: 100%;
+    height: 100%;
     min-width: 0;
     padding: 0.75rem;
     border: 1px solid var(--border-primary);
@@ -68,25 +73,55 @@
     max-width: 100%;
 }
 
+/* One line: the text ellipsizes, the "+N more" badge keeps its size. */
 .meaning {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
     margin: 0.25rem 0 0 0;
+    width: 100%;
+    min-width: 0;
     font-size: 0.75rem;
     color: var(--text-secondary);
-    text-align: center;
     line-height: 1.3;
-    max-width: 100%;
-    word-wrap: break-word;
+    white-space: nowrap;
 }
 
+.meaningText {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/*
+ * One row, reserved even when empty. The row itself enforces one line on
+ * WHATEVER it holds — no wrapping, every child shrinkable and ellipsized — so
+ * a long part of speech ends in "…" instead of breaking onto a clipped second
+ * line.
+ */
 .badges {
     display: flex;
     gap: 0.25rem;
     margin-top: 0.5rem;
-    flex-wrap: wrap;
+    width: 100%;
+    height: 1.1rem;
+    align-items: center;
     justify-content: center;
+    overflow: hidden;
+    white-space: nowrap;
+    line-height: 1;
+
+    > * {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
 }
 
 .externalBadge {
+    flex-shrink: 0;
     font-size: 0.625rem;
     padding: 0.125rem 0.375rem;
     background-color: var(--status-warning);
@@ -97,6 +132,10 @@
 }
 
 .posBadge {
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     font-size: 0.625rem;
     padding: 0.125rem 0.375rem;
     background-color: var(--bg-tertiary);
@@ -106,7 +145,7 @@
 
 .moreMeaningsBadge {
     display: inline-block;
-    margin-left: 0.5rem;
+    flex-shrink: 0;
     font-size: 0.65rem;
     padding: 0.125rem 0.375rem;
     background-color: var(--bg-tertiary);

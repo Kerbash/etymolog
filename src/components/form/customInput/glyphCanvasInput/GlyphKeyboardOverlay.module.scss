@@ -24,6 +24,8 @@
     border-radius: var(--radius-surface) var(--radius-surface) 0 0;
     box-shadow: var(--shadow-overlay);
 
+    // Full width and one height cap at every size, like the pronunciation
+    // keyboard, so the two read as the same component.
     max-height: 50vh;
     padding: 1rem;
     padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
@@ -111,6 +113,8 @@
     flex: 1;
     min-height: 0;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
 .emptyState {
@@ -119,8 +123,7 @@
     align-items: center;
     justify-content: center;
     gap: 0.75rem;
-    height: 100%;
-    padding: 2rem;
+    padding: 1rem;
     color: var(--text-secondary);
     font-style: italic;
     text-align: center;
@@ -176,63 +179,6 @@
     overflow: hidden;
 }
 
-/* Keyboard wrapper to contain keyboard and actions */
-.keyboardWrapper {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    height: 100%;
-}
-
-/* Keyboard actions row (Backspace, etc.) */
-.keyboardActions {
-    display: flex;
-    justify-content: flex-end;
-    padding: 0.5rem 0;
-    border-top: 1px solid var(--border-secondary);
-}
-
-/* Backspace button - keyboard-style */
-.backspaceButton {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 1rem;
-    border: 1px solid var(--border-primary);
-    border-radius: var(--radius-control);
-    background: var(--surface-raised);
-    color: var(--text-primary);
-    cursor: pointer;
-    font-size: 0.875rem;
-    font-weight: 500;
-    transition: all 0.15s ease;
-
-    &:hover {
-        background: var(--interactive-hover);
-        border-color: var(--interactive-base);
-    }
-
-    &:active {
-        transform: scale(0.98);
-    }
-
-    &:focus {
-        outline: 2px solid var(--focus-ring);
-        outline-offset: 2px;
-    }
-
-    i {
-        font-size: 1.125rem;
-    }
-}
-
-.backspaceLabel {
-    /* Hide on very small screens */
-    @media (max-width: 400px) {
-        display: none;
-    }
-}
-
 /* Backdrop for mobile */
 .backdrop {
     position: fixed;
@@ -242,19 +188,43 @@
     backdrop-filter: blur(2px);
 }
 
-/* Responsive adjustments */
-@media (min-width: 768px) {
-    .overlay {
-        max-height: 40vh;
-        left: 10%;
-        right: 10%;
-        border-radius: var(--radius-surface) var(--radius-surface) 0 0;
+/* Block-script boundary key: a row under the shared Space / Backspace row. */
+.extraKeyRow {
+    display: flex;
+    justify-content: flex-start;
+    gap: 0.35rem;
+    flex-shrink: 0;
+    padding-top: 0.35rem;
+}
+
+.boundaryKey {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 2.5rem;
+    padding: 0.25rem 1rem;
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-control);
+    background: var(--surface-raised);
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    cursor: pointer;
+    user-select: none;
+
+    &:hover {
+        border-color: var(--status-info);
+        color: var(--text-primary);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--focus-ring);
+        outline-offset: 2px;
     }
 }
 
-@media (min-width: 1024px) {
-    .overlay {
-        left: 20%;
-        right: 20%;
-    }
+.boundaryKeyMark {
+    font-size: 1.4rem;
+    font-weight: 700;
+    line-height: 1;
 }

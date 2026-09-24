@@ -5,7 +5,7 @@ measured but deliberately did not change and what the word generator left as a
 measured band rather than a guarantee. Each entry says what was done instead so
 nothing is silently blocked.
 
-Last reviewed: 2026-08-22 (end of the word-generator work, Phase 6).
+Last reviewed: 2026-09-25 (end of the block-script epic).
 
 ## Decisions needed
 
@@ -211,6 +211,204 @@ Kept only as a record of what these entries used to say.
 - ~~The header's Export and Import dropdown toggles are `<div aria-haspopup>`~~ —
   real `<button>`s with accessible names, covered by
   `src/components/exportImport/__tests__/ExportImportButtons.test.tsx`.
+
+## From the block-script epic (2026-09-24/25, alpha `74e69cf`..)
+
+Everything in `BLOCK_SCRIPT_PLAN.md` shipped (phases 1–7, 3097 tests green after the E2E fixes,
+typecheck at the 37-error package baseline, live-checked in Chrome). What is
+left needs the owner, or is polish deliberately not squeezed in.
+
+### Decisions needed
+
+- **Merge alpha into master.** Nine `(etymolog)` commits on the `alpha` lane
+  (`7228a8b`, `74e69cf`, `17e2d5d`, `b1edd23`, then phases 2–6, the docs and
+  the edit-form fix). Not merged: the lane was told to author, not integrate.
+  `git -C <main> merge --no-ff alpha` from the MAIN tree fires the lite gate.
+- **Schema v9 rebuilds `grapheme_glyphs`.** A user's existing `.sqlite` is
+  migrated in place on first open (one transaction, rolls back on any FK
+  violation, verified against a built v8 fixture). Worth a "back up your
+  language first" note in the release announcement all the same.
+- **Export envelope is v4.** Older builds cannot read a v4 file (they never
+  could read newer ones); v1–v3 files still import here.
+
+### Small follow-ups (nice to have)
+
+- ~~**`missingGroup` is computed but never shown.**~~ Shown since the E2E
+  follow-up (popover label + note, designer preview list).
+- **Preview strip glyphs are small** for a 3-slot block of IPA fallbacks
+  (`BlockPreviewStrip` uses the `PREVIEW_CONFIG` size). A larger `glyphEmPx`
+  or a per-block scale would read better; check against real drawn glyphs
+  before changing it.
+- **With blocks OFF the display ignores pins** (`grapheme-12@34` draws the
+  default form) — by design, to keep the no-scheme rendering byte-identical.
+  The word-form canvas still shows the pinned form. Decide whether pins should
+  apply without a scheme; if yes, drop the snapshot identity test knowingly.
+- **Template editor switch drops un-applied edits silently** (opening Edit on
+  another template while one has changes). The page-level unsaved guard still
+  covers leaving the page.
+- **`audit-phase5.test.tsx` "treats ɡ and g as the same sound" is a load
+  flake** (fails only under the full 164-file run, passes alone). Pre-existing;
+  not touched by this epic.
+
+### Found and fixed on the way
+
+- Every EDIT form opened dirty ("Leave site?" on an untouched word): the stored
+  pronunciation was seeded with `markChanged` on. Fixed in
+  `LexiconFormFields` + pinned by `LexiconEditorDirtyOnMount` (edit cases).
+- Lint: `react-refresh` / React-compiler errors in `LogogramPanel`,
+  `GraphemeFormFields`, `GraphemePickerModal`, `LexiconAutoSpellLock.test`.
+- **E2E pass (2026-09-24):** a clicked template slot was selected but not
+  focused (pointerdown `preventDefault` cancels focus-on-press), so the
+  "Arrows move, Shift+arrows resize" hint did nothing after a mouse click.
+  `RectLayoutEditor` now focuses the rect; pinned by two tests.
+- **E2E pass:** a wide form could never fill a wide slot — every drawn glyph
+  keeps the editor's square 300 × 300 canvas as its viewBox, so `meet` shrank
+  it to a square. Block slots now fit each sign's INK (`nestSvgToInk`,
+  `db/utils/svgInkBounds.ts`); unmeasurable sources (text, images, transforms,
+  multi-glyph rows) fall back to the old nesting byte-for-byte. Non-block
+  rendering is untouched.
+
+### Seen in the E2E pass — fixed in the follow-up (2026-09-24)
+
+- **Word-form canvas insertion point.** The canvas is focusable (click or Tab);
+  the arrows (following the writing direction), Home and End move a visible,
+  announced caret; keys, the Boundary key / `.` and Backspace act AT it (the
+  cursor strategy is the default now — with no cursor it appends exactly like
+  before). Clicking focuses it even though the pan surface prevents default.
+- **"Auto (head)" for a sign with no head form** now reads "Auto (default form
+  — no head form)" with a note, in the popover; the designer preview lists the
+  same fallbacks (`summarizeBlocks().missingForms`, from the composer itself).
+- **Thin strokes in small blocks**: ink-fitted cells draw a 1-screen-pixel
+  `non-scaling-stroke` hairline under each mark, so a 2 px pen line stays
+  visible at 36 px and is covered by the real ink at normal sizes.
+- **Page error boundary** (`shell/PageErrorBoundary`) around the routed page:
+  a crash shows a "This page stopped working" card (try again / reload),
+  the tabs stay usable, and navigating away clears it.
+
+### Seen in the E2E pass — the last four, also fixed (2026-09-24)
+
+- **Multi-glyph forms are ink-fitted too.** `estimateInkBounds` measures the
+  nested `<svg>` cells a multi-glyph row is made of (through each cell's
+  `xMidYMid meet` viewport, clipped to it), and the hairline floor goes
+  inside each cell. Other viewports (`preserveAspectRatio="none"`, no size,
+  a transform) still fall back to the full canvas.
+- **Shift+↑ no longer re-snaps the width** (and a sideways nudge no longer
+  re-snaps y): `moveRect` / `resizeRect` snap only the axis that changed.
+- **Unknown addresses inside a tab** (`/script-maker/graphemes/create`,
+  `/lexicon/nope`, …) show a "There is no page here" notice with the way
+  back (`shared/notFound`), instead of an empty panel — and the two silent
+  redirects (shell `*`, Writing System `*`) show it too.
+- **Tapping a tile places the caret** before it (leading half) or after it
+  (trailing half), in the writing direction; a press that moved is a pan.
+  The block outline opens its popover from its BORDER now, so taps inside a
+  block reach the tiles.
+
+## From the conlang-edges follow-up (2026-09-24, CONLANG_EDGES_PLAN.md)
+
+Shipped on `alpha`: `8a8e59c` (marks ride with the sign before them, `‿` joins, stress marks cut), `7b7fc4b` (syllable-sign codas, syllabic consonants),
+`8648774` (designer: consonant list, Join key, mark role preset), `858775e` ("Check all my words"). Known limits, none blocking:
+
+- **A mark between the two vowels of a diphthong blocks the glue.** `a MARK i`
+  with `ai` listed stays `aM · i` (a group must be contiguous vowels, and a
+  V box does not take a mark). Workaround: put the mark after the pair
+  (`a i MARK`).
+- **A join never licenses a syllable start.** `as‿ta` with s + consonant off
+  is `ast · a`: the join forbids the `s|t` cut, and `st` still is not a legal
+  start, so the only allowed cut is before the last vowel.
+- **A join next to a logogram does nothing** (nor one BEFORE a syllable
+  sign). Those stay walls; only a template (`LOGO C V`) joins them to a
+  neighbour. A join right AFTER a syllable sign does count: it forbids that
+  cut, so `KA‿t a` is `KAt · a`.
+- **A syllabic consonant is class C, not V** (pitfall P-B1, on purpose — a
+  listed `r` must not fill every V box). `prst` with `r` listed is ONE
+  syllable, but a `C V C` template cannot take it (it falls back to template
+  order: four lone consonants); it needs a template whose core role accepts
+  a consonant (`class R`, `any`, …). The list's description says so.
+- **The seed offers no core template.** "Start from the word generator"
+  (`seedFromGenerator.ts`) builds no role / template for a syllabic core, so
+  an owner who lists `r` must add a `C R C`-style template by hand.
+- **Syllabic-consonant suggestions come only from the signs' sounds**
+  (`suggestSyllabicConsonants`: each grapheme's main sound that is a nasal,
+  lateral, trill, tap or approximant). Consonant runs actually used in the
+  words are not scanned, and a sound already written `r̩` is not offered
+  (it is a core anyway).
+- **How listed consonants become cores** (not a limit — the rule, for
+  reference): a listed consonant is a candidate when neither neighbouring
+  non-mark sign holds a vowel (a vowel, a marked syllabic consonant, or a
+  syllable sign — `KA r t a` is `KAr · ta`). Of several candidates in a row
+  only the LAST is the core: `mlha` with `m l` listed is `ml · ha`;
+  `vlkr` with `l r` is `vl · kr` (not in a row); `sedm` with `m` is
+  `se · dm`. A logogram or unknown sign holds no vowel (`L r t a` →
+  `L · r · ta`). Both IPA syllabic marks count (U+0329 below, U+030D above).
+  A core that ends up alone is drawn without the vowel-killer mark.
+- **Syllable-sign codas are for `syllable` signs only.** A logogram followed
+  by consonants still leaves them to the next syllable (`LOGO n t a` →
+  `LOGO · nta`); a logogram coda would need its own rule. A sign whose coda
+  consonants are all joined away (`KA s‿t‿a`, s + consonant off) grows
+  nothing.
+- **The word check's stale note tracks the draft, not the lexicon.** The
+  report is flagged stale when the scheme changes (`report.scheme !==
+  scheme`); a word added, edited or respelled after the check is not, so
+  run it again after lexicon work.
+- **Live-checked in Chrome (alpha, demo language):** the second list (add `r`,
+  save, reload, remove, save — no phantom "Unsaved changes"), "Try a word"
+  with `prst` / `krtek` / `ta‿i` / `kaˈta` / `a‿t‿a`, the `.`/`‿` note,
+  "Check all my words" (report, stale note, "Try it" → preview), and the
+  Join key on the word form (`pa‿a` became one block outline, the ‿ tile
+  drew, Backspace removed it; the form was cancelled).
+- **Not live-checked:** a mark GRAPHEME inside a block. The word keyboard
+  lists no `mark`-category sign (marks are kept out of auto-spelling and the
+  glyph keys), so a `C V MARK` block can only be reached by pasting a
+  spelling or once the keyboard offers marks — unit-tested in
+  `segment.test.ts` / `compose.test.ts` / `conlangEdges.audit.test.ts`.
+  Also not live-checked: a syllable-sign word (the demo has no syllable
+  sign) and the `mark (accent, tone…)` role preset (unit-tested in
+  `rolesEditor.test.tsx`).
+
+## From the diphthong follow-up (2026-09-24, `DIPHTHONG_BLOCKS_PLAN.md`)
+
+Shipped on `alpha` (diphthongs stay in one block; several-consonant signs are
+consonants; grapheme-form sound hint). Known limits, none blocking:
+
+- **A several-consonant sign starts a syllable only on its own.** `ng` has no
+  sonority profile, so `angwa` (one `ng` grapheme + `w`) splits `ang · wa`,
+  not `a · ngwa`. If a script needs it, judge such a sign by its LAST member
+  sound in `onsetAccepts` (syllabify.ts) — behind a test, since it changes
+  splits for every multi-sound consonant sign.
+- **Diphthongs glue at most three vowel signs** (`MAX_GLUED_UNITS`).
+- **Suggestions come from the word-generator shapes only** (`[ai au]`
+  literal groups written WITH spaces — `[ai]` means "a or i" to the parser).
+  Vowel pairs actually used in the language's words are not scanned.
+- **Not live-checked:** a saved grapheme whose sound is `ng` filling a C box
+  (unit-tested in `classify.test.ts` / `segment.test.ts`; the live check
+  covered the hint and the diphthong path).
+
+## From the syllable-blocks follow-up (2026-09-24, `SYLLABLE_BLOCKS_PLAN.md`)
+
+Shipped on `alpha` (syllable splitting, flexible boxes, vowel-killer mark).
+Small things left:
+
+- ~~**Logograms in syllable mode** are their own unit, so a `LOGO C V`
+  template only matches in template order. If a script needs a logogram
+  inside a syllable block, let syllabify treat a chosen category as a
+  consonant/vowel, or offer a per-role "joins the next syllable" option.~~
+  Done: a lone logogram / syllable sign joins the following (else the
+  previous) syllable when a template covers the joined range — no setting.
+- **Several signs in one box get small** at word-preview size (three
+  consonants share a half-width box). A block could grow wider when a box
+  holds several signs, or the word preview could render larger. (Eased: a
+  shared box is now split by each sign's ink shape, not equally.)
+- ~~**"No template matched" in a caption** also shows when every sign was drawn
+  with the vowel-killer mark (`s · t`); reads slightly alarming — could say
+  "no blocks".~~ Done: the caption lists only non-zero parts
+  (`s · t → 2 consonants with a vowel-killer mark`).
+- **The vowel-killer mark is any grapheme.** A dedicated "mark" kind (hidden
+  from auto-spelling pickers, shown in a Marks filter) would make it easier
+  to find.
+- ~~**"Add templates from my word shapes"** still makes one template per
+  shape; it could now make one flexible template (`C(up to 3) V C(up to 3)`).~~
+  Done: the button offers "One flexible template" (recommended) or "One
+  template per shape" (`seedFlexibleTemplate`).
 
 ## From the logograph epic (2026-09-09, feat/etymolog-logograph)
 

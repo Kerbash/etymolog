@@ -7,7 +7,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { StrictMode, useEffect } from 'react';
 import { act } from 'react-dom/test-utils';
 import { createRoot, type Root } from 'react-dom/client';
-import { EtymologProvider, useEtymolog, type EtymologContextValue } from '../context';
+import { EtymologProvider, useEtymolog, useOptionalBlockScheme, useOptionalGraphemeMap, type EtymologContextValue } from '../context';
+import type { BlockScheme } from '../../blocks';
 import { etymologApi } from '../api';
 import { clearDatabase, initDatabase } from '../database';
 
@@ -379,5 +380,273 @@ describe('EtymologProvider — batchMutations', () => {
         // The first batch's pending set was drained on the way out; a leak
         // would show up as a refresh nothing in THIS batch asked for.
         expect(lexiconSpy).not.toHaveBeenCalled();
+    });
+});
+
+describe('EtymologProvider — variant slices (schema v9)', () => {
+    let root: Root | null = null;
+
+    beforeEach(async () => {
+        await initDatabase();
+        clearDatabase();
+        latest = null;
+    });
+
+    afterEach(async () => {
+        if (root) {
+            await act(async () => root!.unmount());
+            root = null;
+        }
+        vi.restoreAllMocks();
+    });
+
+    it('loads variantGroups on init and refreshes only that slice after a group create/update', async () => {
+        root = await mount();
+        expect(latest?.data.variantGroups).toEqual([]);
+        const graphemeSpy = vi.spyOn(etymologApi.grapheme, 'getAllComplete');
+        const groupSpy = vi.spyOn(etymologApi.variantGroup, 'getAll');
+
+        let groupId = 0;
+        await act(async () => {
+            groupId = latest!.api.variantGroup.create({ name: 'head' }).data!.id;
+        });
+        await act(async () => {
+            latest!.api.variantGroup.update(groupId, { name: 'Head' });
+        });
+
+        expect(groupSpy).toHaveBeenCalledTimes(2);
+        expect(graphemeSpy).not.toHaveBeenCalled();
+        expect(latest?.data.variantGroups.map(g => g.name)).toEqual(['Head']);
+    });
+
+    it('a group delete also re-reads graphemes (its variants are ungrouped there)', async () => {
+        root = await mount();
+        let groupId = 0;
+        await act(async () => {
+            groupId = latest!.api.variantGroup.create({ name: 'head' }).data!.id;
+            const glyph = latest!.api.glyph.create({ name: 'g', svg_data: '<svg/>' }).data!;
+            latest!.api.grapheme.create({
+                name: 'K',
+                glyphs: [{ glyph_id: glyph.id, position: 0 }],
+                variants: [{ name: 'Head', group_id: groupId, glyphs: [{ glyph_id: glyph.id, position: 0 }] }],
+            });
+        });
+        expect(latest?.data.graphemesComplete[0].variants![1].group_id).toBe(groupId);
+
+        await act(async () => {
+            latest!.api.variantGroup.delete(groupId);
+        });
+        expect(latest?.data.variantGroups).toEqual([]);
+        expect(latest?.data.graphemesComplete[0].variants![1].group_id).toBeNull();
+    });
+
+    it('variant writes refresh graphemes; a variant delete refreshes the lexicon too', async () => {
+        root = await mount();
+        let graphemeId = 0;
+        let altId = 0;
+        await act(async () => {
+            const glyph = latest!.api.glyph.create({ name: 'g', svg_data: '<svg/>' }).data!;
+            graphemeId = latest!.api.grapheme.create({ name: 'K', glyphs: [{ glyph_id: glyph.id, position: 0 }] }).data!.id;
+            altId = latest!.api.variant.create(graphemeId, { name: 'Alt', glyphs: [{ glyph_id: glyph.id, position: 0 }] }).data!.id;
+        });
+        expect(latest?.data.graphemesComplete[0].variants).toHaveLength(2);
+
+        const lexiconSpy = vi.spyOn(etymologApi.lexicon, 'getAllComplete');
+        await act(async () => {
+            latest!.api.variant.setDefault(graphemeId, altId);
+        });
+        expect(lexiconSpy).not.toHaveBeenCalled();
+        expect(latest?.data.graphemesComplete[0].variants![0].id).toBe(altId);
+
+        const oldDefault = latest!.data.graphemesComplete[0].variants![1].id;
+        await act(async () => {
+            latest!.api.variant.delete(oldDefault);
+        });
+        expect(lexiconSpy).toHaveBeenCalledTimes(1);
+        expect(latest?.data.graphemesComplete[0].variants).toHaveLength(1);
+    });
+
+    it('database.clear refreshes the variantGroups slice too', async () => {
+        root = await mount();
+        await act(async () => {
+            latest!.api.variantGroup.create({ name: 'head' });
+        });
+        expect(latest?.data.variantGroups).toHaveLength(1);
+        await act(async () => {
+            latest!.api.database.clear();
+        });
+        expect(latest?.data.variantGroups).toEqual([]);
+    });
+});
+
+const CV_SCHEME: BlockScheme = {
+    version: 1,
+    enabled: true,
+    roles: [
+        { id: 'C1', label: 'Onset', matcher: { kind: 'class', letter: 'C' } },
+        { id: 'V', label: 'Nucleus', matcher: { kind: 'class', letter: 'V' } },
+    ],
+    templates: [{
+        id: 'cv',
+        name: 'CV',
+        pattern: ['C1', 'V'],
+        slots: [
+            { roleId: 'C1', groupId: null, x: 0, y: 0, w: 1, h: 0.5 },
+            { roleId: 'V', groupId: null, x: 0, y: 0.5, w: 1, h: 0.5 },
+        ],
+    }],
+};
+
+interface BlockSnapshot {
+    scheme: BlockScheme | null;
+    map: ReturnType<typeof useOptionalGraphemeMap>;
+}
+
+const blockSnapshots: BlockSnapshot[] = [];
+
+/** Records every value the narrow block-rendering context delivers. */
+function BlockProbe() {
+    const scheme = useOptionalBlockScheme();
+    const map = useOptionalGraphemeMap();
+    useEffect(() => {
+        blockSnapshots.push({ scheme, map });
+    }, [scheme, map]);
+    return null;
+}
+
+describe('EtymologProvider — block scheme slice + graphemeMap (schema v9)', () => {
+    let root: Root | null = null;
+
+    beforeEach(async () => {
+        await initDatabase();
+        clearDatabase();
+        latest = null;
+        blockSnapshots.length = 0;
+    });
+
+    afterEach(async () => {
+        if (root) {
+            await act(async () => root!.unmount());
+            root = null;
+        }
+        vi.restoreAllMocks();
+    });
+
+    it('loads the (empty, disabled) scheme and an empty graphemeMap on init', async () => {
+        root = await mount();
+        expect(latest?.data.blockScheme).toEqual({ version: 1, enabled: false, roles: [], templates: [] });
+        expect(latest?.data.graphemeMap.size).toBe(0);
+    });
+
+    it('blockScheme.save refreshes ONLY the blockScheme slice', async () => {
+        root = await mount();
+        const graphemeSpy = vi.spyOn(etymologApi.grapheme, 'getAllComplete');
+        const lexiconSpy = vi.spyOn(etymologApi.lexicon, 'getAllComplete');
+        const schemeSpy = vi.spyOn(etymologApi.blockScheme, 'get');
+
+        await act(async () => {
+            expect(latest!.api.blockScheme.save(CV_SCHEME).success).toBe(true);
+        });
+
+        expect(schemeSpy).toHaveBeenCalledTimes(1);
+        expect(graphemeSpy).not.toHaveBeenCalled();
+        expect(lexiconSpy).not.toHaveBeenCalled();
+        expect(latest?.data.blockScheme).toEqual(CV_SCHEME);
+    });
+
+    it('blockScheme.validate writes nothing and refreshes nothing', async () => {
+        root = await mount();
+        const schemeSpy = vi.spyOn(etymologApi.blockScheme, 'get');
+        await act(async () => {
+            latest!.api.blockScheme.validate(CV_SCHEME);
+        });
+        expect(schemeSpy).not.toHaveBeenCalled();
+        expect(latest?.data.blockScheme.enabled).toBe(false);
+    });
+
+    it('graphemeMap indexes graphemesComplete by id, rebuilt in the same update', async () => {
+        root = await mount();
+        let graphemeId = 0;
+        await act(async () => {
+            const glyph = latest!.api.glyph.create({ name: 'g', svg_data: '<svg/>' }).data!;
+            graphemeId = latest!.api.grapheme.create({ name: 'K', glyphs: [{ glyph_id: glyph.id, position: 0 }] }).data!.id;
+        });
+        const data = latest!.data;
+        expect(data.graphemeMap.size).toBe(1);
+        expect(data.graphemeMap.get(graphemeId)).toBe(data.graphemesComplete[0]);
+        expect(data.graphemeMap.get(graphemeId)?.variants).toHaveLength(1);
+    });
+
+    it('database.clear and database.reset refresh the scheme back to the default', async () => {
+        root = await mount();
+        await act(async () => {
+            latest!.api.blockScheme.save(CV_SCHEME);
+        });
+        expect(latest?.data.blockScheme.enabled).toBe(true);
+        await act(async () => {
+            latest!.api.database.clear();
+        });
+        expect(latest?.data.blockScheme.enabled).toBe(false);
+
+        await act(async () => {
+            latest!.api.blockScheme.save(CV_SCHEME);
+        });
+        await act(async () => {
+            latest!.api.database.reset();
+        });
+        expect(latest?.data.blockScheme.enabled).toBe(false);
+    });
+
+    it('refresh() (what import and repair call) re-reads the scheme', async () => {
+        root = await mount();
+        await act(async () => {
+            etymologApi.blockScheme.save(CV_SCHEME); // unwrapped: no automatic refresh
+        });
+        expect(latest?.data.blockScheme.enabled).toBe(false);
+        await act(async () => {
+            latest!.refresh();
+        });
+        expect(latest?.data.blockScheme).toEqual(CV_SCHEME);
+    });
+
+    it('useOptionalBlockScheme / useOptionalGraphemeMap: null outside a provider, never a throw', async () => {
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        root = createRoot(container);
+        await act(async () => {
+            root!.render(<BlockProbe />);
+        });
+        expect(blockSnapshots.at(-1)).toEqual({ scheme: null, map: null });
+    });
+
+    it('inside a provider the narrow value tracks the scheme, and a lexicon refresh does not change it', async () => {
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        root = createRoot(container);
+        await act(async () => {
+            root!.render(
+                <EtymologProvider>
+                    <Probe onValue={(value) => { latest = value; }} />
+                    <BlockProbe />
+                </EtymologProvider>,
+            );
+        });
+        for (let i = 0; i < 20 && !latest?.isReady; i++) {
+            await act(async () => {
+                await new Promise(r => setTimeout(r, 10));
+            });
+        }
+        await act(async () => {
+            latest!.api.blockScheme.save(CV_SCHEME);
+        });
+        expect(blockSnapshots.at(-1)?.scheme).toEqual(CV_SCHEME);
+
+        const before = blockSnapshots.length;
+        await act(async () => {
+            latest!.api.lexicon.create({ pronunciation: 'ka', meanings: [{ meaning: 'x' }] });
+        });
+        expect(latest?.data.lexiconCount).toBe(1);
+        // Same scheme + same map identity → the effect did not fire again.
+        expect(blockSnapshots.length).toBe(before);
     });
 });

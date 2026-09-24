@@ -8,6 +8,7 @@ A conlang (constructed language) script creation and management tool. Create cus
 - [Use Cases & Requirements](#use-cases--requirements)
 - [Application Architecture](#application-architecture)
 - [Data Layer](#data-layer)
+- [Block script (abugida / Mayan-style glyph blocks)](#block-script-abugida--mayan-style-glyph-blocks)
 - [Route Structure](#route-structure)
 - [Design System (tokens & shared primitives)](#design-system-tokens--shared-primitives)
 - [App shell](#app-shell-srccomponentsshell)
@@ -226,7 +227,7 @@ source for the nav strip, the route tree and the active-tab derivation
 |-----|------|-------------|
 | Lexicon | `/lexicon` | Word/vocabulary management, plus the **word generator** (`/lexicon/generate`) |
 | Script Maker | `/script-maker` | Grapheme & glyph management (nested Graphemes / Glyphs strip) |
-| Writing System | `/writing-system` | Directional layout rules |
+| Writing System | `/writing-system` | Directional layout rules (**Direction**) and the block-script designer (**Blocks**, `/writing-system/blocks`) |
 | Translator | `/translator` | Phrase translation and rendering |
 
 ---
@@ -297,13 +298,22 @@ Two consequences worth knowing before adding a service method:
 
 `PRAGMA user_version` is the source of truth; the registry, the legacy
 detector, the per-version table and the repair path are documented under
-[Database migrations](#database-migrations).
+[Database migrations](#database-migrations). The current version is **9**:
+v9 added `variant_groups`, `grapheme_variants` and the single-row
+`block_scheme`, and rebuilt `grapheme_glyphs` keyed on `variant_id`, with every
+existing glyph row attached to its grapheme's new 'Default' variant — the
+storage of the [block script](#block-script-abugida--mayan-style-glyph-blocks).
 
 ### One spelling source of truth
 
 `lexicon.glyph_order` (a JSON array of `grapheme-<id>` entries and bare IPA
-characters) **is** a word's spelling. The `lexicon_spelling` junction table is a
-derived index, resynced from `glyph_order` inside the same transaction:
+characters) **is** a word's spelling. Since schema v9 a grapheme entry may pin
+one of the grapheme's forms, `grapheme-<id>@<variantId>` (`grapheme-12@34`):
+`GRAPHEME_ENTRY_RE` in `db/utils/spellingUtils.ts` is the single parser, the
+index below records such an entry as plain grapheme 12, and pins exist only in
+manual spellings (see [Pins](#pins--grapheme-1234)). The `lexicon_spelling`
+junction table is a derived index, resynced from `glyph_order` inside the same
+transaction:
 
 - `setLexiconSpelling` sorts by position, converts to `glyph_order` entries and
   delegates to `setLexiconGlyphOrder`;
@@ -328,11 +338,11 @@ stays two tokens (the tokenizer's documented conservative reading); and
 separators (`ˈ ˌ . ‿` and spaces) keep their existing one-entry-each behaviour
 rather than being dropped, which would silently merge a two-word pronunciation.
 
-### Word-level symbols (logographs) — `src/db/wordSymbolService.ts`
+### Logograms (whole-word symbols) — `src/db/wordSymbolService.ts`
 
 A logographic author wants to spell a whole word as ONE symbol, without visiting
-the Script Maker at all. A **word symbol** is exactly that: a single
-drawn-or-imported symbol that IS the word. Under the hood it is still an ordinary
+the Script Maker at all. A **logogram** (the service still calls it a "word
+symbol") is exactly that: a single symbol that IS the word. Under the hood it is still an ordinary
 glyph → grapheme pair — a `'logogram'`-category grapheme holding one glyph — so
 every downstream surface (spelling render, delete flow, export/import, repair)
 treats it like any other grapheme with no special case. What marks a word as a
@@ -343,11 +353,16 @@ word form can reopen the word in **Symbol mode**.
 - `createWordSymbol({ name, svgData })` makes the glyph + grapheme in ONE
   transaction (both stamped `'logogram'`, glyph linked at position 0) and
   returns their ids. The SVG is sanitised by the glyph service on the way in.
+- `createWordSymbol({ name, glyphId })` / `logogramForGlyph(glyphId, name)` use
+  an EXISTING glyph instead: nothing is drawn or copied; the glyph is wrapped in
+  a logogram grapheme — or the phoneme-less, single-glyph logogram grapheme that
+  already wraps it is REUSED, so picking the same glyph for two words gives one
+  shared logogram, not duplicates. Exactly one source (drawing or glyph).
 - `updateWordSymbolDrawing(graphemeId, svgData)` re-draws the grapheme's single
   glyph.
 - `api.wordSymbol.{create,updateDrawing}` wrap both in the standard
   `ApiResponse` envelope.
-- **Composite create**: `CreateLexiconInput.symbol = { name?, svgData }`. When
+- **Composite create**: `CreateLexiconInput.symbol = { name?, svgData? , glyphId? }`. When
   present AND no explicit `glyph_order`/`spelling` was given, `lexicon.create`
   creates the symbol and sets `glyph_order` to that one grapheme **inside the
   same transaction as the word insert** — a failure anywhere (a bad meaning, a
@@ -362,11 +377,51 @@ word form can reopen the word in **Symbol mode**.
   grapheme via the Script Maker runs the usual `handleGraphemeDeletion` flow and
   flags the (manually spelled) word for attention.
 
-The word form's Spelling section offers a **Compose from graphemes | Word
-symbol** segmented choice (`LexiconFormFields`). Compose is the default; edit
-mode INFERS Symbol mode from a one-logogram `glyph_order`. Symbol mode reuses the
-Phase-2 image-import control plus an inline `SvgDrawerInput` (same `GLYPH_INK` /
-`GLYPH_GUIDE_INSET` as the glyph drawer), and forces the Auto-spell checkbox off.
+The word form's Spelling section offers a **Compose from graphemes | Logogram**
+segmented choice (`LexiconFormFields`). Compose is the default; edit mode INFERS
+Logogram mode (with that grapheme chosen) from a one-logogram `glyph_order`.
+Logogram mode is `LogogramPanel` — a dedicated front end over the same system:
+
+| Sub-tab | What the user does | What is saved |
+|---------|--------------------|---------------|
+| **Use existing → Choose a grapheme…** | picks from `GraphemePickerModal` (the Script Maker gallery in selection mode, on its "Word symbols" filter first; `hideMarks` keeps marks out) | `glyph_order = ["grapheme-<id>"]` — referenced, nothing created |
+| **Use existing → Choose a glyph…** | picks from `GlyphPickerModal` | `symbol.glyphId` → the glyph's logogram grapheme (reused or created) |
+| **Draw new** | draws in `SvgDrawerInput` or imports an image | `symbol.svgData` → a NEW glyph + logogram grapheme named after the word |
+
+The chosen logogram shows as a card (its symbol, what it is, how many OTHER
+words share it) with **Change**, **Edit in Script Maker** and **Remove**. A new
+drawing on an existing logogram word makes a NEW logogram — the shared one is
+never re-drawn in place from the word form (other words may use it); its artwork
+is edited in the Script Maker, which changes every word that uses it. Logogram
+mode forces auto-spell off.
+
+The Script Maker's grapheme form has the matching option: **"No sound"**
+(`GraphemeFormFields`, `initialIsLogogram`). The data
+model never required a grapheme to have a pronunciation (phonemes are a separate,
+optional table); only the form did. With the option on, the pronunciation table
+is hidden (kept mounted — it is a registered SmartForm field) and not required,
+and `useGraphemeSubmit({ isLogogram })` saves NO phonemes.
+
+A no-sound grapheme is one of two KINDS, chosen with the radios **"What kind of
+sign is it?"** right under the checkbox (`logogramOption.ts`):
+
+| Kind | Category | Offered by |
+|------|----------|------------|
+| **A word symbol (logogram)** — stands for a whole word or idea (default) | `WORD_SYMBOL_CATEGORY` = `'logogram'` | the word form's Logogram tab |
+| **A mark** — added to other signs (a vowel-killer, an accent); never used on its own in auto-spelling | `MARK_CATEGORY` = `'mark'` (`wordSymbolService.ts`) | Writing System → Blocks, "Consonants with no vowel" |
+
+Only the category tells them apart. Ticking "No sound" or picking a kind stamps
+that kind's category — but only over an EMPTY category or the OTHER kind's
+constant (`categoryForNoSoundKind`), never over one the user typed; on edit
+the radios start on "A mark" when the stored category is `'mark'`
+(`initialNoSoundKind`). `isMarkGrapheme(g)` is `category === 'mark'`;
+`isLogogramGrapheme(g)` is `category === 'logogram'` or no phonemes, EXCLUDING
+marks. `GraphemePickerModal` filters by kind — **Word symbols / Marks / All**
+(a filter whose list is empty is hidden; All always shows; an empty asked-for
+filter falls back to All) — and `hideMarks` leaves marks out entirely (the
+Logogram tab). The Blocks page's vowel-killer chooser opens it on Marks when
+the script has any, else Word symbols, else All; any grapheme may still be
+chosen.
 
 ### Word chains — build a compound's spelling from its ancestors (UC-B2)
 
@@ -398,6 +453,27 @@ derivation used to run exactly once, when the word was saved, so creating a
 grapheme for a sound twenty words were already using left all twenty showing
 the IPA placeholder, and editing a grapheme's phoneme silently made every word
 spelled with it wrong.
+
+**One derivation, everywhere.** `deriveAutoSpelledGlyphOrder(pronunciation)` is
+THE function: the respell pass uses it, and so do `lexicon.create` and
+`lexicon.update` — an auto-spelled word's `glyph_order` is derived on save and
+the one the caller sent is ignored (a word with no pronunciation keeps its
+spelling, exactly as the respell scan skips it). Before, save stored whatever the
+form sent, so a hand edit made while auto-spell was on looked saved and was
+silently respelled away by the next grapheme change.
+
+**In the word form the software visibly owns the spelling.** The wand in the
+Spelling header IS the `auto_spell` boolean — a toggle ("Auto-spell on/off"),
+not a one-shot "generate + Apply" button — and there is no separate checkbox.
+While it is on, `GlyphCanvasInput` gets `locked={{ glyphOrder, message, tooltip }}`:
+the canvas shows the live derived spelling (it follows the pronunciation as it is
+typed and the script as graphemes change), greyed and read-only, with a visible
+notice and the hover text "Disable auto-spell to modify the spelling"; the
+keyboard, clear and "Build from ancestors" are disabled. A spelling written by
+the lock is not a user edit, so it never dirties the form. Turning auto-spell off
+keeps the generated spelling as the starting point for hand edits; turning it
+back on over a different hand spelling is confirmed first. External (non-native)
+words cannot be auto-spelled — the wand is disabled.
 
 Every write that changes the phoneme table now finishes by respelling — in the
 same transaction as the write, so the two commit or roll back together:
@@ -464,6 +540,484 @@ rows were dropped"). If even the rollback fails, the snapshot is reopened.
 
 ---
 
+## Block script (abugida / Mayan-style glyph blocks)
+
+Some scripts do not write one sign after another: an abugida stacks a vowel
+mark onto its consonant, hangul packs a syllable into a square, a Mayan glyph
+block sets a main sign with affixes around it. The block script lets a conlang
+do the same WITHOUT a sign per syllable: the author declares which kinds of
+sign fill which part of a square, and every spelling in the app is drawn with
+those runs of signs composed into one picture. The plan (with its owner
+decisions and pitfalls P1–P15) is [`BLOCK_SCRIPT_PLAN.md`](./BLOCK_SCRIPT_PLAN.md);
+this section describes what shipped.
+
+Three owner decisions shape everything below: a **form** (variant) is the same
+sound with a different look — phonemes stay on the grapheme; template slots are
+**free-form rectangles** on a unit square, each drawing one variant group; and
+there is **one block scheme per script** — per-word variation comes from the
+templates and from explicit boundaries, never from a per-word scheme selector.
+
+### Vocabulary
+
+| Term | Meaning |
+|---|---|
+| **Variant** (a "form" in the UI) | One visual form of a grapheme: an ordered glyph list. Exactly one per grapheme is the **default** — what `GraphemeComplete.glyphs` has always meant and what every renderer outside a block draws. |
+| **Variant group** | A script-level named bucket ("head", "narrow", "prefix form"…). A grapheme has at most one variant per group. |
+| **Role** | A slot type in the scheme (`C1`, `V`, `LOGO`…), user-labelled, with a **matcher** deciding which spelling entries may fill it. |
+| **Matcher** | `{ kind: 'class', letter }` (a word-generator class letter: C V P F S N L G R O), `{ kind: 'syllable' }` (a sign whose sound is several IPA sounds, "ka"), `{ kind: 'category', category }` (a grapheme category, e.g. `logogram`), `{ kind: 'any' }`. |
+| **Template** | A block shape: a **pattern** (ordered role ids, no role twice — two consonants means roles `C1` and `C2`) plus one **slot** per pattern role. |
+| **Slot** | A rectangle on the unit square (`x, y, w, h` in 0..1) plus the variant group it draws (`groupId`, `null` = the default form). Overlap is allowed (infixes); later pattern roles paint on top. |
+| **Block** | A run of spelling entries matched to one template, composed into ONE `<svg>`. |
+| **Boundary** | An explicit block break inside a word: the IPA syllable separator `.`. |
+
+### Data model (schema v9)
+
+| Table | Shape | Why |
+|---|---|---|
+| `variant_groups` | `id, name, sort_order, created_at, updated_at` | Referenced by variants (FK) and by template slots (by id, inside the scheme JSON). |
+| `grapheme_variants` | `id, grapheme_id → graphemes ON DELETE CASCADE, group_id → variant_groups ON DELETE SET NULL, name, is_default, sort_order, …` | Partial unique index `(grapheme_id) WHERE is_default = 1` (one default per grapheme) and unique `(grapheme_id, group_id)` (one form per group; a NULL group is exempt by SQL semantics). |
+| `grapheme_glyphs` | **rebuilt**: `variant_id NOT NULL → grapheme_variants ON DELETE CASCADE` added, `UNIQUE(variant_id, glyph_id, position)` | The old `UNIQUE(grapheme_id, glyph_id, position)` made a second form that reuses a glyph at the same position impossible (P1). `grapheme_id` stays, always equal to its variant's. |
+| `block_scheme` | ONE row (`id INTEGER PRIMARY KEY CHECK (id = 1)`), `definition TEXT` (JSON), `updated_at` | The whole scheme as one document. |
+
+**Why the scheme is a JSON document and not tables.** It is edited as one unit
+(the Block Designer holds a draft and saves it whole), it is validated in
+TypeScript exactly like settings (`validateBlockScheme` in `src/blocks/validate.ts`
+is lenient — every correction is an issue with a `path`, unknown keys are
+dropped, rectangles are clamped, not discarded), and — unlike settings, which
+live in `localStorage` — it is a table row, so it travels inside a raw
+`.sqlite` export as well as JSON/PNG. `blockSchemeService.getBlockScheme()`
+NEVER trusts the row: no row → `EMPTY_BLOCK_SCHEME` (`enabled: false`), JSON
+that does not parse → the empty scheme, logged; validation issues → the
+corrected scheme, logged. `saveBlockScheme` stores the CANONICAL JSON of the
+validated scheme (`db/utils/blockSchemeCodec.ts`), so what is on disk is what
+the engine reads back. `api.blockScheme.save` is lenient in the same way: it
+stores the corrected scheme and returns `{ scheme, issues }`;
+`api.blockScheme.validate` runs the check without writing.
+
+Variants are served by `src/db/variantService.ts` (`api.variantGroup.*`,
+`api.variant.*`: create / update / `setGlyphs` / `setDefault` / delete /
+`getPinUsageCount`). `setDefaultVariant` clears the old default before setting
+the new one in one transaction (the partial unique index, P2); the default
+cannot be deleted; deleting a group leaves its forms ungrouped. Every grapheme
+read (`getAllGraphemesComplete`, `getGraphemeComplete`) carries `variants`,
+loaded for all graphemes in one extra statement; `variants` stays OPTIONAL on
+the `GraphemeComplete` type so the many hand-built test literals still compile,
+and every reader treats "absent" as "default only" (P5).
+`backfillDefaultVariants` (`db/migrations/repair.ts`) is the one helper that
+establishes "every grapheme has exactly one default and every glyph row names a
+variant" — shared by migration v9, `repairOrphans` and the JSON import.
+
+### Grapheme forms (variants) in the Script Maker
+
+A grapheme can have several **forms** — the same sound, a different look (a
+narrow form for a block's side, a "head" form…). Every grapheme has exactly one
+**default** form (`GraphemeComplete.glyphs` — what every renderer draws outside
+a block slot or a pin); the
+others optionally belong to a script-level **variant group**, and a block
+template picks, per slot, the sign's form in that slot's group (see
+[How a slot picks a form](#how-a-slot-picks-a-form)). This is the Script Maker
+half of the block script; the data model it writes is described
+[above](#data-model-schema-v9).
+
+| Piece | Where | Role |
+|---|---|---|
+| `GlyphListEditor` | `form/graphemeForm/` | ONE form's ordered glyph list: reorder (drag + keyboard), edit link, remove, "Add new glyph" / "Select existing glyph". Used by the default section AND every form card. `preventRemovingLast` keeps a stored grapheme's default from being emptied. |
+| `VariantsSection` | `form/graphemeForm/` | "Other forms": a card per form (name `<input>`, group `<select>` greying out groups another form holds, "Manage groups…", its glyph list, **Make default**, **Remove form**) and **Add a form**. |
+| `variantDrafts.ts` | `form/graphemeForm/` | The pure model: `VariantDraft { key, id, name, groupId, glyphs }`, `DefaultFormDraft { id, name, groupId }`, `initialVariantDrafts`, `initialDefaultForm`, `makeDraftDefault`, `validateForms`, `formsChanged`. |
+| `VariantGroupsDialog` | `tabs/grapheme/variantGroups/` | Self-contained (`open`, `onClose`) list of groups with add, inline rename, and delete (the confirm says how many forms use the group; they are kept, ungrouped). |
+| `useGraphemeSubmit({ variants, defaultForm })` | `form/graphemeForm/` | Saves the forms (below). |
+
+The forms are **page state**, like the glyph list — never SmartForm fields (the
+pages own `variants` / `defaultForm`; the edit page derives them from the stored
+grapheme until touched, with id-derived draft keys so cards never remount).
+
+**"Make default" is an identity swap.** The chosen card's form moves into the
+default section and the old default takes the card; on save that is ONE
+`variant.setDefault` — each variant row keeps its own glyphs, name and group, so
+no glyph is rewritten. On create, a named form made default renames the new
+default row after `grapheme.create`.
+
+**Saving an edit** diffs the drafts against `initialData.variants`, validating
+everything first (every form named and non-empty, one form per group), then:
+free moving groups → create new forms → write glyph ADDITIONS (a form that also
+loses glyphs is written as final ∪ leaving first) → `setDefault` → delete removed
+forms → write glyph removals → final names/groups. That order means the
+one-form-per-group index never trips (two forms can swap groups) and, with
+`autoManageGlyphs` on, a glyph moved between forms is never momentarily unused
+and garbage-collected. A removed form that words **pin** (`grapheme-12@34`) is
+deleted only after a confirm ("N words pin this form; they will fall back to the
+default"), asked before anything is written. Every call is checked; failures
+join the "Grapheme saved, but not everything on it" warning.
+
+**Displays.** `DetailedGraphemeDisplay` adds a **Forms** row (each non-default
+form drawn from its plain `Glyph[]`, captioned `name · group`);
+`CompactGraphemeDisplay` shows only the default plus an absolutely-positioned
+"+N forms" badge (the card never grows).
+
+### The engine — `src/blocks/` (pure: no React, no database)
+
+```
+lexicon.glyph_order ─► buildSpellingDisplay ─► SpellingDisplayEntry[]   (unchanged funnel)
+                                                  │
+                          normalizeSpellingDisplay(entries, { blockScheme, graphemeMap })
+                                                  │
+                 scheme absent / null / enabled:false ──► the pre-block path, VERBATIM
+                                                  │ enabled
+                                                  ▼
+               segmentEntries(entries, scheme, graphemeMap)  → Segment[]  (block | single | passthrough)
+                                                  ▼
+               composeBlock(segment, …)  → ONE RenderableGlyph per block
+                                                  ▼
+       ltr / block / spiral / … strategies, GlyphSpellingCore, cards, translator, charts — UNCHANGED
+```
+
+| File | Does |
+|---|---|
+| `validate.ts` | `validateBlockScheme(raw) → { scheme, issues }`, `EMPTY_BLOCK_SCHEME`. Guarantees the engine relies on: unique role/template ids, non-empty patterns of existing roles with no role twice, exactly one slot per pattern role, every slot inside the unit square. Pure — whether a `groupId` exists is decided at compose time. `normalizeSoundList` (alias `normalizeDiphthongs`; caps `MAX_SOUND_LIST` / `MAX_SOUND_LENGTH`) is the one normaliser of `split.diphthongs` and `split.syllabicConsonants`. |
+| `classify.ts` | `classifyEntry(entry, index) → EntryClass`: `phoneme` (class letters via the generator's `describePhoneme` + `classOf`, read from the grapheme's first auto-spelling phoneme, else its first), `syllable` (several describable sounds, not all vowels — an all-vowel sequence is `V`), `silent` (no phonemes: a logogram), `mark` (a no-phoneme grapheme whose category is `mark` — `MARK_CATEGORY_NAME`, kept equal to `wordSymbolService.MARK_CATEGORY` by a test — or a typed IPA mark such as `ː`, `˥`, a lone combining tilde), `join` (the IPA entry `‿`, `BLOCK_JOIN`), `boundary` (the IPA entry `.`, or a stress mark `ˈ ˌ`), `structural` (separator / line break / punctuation roles), `unknown`. `roleAccepts(role, cls)`: boundaries, joins and structural entries fill NO role; `any` takes everything else; `category` compares the grapheme's category (trimmed, case-sensitive); a mark fills only `any` and `category` roles (a typed IPA mark has no category, so only `any`). |
+| `syllabify.ts` | By-syllable cutting: `unitRoleOf(cls)` (THE one nucleus / consonant / mark / opaque test — the segmenter's "opaque" calls it), `unitRoles(units, options)` (adds syllabic-consonant cores), `glueNuclei` (diphthongs and `‿`-joined vowels), `syllabify` (maximal onset; marks ride with the sign before them, joins forbid a cut, a syllable sign takes its coda). |
+| `segment.ts` | Greedy, left to right: at each position the templates are tried **in scheme order** and the first whose whole pattern matches wins (`C1 V C2` must sit above `C1 V`, and the designer says so). A boundary is consumed and produces nothing; a structural entry passes through as its own segment, so a block never crosses a word. No match → a `single`. `‿` entries are stripped first and every segment's `entryIndices` mapped back to the original positions (no join ⇒ identical output). Does not read `enabled` — that is the caller's call. |
+| `compose.ts` | `composeBlock` → one `<svg viewBox="0 0 100 100">` with one nested `<svg>` per slot at `rect × 100` (multi-glyph forms combined with `combineSvgRow`; an IPA entry drawn as its text stand-in, `containsVirtual: true`). Each cell fits the sign's **ink**, not its drawing canvas (`nestSvgToInk` in `db/utils/svgInkBounds.ts`), so a wide form fills a wide slot; a multi-glyph form's row is measured through its nested cells; a source whose ink cannot be measured exactly (text, images, transforms, unusual viewports) keeps its full viewBox. Measured cells also draw a 1-screen-pixel `non-scaling-stroke` hairline under each mark, so a thin pen stroke survives a small block. `pickVariant(grapheme, groupId, pin)` decides the form (below). `blockKey` gives a stable identity for React keys. |
+
+**One renderable per block.** Normalization (`components/display/spelling/utils/normalization.ts`)
+turns each `block` segment into ONE `RenderableGlyph` — `svg_data` = the
+composed picture, `block = { templateId, entryIndices, slots, containsVirtual }`,
+`isVirtual: false`, `sourceIndex` = its first entry. Every layout strategy
+therefore sees "one glyph" and positions it like any other, which is why the
+feature needed no change in the strategies, the lexicon cards, the translator
+or the charts. `single` and `passthrough` segments render one entry each,
+exactly as before. Only `SpellingDisplayEntry[]` input is ever composed —
+`Glyph[]`, `GraphemeComplete[]` and id lists never are, which is how the Script
+Maker's per-form previews show exactly one form.
+
+**No scheme ⇒ byte-identical output.** With no scheme, `null`, or a disabled
+one, the pre-block code path runs verbatim;
+`components/display/spelling/__tests__/normalizationIdentity.test.ts` holds a
+snapshot recorded from the pre-block code. Never regenerate it to make a change
+pass — a diff there means a script without blocks renders differently.
+
+### How a slot picks a form
+
+`pickVariant` precedence, per entry: **a pin** (`grapheme-12@34`, when that
+variant still exists on the grapheme) → **the slot's variant group** (when the
+slot names one) → **the default**. Rendering never fails: a slot asking for a
+group the grapheme has no form in draws the default and reports
+`missingGroup: true` on that slot of the block (`RenderableGlyph.block.slots`);
+a deleted group left in a slot does the same. Outside a block (a `single`
+segment) a pin is honoured too, the group is not.
+
+### Pins — `grapheme-12@34`
+
+A pin fixes ONE occurrence of a sign to one form. `GRAPHEME_ENTRY_RE =
+/^grapheme-(\d+)(?:@(\d+))?$/` in `db/utils/spellingUtils.ts` is the single
+parser (`isGraphemeEntry`, `extractGraphemeId`, `extractVariantId`,
+`parseSpellingEntry` → `variantId`, `createGraphemeEntry(id, variantId?)`);
+`grapheme-12@` and `grapheme-@34` are IPA text, not references.
+`extractGraphemeIds` reads through the pin, so the `lexicon_spelling` index
+still records the grapheme at its position.
+
+- **Manual spellings only.** `deriveAutoSpelledGlyphOrder` never emits a pin, so
+  an auto-spelled word has none: saving it, or any respell pass, derives a
+  plain spelling (P11). "Auto-spell owns the spelling" includes the forms.
+- **Deleting a form strips its pins.** `variantService.deleteVariant` calls
+  `lexiconService.handleVariantDeletion` first, which rewrites every word
+  pinning it (`stripVariantPins`) back to the automatic choice; the grapheme
+  form asks before deleting a pinned form. `repairOrphans` also strips a pin
+  naming a variant that is not its grapheme's.
+- A pin written through the word form is set in the per-block popover (below).
+
+### The `.` boundary
+
+The IPA syllable separator is the explicit block break (`BLOCK_BOUNDARY` in
+`src/blocks/classify.ts`). The auto-speller already kept separators as one
+IPA entry each, so a pronunciation `ka.ta` spells as
+`["grapheme-1", "grapheme-2", ".", "grapheme-3", "grapheme-2"]`
+(with `k`, `a`, `t` as graphemes 1–3) — pinned by
+`db/__tests__/blockBoundary.test.ts`. With blocks ON, the segmenter consumes it
+(it splits `kata` into `ka` + `ta` and draws nothing); with blocks OFF it
+renders exactly as it always did (a text glyph — the identity snapshot covers
+it). In the word form it is typed with the keyboard's **Boundary** key (shown
+only while the scheme is on, in its own row under the Space / Backspace row —
+the shared keyboard has no slot for extra keys) or the physical `.` key, and
+drawn as a slim dashed tile, never as a text glyph. Like every key it lands at
+the canvas **insertion point**: the canvas is focusable, and the arrows (in the
+writing direction), Home and End move a visible, announced caret
+(`glyphCanvasInput/utils/canvasCursor.ts`; the cursor strategy is the default,
+and with no cursor it appends). A tap on a tile puts the caret before or after
+it (by which half was tapped); a press that moves pans instead. The block
+popover's "Split before …" does the same in one step.
+
+**The `‿` join** (`BLOCK_JOIN`, U+203F, the IPA undertie) is the mirror: no
+syllable break may fall where it sits, and like `.` it draws nothing. The
+word keyboard's **Join** key (`createJoinGlyph()` / `isJoinGlyphName()`,
+`GlyphCanvasInput`'s `handleJoinKey`) sits right after Boundary under the same
+rule (only while the scheme is on), lands at the insertion point, and is drawn
+as a slim SOLID tile marked "‿" (tooltip "Block join"). There is no physical
+key — nothing on a keyboard means `‿`; a pronunciation typed with `‿` keeps it
+as an IPA entry on its own. Stress marks `ˈ ˌ` in a pronunciation cut like `.`.
+
+### Splitting words, flexible slots, lone consonants
+
+Plan: `SYLLABLE_BLOCKS_PLAN.md`. All three are optional fields of the scheme;
+a scheme without them renders exactly as before.
+
+- **Splitting (`split`).** *By syllable* (`split.mode: 'syllables'`, the
+  recommended setting) cuts each run into syllables first
+  (`blocks/syllabify.ts`): consonants between two vowels go to the FOLLOWING
+  syllable when they can start one, judged by the generator's sonority rule
+  (`isValidOnset`), with an optional s + consonant exception
+  (`sibilantClusters`: `sp st str`). Each syllable then takes the template
+  that covers it WHOLE with the fewest empty optional boxes (ties: list
+  order); a syllable no template covers falls back to template order inside
+  itself. *By template order* (absent / `'templates'`) is the original
+  left-to-right, first-template-wins rule. A syllable sign or logogram is its
+  own unit after syllabifying, but it JOINS a neighbouring syllable when some
+  template covers the joined range exactly — the following syllable first
+  (`LOGO C V`: a logogram with its phonetic complement), else the previous one
+  (`C V LOGO`) unless that one already took a sign. There is no setting: the
+  template is the signal, and a scheme without such templates is unchanged.
+  `.` still forces a break.
+- **Flexible boxes (slot `min` / `max` / `arrange`).** A box can hold exactly
+  one sign, be optional, or hold one-to-three / up-to-three signs, shared
+  side by side or stacked (`blocks/match.ts` backtracks over the counts;
+  `composeBlock` splits the box by the signs' ink shapes — along a row each
+  part's width follows its sign's width / height, down a column its height /
+  width, clamped to 0.4–2.5, with 1 for a sign whose ink cannot be measured
+  such as IPA text; a lone sign keeps the exact box). One `C1(up to 3) V
+  C2(up to 3)` template fits `a`, `spɛl` and `strɛŋθs`.
+- **Diphthongs (`split.diphthongs`, `DIPHTHONG_BLOCKS_PLAN.md`).** Vowel
+  sequences the language says as ONE vowel (`ai`, `iə`). By syllable, two or
+  three vowel signs side by side whose sounds spell a listed entry are one
+  vowel (`glueNuclei`): the syllable is never cut between them, and every
+  template match takes the group whole — it counts as ONE sign against a
+  box's count, so a plain V box holds the pair and draws both signs in it
+  by ink shape. `tai` → one block, `ŋwiən` (with `iə`) → one block. Greedy
+  from the left, longest listed entry first; only vowels glue, never across
+  a consonant or an opaque sign. The list is normalised by
+  `normalizeDiphthongs` (trim, NFC, unique, ≤ 8 code points, ≤ 32 entries;
+  absent when empty) — the ONE helper the validator and the designer share,
+  so a saved list never differs from its draft.
+- **A sign whose sound is several consonants is one consonant.** A grapheme
+  with sound `ng`, `kw` (several describable sounds, all consonants)
+  classifies as a phoneme with the class letters its members share — always
+  `C` — so it fills a consonant box; a *syllable sign* is several sounds
+  INCLUDING a vowel (`ka`). Such a sign is licensed at a syllable start only
+  on its own (`isValidOnset` has no sonority for `ng`), so `angwa` splits
+  `ang · wa`. The grapheme form shows a visible note under such a
+  pronunciation (`soundShapeHint`: "ng reads as two sounds (n, g). If it is
+  one sound, spell it ŋ.") and never rewrites it.
+- **Marks, stress and joins (`CONLANG_EDGES_PLAN.md` §3).** A mark (a
+  no-sound grapheme filed under category `mark`, or a typed IPA mark `ː`,
+  `˥`) has no sound, so it rides with the sign before it: it is never a
+  nucleus, no cut falls right before it, and it is left out of every onset
+  sonority test. `ka` + tone + `n` is ONE syllable, which a `C V MARK C2`
+  template (a role matching the `mark` category) draws with the mark in its
+  own box; with no such role the syllable falls back to template order
+  (`[ka] MARK n`). `LOGO MARK` is one range. Stress marks `ˈ ˌ` cut like
+  `.`. `‿` forbids a cut: `a‿i` is one vowel with nothing listed, `at‿a` is
+  `a · ta`, `a‿t‿a` is one syllable; a join only forbids, it never makes an
+  illegal onset legal. `segmentEntries` strips joins before the pipeline and
+  maps `entryIndices` back to the original positions, so a spelling with no
+  `‿` segments byte-identically to before (P-A2).
+- **Syllable signs take their coda.** A syllable SIGN (`ka` — not a
+  logogram, unknown or mark) takes the consonants after it that cannot start
+  the next syllable: `KA n t a` → `KAn · ta` (`nt` is no legal start, `t`
+  is), `KA t a` → `KA · ta`, `KA n` → `KAn`; with s + consonant on, `KA s t a`
+  → `KA · sta`. A sign never takes an onset (`t KA` → `t · KA`). A `SYL C`
+  template draws it, and a grown range is never joined to a neighbour again.
+- **Consonants that carry a syllable (`split.syllabicConsonants`).** Listed
+  consonants (`r l m n`, normalised by `normalizeSoundList`) are a
+  syllable's core when neither neighbouring non-mark sign holds a vowel — a
+  vowel, a marked syllabic consonant or a syllable sign all count: `prst`
+  (with `r`) is one syllable, `krtek` → `kr · tek`, `karta` stays
+  `kar · ta`. Of a run of listed consonants only the last is the core
+  (`mlha` with `m l` → `ml · ha`). A sound written with an IPA syllabic mark
+  (U+0329 `r̩`, U+030D above — `SYLLABIC_MARKS`) is always a core, listed or
+  not. The class stays `C` (P-B1): a `V` box never takes it, so the
+  template needs a core role of class `R` or `any`; a core drawn alone gets
+  no vowel-killer mark, and it never glues into a diphthong.
+- **Check all my words.** One button on the Blocks page (`WordCheck.tsx`,
+  pure `checkWords.ts`) runs the CURRENT draft, unsaved changes included,
+  over every spelled word, segmenting each word ONCE with the renderer's own
+  `segmentEntries` and phrasing it with `readout.ts` (shared with the "Try a
+  word" caption). Four lists: signs drawn on their own (vowel, syllable
+  sign, logogram, mark, syllabic core), consonants with no vowel (with the
+  mark / drawn alone), signs that cannot be read, and templates no word
+  uses. Each list keeps at most `MAX_WORD_CHECK_ROWS = 200` rows (its count
+  stays exact); "Try it" shows the word in "Try a word". Computed on click
+  only, with a visible note once the draft changes.
+- **Consonants with no vowel (`leftovers`).** A consonant left in no block
+  can be drawn with a vowel-killer mark — any grapheme the user draws, usually
+  a no-sound one — placed below / above / after / before it
+  (`composeLoneConsonant`, template id `@lone`, reserved).
+- **Designer.** Blocks page: "Splitting words into blocks" (with, by
+  syllable, "Vowels next to each other": the diphthong list as chips, an Add
+  box, suggestions read from the word generator's literal groups
+  (`diphthongSuggestions.ts`), a warning for an entry that is not two vowels,
+  and a live `With ai: tai → tai` line; then "Consonants that can carry a
+  syllable", the same chip list — `SoundList.tsx` renders both — with
+  suggestions from the signs' own sounds (nasals, l- and r-sounds,
+  `suggestSyllabicConsonants`), a warning for an entry that is not one
+  consonant and a `krtek` example; then a visible line on `.` / `‿` /
+  stress marks), "Consonants with
+  no vowel", "Try a word" and "Check all my words" (a live preview on the user's own words; captions
+  read `ta · pa → 2 blocks: CV, CV` and list only the parts that are not zero —
+  `s · t → 2 consonants with a vowel-killer mark`; "No template matched" only
+  when no block was made and some sign stands on its own). Template editor: select a box to set
+  "How many signs" and "Several signs sit"; counts show on chips, the pattern
+  line, inside boxes and in the template list. Roles: the matcher select
+  offers "mark (accent, tone…)", a shortcut that writes `MARK_CATEGORY` into
+  the category box (shown while the box reads exactly `mark`; the box stays
+  editable). An older language stays on
+  template order, with a visible note, until the owner picks By syllable.
+
+### Where renderers get the scheme — `BlockRenderingContext`
+
+`GlyphSpellingDisplay` reads the scheme from context rather than a prop threaded
+through every call site (P7). `EtymologProvider` fills a SEPARATE, narrow
+`BlockRenderingContext` (`db/context/useOptionalBlockScheme.ts`) holding only
+`{ blockScheme, graphemeMap }` (variants included), memoised on those two — the
+main context value changes on every refresh, and a gallery holds hundreds of
+displays that must not all re-render when a word is added.
+`useOptionalBlockScheme()` / `useOptionalGraphemeMap()` return `null` outside a
+provider, so the display still renders anywhere (its own tests, isolated
+previews) with no blocks. The `blockScheme` **prop** is only an override: a
+scheme object is used as-is (the designer's draft preview), `null` forces blocks
+off. While blocks are on and the caller passed no `graphemeMap`, the provider's
+map is borrowed; while they are off it is not, which keeps the no-scheme path
+byte-identical.
+
+The context carries two slices, `data.variantGroups` and `data.blockScheme`:
+`blockScheme.save` refreshes the scheme, `variantGroup.*` the groups (a group
+delete also refreshes graphemes), and grapheme writes already refresh
+`graphemesComplete`, which now includes variants.
+
+### Classification in practice
+
+| The author wants | Role matcher |
+|---|---|
+| an abugida `C + V` square | `C` = `class C`, `V` = `class V` |
+| a coda under the syllable | a third role `C2` = `class C`, template `C1 V C2` above `C1 V` |
+| a stop-only or nasal-only position | `class P`, `class N`, … |
+| a syllabogram (a sign read "ka") beside an affix | `syllable` |
+| a Mayan-style main sign with affixes | `category logogram` for the main sign (the category logogram graphemes carry), `any` for the affixes |
+| "whatever sits here" | `any` (never a boundary or a separator) |
+
+### The Block Designer — `/writing-system/blocks`
+
+Writing System gained a router-owned sub-nav, **Direction** (`/writing-system`,
+the old page) · **Blocks** (`/writing-system/blocks`), in `WritingSystemMain` /
+`WritingSystemNav`. The folder README
+[`src/components/tabs/writingSystem/README.md`](./src/components/tabs/writingSystem/README.md)
+is the detailed reference; the essentials:
+
+- **Draft / Save / Discard.** `BlocksPage` edits a DRAFT scheme in React state;
+  nothing reaches the database until **Save** (`api.blockScheme.save`). Dirty
+  (the draft, or the template editor's working copy) is registered with the
+  unsaved-changes registry, so the sub-nav and the app nav ask before leaving.
+  The API is lenient — the corrections it made are listed inline ("Saved, with
+  these corrections") — but the PAGE disables Save while `draftProblems` finds
+  something the validator would fix by DROPPING data: a role with an empty
+  label, a category role naming no category, a template with no name. A clean
+  draft follows the saved scheme when it changes underneath (an import); a
+  dirty one is never overwritten.
+- **Toolbar**: "Draw words in blocks" switch and the status line
+  ("3 roles · 4 templates · 2 variant groups"). Enabled with zero templates is
+  a warning here AND on the Direction page (`validateBlockSchemeUsage` in
+  `rules/validateWritingSystem.ts`; Blocks checks its draft, Direction the saved
+  scheme).
+- **Roles** (`RolesEditor`): label, matcher select, colour swatch (utility tokens
+  stored as `var(--x)`, so the tint follows the theme). Ids are stable slugs
+  (`role-<n>`), never derived from the label. A role any template uses —
+  including the one open in the editor — cannot be deleted ("Used by N templates").
+- **Variant groups**: "Manage groups…" opens the Script Maker's
+  `VariantGroupsDialog`.
+- **Templates** (`TemplateList`): the list IS the priority order (cyber
+  `ReorderableList` drag / keyboard plus ↑/↓), each row with its priority number,
+  a thumbnail of its rectangles, pattern chips, Edit / Duplicate / Delete.
+- **Template editor** (`TemplateEditor`, a page section): name; pattern built by
+  clicking role chips (each role once; adding one appends ONE rectangle at the
+  even-row position for the new length and never moves placed ones); the
+  **`RectLayoutEditor`** canvas (generic, scheme-agnostic: drag to move, corner
+  handle to resize, 1/8 snapping toggle, arrows move and Shift+arrows resize the
+  focused rectangle), each rectangle carrying a form `<select>` (*Default form*
+  or a group); and **`BlockPreview`** — a lexicon word or typed IPA rendered with
+  the draft plus the working template, forced on, with a caption naming the
+  template each block actually used (a template higher in the list can shadow
+  the one being edited). **Apply** writes the working copy into the draft (not
+  the database); **Cancel** drops it.
+- **"Add templates from my word shapes"** (`blocks/seedFromGenerator.ts`) reads
+  `settings.wordGenerator.profile.syllables`: each pattern goes through the
+  generator's own `parseTemplate` (unparseable → skipped with the parser's
+  message); optional items expand to with/without (`(C)V(N)` → `CVN CV VN V`;
+  more than 4 optional items → skipped); a variant with a literal sound group
+  (`[n ŋ]`) is skipped; the k-th `L` in a pattern maps to the k-th role with
+  matcher `class L`, created when missing (labelled `L`, or `L1`, `L2`… when a
+  shape repeats the letter); a variant whose matcher sequence an existing
+  template already has is skipped (a second run adds nothing, a hand-built
+  `C1 V` covers `CV`); slots start in an even row on the default form; new
+  templates are appended longest first. The report lists added / skipped.
+
+### Spelling a word with blocks — the word form
+
+`GlyphCanvasInput` reads the scheme from the same context, so nothing is
+threaded through `LexiconFormFields`; with the scheme off (or no provider) none
+of this mounts. The canvas stays ENTRY-based — one tile per `glyph_order` entry;
+cursor, insert, backspace and clear are unchanged. Detail:
+[`glyphCanvasInput/README.md` § Blocks](./src/components/form/customInput/glyphCanvasInput/README.md#blocks).
+
+- **Outlines**: the entries are segmented with the engine's own `segmentEntries`;
+  each block's tiles get a thin outline in its template's first role's colour
+  and a caption band (template name + **Block…**).
+- **Preview strip** (`BlockPreviewStrip`): the real `GlyphSpellingDisplay` of the
+  current entries — "This is how the word renders everywhere else".
+- **Popover** (`BlockPopover`): per slot, the role, the sign and a form
+  `<select>` — "Auto (<group>)" / "Auto (default form)" strips the pin, a named
+  form pins it (`grapheme-12@34`); **Split before <role>** inserts a `.`,
+  **Join with next block** removes the `.` that directly follows.
+- Pins ride a parallel `pins` array aligned with the ids
+  (`utils/selectionModel.ts`), so the insertion strategies stay typed over
+  `number[]` and untouched. The hidden input renders the serialised
+  `glyph_order`, pins included.
+- **Under the auto-spell lock** the outlines and the strip still show; the
+  popover opens read-only (every control disabled, the lock's text on screen)
+  and its handlers refuse, so no path writes a pin into a software-owned
+  spelling.
+
+### Syllabary previews of empty cells
+
+With the scheme enabled, an EMPTY cell of the syllabary chart and of a custom
+syllabary chart (no grapheme reads `ka`) shows a dimmed preview of the syllable
+composed from the signs that exist (`k` + `a`), titled "Composed from k + a —
+click to create a dedicated sign"; the click still creates the dedicated sign.
+`useSyllablePreviewSpeller` (`components/display/composedSyllable/`) spells
+from the provider's in-memory graphemes (`autoSpellMappingsFromGraphemes` +
+`spellSyllablePreview`, no database read) and returns `null` — no previews, no
+spelling work — while the scheme is off. A cell whose consonant or vowel has no
+sign stays empty, as before.
+
+### Limitations (by design, or known)
+
+- **One scheme per script.** A word cannot opt into a different scheme; it
+  varies through template priority and `.` boundaries.
+- **Pins do not survive auto-spell** — by design (P11): turning auto-spell on,
+  saving an auto-spelled word or any respell derives a plain spelling.
+- **With blocks OFF the display ignores pins.** The no-scheme path is the
+  pre-block code verbatim and draws the default form; the word-form canvas still
+  draws the pinned form on its tile, and the pin stays stored, so it reappears
+  when blocks are switched back on.
+- **`value` / `setValue(number[])` on `GlyphCanvasInput` cannot carry pins**;
+  entries set that way are unpinned. `glyphOrder` / `setGlyphOrder` do carry them.
+- **`missingGroup` is reported, not yet shown.** The composed block records the
+  fallback per slot, but no UI surfaces it today — a sign without the group's
+  form simply draws its default.
+- **Switching templates in the designer does not warn.** Pressing Edit on a
+  different template while the editor holds un-Applied changes replaces the
+  working copy silently (the page's dirty note and the leave-guard do cover
+  leaving the page).
+
+---
+
 ## Route Structure
 
 ### Complete Route Map
@@ -499,7 +1053,10 @@ the shell's route tree stops at the `/*` splat.
 │       ├── /create                → NewGlyphPage
 │       └── /db/:id                → GlyphEditPage
 │
-├── /writing-system                → WritingSystemMain (PageHeader + GeneralTab)
+├── /writing-system                → WritingSystemMain → WritingSystemNav ([Direction | Blocks] strip)
+│   ├── (index)                    → WritingSystemPage (Direction: glyph / word / line rules)
+│   ├── /blocks                    → BlocksPage (the Block Designer)
+│   └── *                          → Navigate to /writing-system
 ├── /translator                    → TranslatorMain
 └── *                              → Navigate to /lexicon
 ```
@@ -524,7 +1081,8 @@ the shell's route tree stops at the `/*` splat.
 | `/script-maker/glyphs` | `GlyphsTab` | Glyph gallery with search/sort/pagination |
 | `/script-maker/glyphs/create` | `NewGlyphPage` | Create new glyph (standalone page) |
 | `/script-maker/glyphs/db/:id` | `GlyphEditPage` | Edit existing glyph |
-| `/writing-system` | `WritingSystemMain` | Directional layout rules |
+| `/writing-system` | `WritingSystemPage` (via `WritingSystemMain` / `WritingSystemNav`) | **Direction**: directional layout rules; warns when blocks are enabled with no templates |
+| `/writing-system/blocks` | `BlocksPage` | **Blocks**: the block-script designer — roles, variant groups, priority-ordered templates, layout canvas, live preview (see [Block script](#block-script-abugida--mayan-style-glyph-blocks)). `ROUTES.writingSystemBlocks`; it sits under the existing tab, so `TAB_ROUTES` is unchanged |
 | `/translator` | `TranslatorMain` | Translate a phrase and render it in the script |
 
 ---
@@ -848,56 +1406,78 @@ App.tsx
         │       └── SmartForm (edit mode)
         │           └── LexiconFormFields
         │
-        └── GraphemeMain (/script-maker)
-            └── TabContainer (nested Graphemes / Glyphs strip, router-driven)
-                ├── GraphemesTab
-                │   ├── GraphemeHome
-                │   │   ├── GraphemeNav
-                │   │   │   ├── IconButton → /script-maker/create
-                │   │   │   └── IconButton → /script-maker/chart
-                │   │   └── GraphemeView
-                │   │       └── DataGallery (cyber-components)
-                │   │           └── CompactGraphemeDisplay
-                │   ├── CreateGraphemePage
-                │   │   └── NewGraphemeForm
-                │   │       └── SmartForm
-                │   │           └── GraphemeFormFields
-                │   │               ├── GlyphCard (modal mode)
-                │   │               ├── LabelShiftTextInput (×3)
-                │   │               ├── PronunciationTableInput
-                │   │               ├── NewGlyphModal
-                │   │               │   └── GlyphForm
-                │   │               │       └── GlyphFormFields
-                │   │               └── EditGlyphModal
-                │   │                   └── GlyphForm
-                │   │                       └── GlyphFormFields
-                │   ├── IPAChartPage
-                │   │   ├── GuidePicker              (header action)
-                │   │   ├── IPACombinedChart
-                │   │   │   ├── IPAConsonantChart
-                │   │   │   │   └── IPAChartCell (×N)
-                │   │   │   │       └── GlyphSpellingDisplay (if assigned)
-                │   │   │   ├── IPAExtraSoundsChart  (affricates, clicks, …)
-                │   │   │   │   └── IPAChartCell (×N)
-                │   │   │   └── IPAVowelChart
-                │   │   │       └── IPAChartCell (×N)
-                │   │   │           └── GlyphSpellingDisplay (if assigned)
-                │   │   └── GuideLegend              (below the chart, never inside it)
-                │   └── GraphemeEditPage
-                │       └── SmartForm
-                │           └── GraphemeFormFields (mode="edit")
-                │
-                └── GlyphsTab
-                    ├── GlyphGallery
-                    │   └── DataGallery (with toolbarEndSlot)
-                    │       ├── GlyphCard (route mode)
-                    │       └── [Auto-manage toggle via CyberSwitch]
-                    ├── NewGlyphPage
-                    │   └── GlyphForm
-                    │       └── GlyphFormFields
-                    └── GlyphEditPage
-                        └── SmartForm
-                            └── GlyphFormFields (mode="edit")
+        ├── GraphemeMain (/script-maker)
+        │   └── TabContainer (nested Graphemes / Glyphs strip, router-driven)
+        │       ├── GraphemesTab
+        │       │   ├── GraphemeHome
+        │       │   │   ├── GraphemeNav
+        │       │   │   │   ├── IconButton → /script-maker/create
+        │       │   │   │   └── IconButton → /script-maker/chart
+        │       │   │   └── GraphemeView
+        │       │   │       └── DataGallery (cyber-components)
+        │       │   │           └── CompactGraphemeDisplay
+        │       │   ├── CreateGraphemePage
+        │       │   │   └── NewGraphemeForm
+        │       │   │       └── SmartForm
+        │       │   │           └── GraphemeFormFields
+        │       │   │               ├── GlyphListEditor (default form)
+        │       │   │               │   ├── GlyphCard (×N, reorderable)
+        │       │   │               │   ├── NewGlyphModal → GlyphForm
+        │       │   │               │   └── GlyphPickerModal
+        │       │   │               ├── VariantsSection ("Other forms")
+        │       │   │               │   ├── GlyphListEditor (per form card)
+        │       │   │               │   └── VariantGroupsDialog
+        │       │   │               ├── LabelShiftTextInput (×3)
+        │       │   │               └── PronunciationTableInput
+        │       │   ├── IPAChartPage
+        │       │   │   ├── GuidePicker              (header action)
+        │       │   │   ├── IPACombinedChart
+        │       │   │   │   ├── IPAConsonantChart
+        │       │   │   │   │   └── IPAChartCell (×N)
+        │       │   │   │   │       └── GlyphSpellingDisplay (if assigned)
+        │       │   │   │   ├── IPAExtraSoundsChart  (affricates, clicks, …)
+        │       │   │   │   │   └── IPAChartCell (×N)
+        │       │   │   │   └── IPAVowelChart
+        │       │   │   │       └── IPAChartCell (×N)
+        │       │   │   │           └── GlyphSpellingDisplay (if assigned)
+        │       │   │   └── GuideLegend              (below the chart, never inside it)
+        │       │   └── GraphemeEditPage
+        │       │       └── SmartForm
+        │       │           └── GraphemeFormFields (mode="edit")
+        │       │
+        │       └── GlyphsTab
+        │           ├── GlyphGallery
+        │           │   └── DataGallery (with toolbarEndSlot)
+        │           │       ├── GlyphCard (route mode)
+        │           │       └── [Auto-manage toggle via CyberSwitch]
+        │           ├── NewGlyphPage
+        │           │   └── GlyphForm
+        │           │       └── GlyphFormFields
+        │           └── GlyphEditPage
+        │               └── SmartForm
+        │                   └── GlyphFormFields (mode="edit")
+        │
+        └── WritingSystemMain (/writing-system)
+            └── WritingSystemNav (TabContainer, router-driven: Direction | Blocks)
+                ├── WritingSystemPage          (index — Direction rules + warnings)
+                └── BlocksPage                 (/blocks — draft scheme, Save / Discard)
+                    ├── RolesEditor
+                    ├── VariantGroupsDialog    ("Manage groups…")
+                    ├── TemplateList           (priority order, ReorderableList)
+                    └── TemplateEditor         (the open template's working copy)
+                        ├── RectLayoutEditor   (one rectangle per pattern role)
+                        └── BlockPreview
+                            └── GlyphSpellingDisplay (blockScheme={draft})
+
+LexiconFormFields → GlyphCanvasInput  (the Spelling section; block UI only while the scheme is on)
+├── GlyphCanvas                (tiles + block outlines / captions)
+├── BlockPreviewStrip          → GlyphSpellingDisplay
+├── BlockPopover               (pin a form per slot, Split / Join)
+└── GlyphKeyboardOverlay       (+ the Boundary key row)
+
+IPASyllabaryChart / CustomSyllabaryChart
+└── ComposedSyllablePreview    (empty cells, only while the scheme is on)
+    └── GlyphSpellingDisplay
 ```
 
 ### Component Categories
@@ -919,6 +1499,11 @@ App.tsx
 | **Display Components** | `GlyphCard`, `CompactGraphemeDisplay`, `DetailedGraphemeDisplay`, `CompactLexiconDisplay`, `DetailedLexiconDisplay`, `EtymologyTree`, `GlyphSpellingDisplay` | `src/components/display/*/` |
 | **Custom Inputs** | `PronunciationTableInput`, `SpellingInput`, `AncestryInput` | `src/components/form/customInput/*/` |
 | **Modal Components** | `NewGlyphModal`, `EditGlyphModal` | Various locations |
+| **Grapheme forms** | `GlyphListEditor`, `VariantsSection`, `variantDrafts`, `VariantGroupsDialog` | `src/components/form/graphemeForm/`, `src/components/tabs/grapheme/variantGroups/` |
+| **Block Designer** | `WritingSystemNav`, `BlocksPage`, `RolesEditor`, `TemplateList`, `TemplateEditor`, `RectLayoutEditor`, `BlockPreview`, `blockSchemeDraft`, `seedFromGenerator` | `src/components/tabs/writingSystem/`, `…/writingSystem/blocks/` |
+| **Blocks while spelling** | `BlockPreviewStrip`, `BlockPopover`, `selectionModel`, `blockUtils` | `src/components/form/customInput/glyphCanvasInput/` |
+| **Block engine** (no React) | `validateBlockScheme`, `classifyEntry`, `segmentEntries`, `composeBlock` | `src/blocks/` |
+| **Syllabary previews** | `ComposedSyllablePreview`, `useSyllablePreviewSpeller` | `src/components/display/composedSyllable/` |
 
 ### Gallery Features (one implementation, three bindings)
 
@@ -1111,12 +1696,22 @@ adds the folder chrome:
 The old `tabs/lexicon/folders/*` module paths remain as re-export shims, so
 nothing outside `shared/directory/` had to change.
 
-### Export / import (schema v3)
+### Export / import (envelope v4)
 
-`EXPORT_SCHEMA_VERSION = 3`. The envelope now carries `glyph_folders`,
-`grapheme_folders` and the three `folder_id` columns; folders and memberships for
-all three domains round-trip losslessly. Older exports still import (v1/v2 →
-the new folder tables simply come in empty), and import coerces any dangling
+`EXPORT_SCHEMA_VERSION = 4` (`src/config/version.ts`). Version 3 added
+`glyph_folders`, `grapheme_folders` and the three `folder_id` columns, so folders
+and memberships for all three domains round-trip losslessly; version 4 adds the
+[block script](#block-script-abugida--mayan-style-glyph-blocks)'s
+`variant_groups`, `grapheme_variants` and `block_scheme` tables and
+`grapheme_glyphs.variant_id`. Every version from 1 to 4 still imports: absent
+tables come in empty (v1/v2 → no folder tables; v1–v3 → no variant or scheme
+tables), a glyph row without a `variant_id` is attached to its grapheme's
+default variant, and `backfillDefaultVariants` gives every grapheme without one
+a 'Default' variant before the glyph rows go in. The imported `block_scheme`
+definition is run through `validateBlockScheme` and stored in canonical form —
+a corrupt or hand-edited document imports as whatever the validator makes of it
+(the empty scheme at worst) with a warning, and never fails the import. Import
+also coerces any dangling
 `folder_id` / `parent_id` to root. Because a *moved* folder can end up with a
 lower row id than its parent, the import transaction runs under
 `PRAGMA defer_foreign_keys = ON` so a valid-but-out-of-order insert order does not
@@ -1545,11 +2140,12 @@ Two paths, both from a result row:
   `LexiconEditor` (create mode) reads the param and passes it as
   `initialPronunciation`; the field is prefilled and the form is **not** dirty, so
   the leave-guard stays quiet until the user actually types.
-- **"Add N selected"** creates them directly. `createLexicon` stores what it is
-  given and never auto-spells, so each word is created with an explicit
-  `glyph_order` built by `autoSpellToGlyphOrder(preview.spelling)`
-  (`src/db/utils/spellingUtils.ts`) from the same preview the row is showing —
-  real graphemes become `"grapheme-<id>"`, virtual ones the bare IPA character.
+- **"Add N selected"** creates them directly, as auto-spelled words, so
+  `lexicon.create` derives each spelling itself (see *One derivation,
+  everywhere*). The generator still sends the `glyph_order` it previewed —
+  `autoSpellToGlyphOrder(preview.spelling)` (`src/db/utils/spellingUtils.ts`),
+  real graphemes as `"grapheme-<id>"`, virtual ones as the bare IPA character —
+  which is the same value the derivation produces.
 
 The loop runs inside **`batchMutations`** (on the context). Every mutation on
 `api` refreshes the slices it can have changed, which is right for one call and
@@ -1610,6 +2206,7 @@ own suite, not here.)
 | **PWA updates** (`src/pwa/__tests__/`) | `updateController`, `usePwaUpdate`, `PwaUpdateGate` | The whole state machine against an injected `registerSW`: auto-apply only when the registry is clean, `flushPersist()` before the handover, the four triggers and their throttles, the re-arm after a cancelled reload, the store's referential stability, and the once-only "Updated to vX" boot notice |
 | **Pages** (`src/components/tabs/**/__tests__/`) | `EntityEditLayout`, `ScriptMakerShell`, `GlyphPickerModal`, `GraphemeDeleteFlow`, `CustomChartsPage`, `LexiconEditor`, `LexiconViewPage`, `TranslatorHome`, `WritingSystemPage` | One CRUD paradigm, the respell-and-delete choice, not-found empty states, accessible names on every rule select |
 | **Display / forms** | `GlyphSpellingDisplay`, `composedBlockStrategy`, `GlyphCanvasInput`, `glyphCanvasInput`, `normalizeGlyphSvg`, `virtualGlyph`, `ExportImportButtons` | Role-based word/line splitting, insertion strategies, `currentColor` normalisation on save, the header dropdown toggles being real buttons |
+| **Block script** | `validate`, `classify`, `segment`, `compose` (`src/blocks/__tests__/`); `variants`, `variantsExport`, `blockScheme`, `blockBoundary`, `syllablePreview`, `EtymologContext` (`src/db/__tests__/`); `blocks`, `normalizationIdentity` (`display/spelling/__tests__/`); `syllabaryPreview` (`display/composedSyllable/__tests__/`); `translatorBlocks`; `graphemeVariants`; `blocksPage`, `templateEditor`, `blockSchemeDraft`, `seedFromGenerator`, `RectLayoutEditor`, `rectLayoutMath` (`tabs/writingSystem/**/__tests__/`); `blocks` (`glyphCanvasInput/__tests__/`); `validateWritingSystem` | Every scheme validation rule; first-template-wins segmentation and `.` splits; slot group → default fallback with `missingGroup`; pin precedence; the v8 → v9 migration and fresh/migrated parity; export round-trip and v1–v3 backfill; the no-scheme byte-identity snapshot; the designer's draft / save / reorder / seed; canvas outlines, pins through the popover, Split / Join, and the read-only lock |
 | **Word generator core** (`src/generator/**/__tests__/`) | `features`, `tokenize`, `sonority`, `classes`, `sources`, `validate`, `presets`, `examples`, `coverage`, `random`, `weights`, `template`, `constraints`, `normalize`, `generate`, `inventory`, `audit-phase2`, `audit-phase3`, `quality-phase3b` | Symbol → features for every chart symbol, the template grammar and its error positions, determinism per seed and the attempt cap, every constraint re-checked with independent code over 7 presets × 300 words, and the flavour quality bands. See "Word generator → Testing the generator" |
 | **Word generator UI** | `IPAExtraSoundsChart`, `charts.guide`, `GuidePicker`, `GuideLegend`, `useGuidePreset`, `audit-phase4`, `WordGeneratorPage`, `PresetPicker`, `InventoryEditor`, `ShapeEditor`, `ConstraintsEditor`, `GeneratedWordList`, `audit-phase5` | The overlay paints exactly what the charts can draw (and nothing is unpaintable), full-key settings writes from every control, one batch and one notice for the add loop |
 | **Ratchets** | `src/styles/__tests__/tokens.test.ts`, `src/__tests__/url_mapping.test.ts`, `src/config/__tests__/version.test.ts` | Token vocabulary, no `var()` fallbacks, no colour literals, WCAG AA contrast in both themes; every `TAB_ROUTES` path exists in `ROUTES` |
@@ -1754,6 +2351,11 @@ looks like a bug, plus traps that have bitten more than once.
   exit finishes. Under `prefers-reduced-motion: reduce` the swap is instant. (In
   a hidden/background browser tab rAF is frozen, so the exits never complete and
   the copies accumulate — an environment artifact, not a leak.)
+- **Block-script pins are manual-spelling only.** An auto-spelled word never
+  keeps a `grapheme-12@34` pin (saving or respelling derives a plain spelling),
+  and with blocks switched off the display draws the default form even for a
+  pinned entry. The full list is under
+  [Block script → Limitations](#limitations-by-design-or-known).
 - **The theme cookie is host-only** (`theme-preference`, `path=/`): on
   `localhost` it is shared with the other dev apps in this monorepo regardless
   of port. Expected, not a bug.
@@ -1764,7 +2366,7 @@ Schema versioning lives in `src/db/migrations/`:
 
 | File | Responsibility |
 |------|----------------|
-| `version.ts` | `CURRENT_SCHEMA_VERSION` (currently **6**) |
+| `version.ts` | `CURRENT_SCHEMA_VERSION` (currently **9**) |
 | `schema.ts` | `createSchema(db)` — the full current DDL for a fresh database; stamps `PRAGMA user_version = CURRENT_SCHEMA_VERSION` |
 | `index.ts` | `MIGRATIONS` registry, `detectLegacySchemaVersion(db)`, `runMigrations(db)` |
 | `repair.ts` | `repairOrphans(db)` — prunes rows whose parent is gone, rewrites dangling `glyph_order` references, rebuilds the closure table |
@@ -1784,8 +2386,9 @@ Schema versioning lives in `src/db/migrations/`:
 | 6 | Rebuild `lexicon_ancestry` so `ancestor_id` is `NOT NULL ... ON DELETE CASCADE` (the previous `NOT NULL` + `ON DELETE SET NULL` could never be satisfied), then `repairOrphans`, then rebuild the closure table |
 | 7 | `lexicon_folders` (self-referential tree) + `lexicon.folder_id ... ON DELETE SET NULL` — nested folders for the lexicon |
 | 8 | `glyph_folders` and `grapheme_folders` (structural clones of `lexicon_folders`) + `glyphs.folder_id` / `graphemes.folder_id ... ON DELETE SET NULL` — folders for the other two domains. In the fresh DDL each folder table is created BEFORE its item table (FK order); the migration reuses the same DDL functions, then `ALTER TABLE ... ADD COLUMN`, indexes, and a `foreignKeyViolationCount()` assert |
+| 9 | `variant_groups`, `grapheme_variants` (partial unique index: one default per grapheme; unique `(grapheme_id, group_id)`) and the single-row `block_scheme`; a 'Default' variant per grapheme (`backfillDefaultVariants`); then a rebuild of `grapheme_glyphs` with `variant_id NOT NULL` and `UNIQUE(variant_id, glyph_id, position)`, every row attached to its grapheme's default (orphan rows dropped by the join), the AUTOINCREMENT high-water mark kept, indexes recreated after the `DROP`, and a `foreignKeyViolationCount()` assert. Runs `foreignKeysOff: true`; the table is created by the same `createGraphemeGlyphsTable()` as a fresh database, so `sqlite_master` matches. See [Block script](#block-script-abugida--mayan-style-glyph-blocks) |
 
-Migration v6 is a SQLite table rebuild, so it runs with `PRAGMA foreign_keys = OFF` — toggled by the runner *outside* the transaction (the pragma is a no-op inside one) — and finishes with its own `PRAGMA foreign_key_check`, so an inconsistent rebuild throws and rolls back instead of committing.
+Migrations v6 and v9 are SQLite table rebuilds, so they run with `PRAGMA foreign_keys = OFF` — toggled by the runner *outside* the transaction (the pragma is a no-op inside one) — and finish with their own `PRAGMA foreign_key_check`, so an inconsistent rebuild throws and rolls back instead of committing.
 
 **Repair path.** Foreign keys were not enforced before Phase 1, so older files may hold orphaned junction rows, spellings or closure entries that would make a later `DELETE` fail with "FOREIGN KEY constraint failed". `repairOrphans` runs as part of v6, on import when `foreign_key_check` reports rows (a file still inconsistent afterwards is refused), and on demand through `databaseApi.repair()` (`RepairReport` counts per category; `total === 0` means nothing needed fixing). `databaseApi.getStatus().schemaVersion` exposes the live `user_version`; `getDatabaseHealth()` carries `fkViolations` and the boot-time `schemaMigration` result.
 

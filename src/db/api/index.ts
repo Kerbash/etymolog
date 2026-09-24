@@ -37,6 +37,18 @@ export type {
     CreateGraphemeResult,
     DeleteGraphemeOptions,
     DeleteGraphemeResult,
+    CreateVariantRequest,
+    UpdateVariantRequest,
+    VariantGlyphsRequest,
+    CreateVariantGroupRequest,
+    UpdateVariantGroupRequest,
+    VariantGroupListResponse,
+    DeleteVariantGroupResult,
+    DeleteVariantResult,
+    VariantGroupApi,
+    VariantApi,
+    BlockSchemeApi,
+    BlockSchemeSaveResult,
     CreateWordSymbolRequest,
     UpdateWordSymbolDrawingRequest,
     WordSymbolRefs,
@@ -105,6 +117,8 @@ import { lexiconApi } from './lexiconApi';
 import { phraseApi } from './phraseApi';
 import { wordSymbolApi } from './wordSymbolApi';
 import { folderApi, glyphFolderApi, graphemeFolderApi } from './folderApi';
+import { variantApi, variantGroupApi } from './variantApi';
+import { blockSchemeApi } from './blockSchemeApi';
 
 /**
  * Complete Etymolog API.
@@ -122,10 +136,13 @@ export const etymologApi = {
     folder: folderApi,
     glyphFolder: glyphFolderApi,
     graphemeFolder: graphemeFolderApi,
+    variantGroup: variantGroupApi,
+    variant: variantApi,
+    blockScheme: blockSchemeApi,
 } as const;
 
 // Re-export individual APIs for direct access if needed
-export { glyphApi, graphemeApi, phonemeApi, settingsApi, databaseApi, lexiconApi, phraseApi, wordSymbolApi, folderApi, glyphFolderApi, graphemeFolderApi };
+export { glyphApi, graphemeApi, phonemeApi, settingsApi, databaseApi, lexiconApi, phraseApi, wordSymbolApi, folderApi, glyphFolderApi, graphemeFolderApi, variantApi, variantGroupApi, blockSchemeApi };
 
 // Re-export utility functions
 export { getCurrentSettings, subscribeToSettings, initDatabase };

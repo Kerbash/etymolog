@@ -70,23 +70,17 @@ vi.mock('../../../../db', () => ({
     }),
 }));
 
-vi.mock('../../../../db/autoSpellService', () => ({
-    buildVirtualGlyphMap: () => new Map(),
-}));
-
 /** The three composite inputs, stubbed down to nothing. */
 vi.mock('../../customInput/glyphCanvasInput', () => ({
-    GlyphCanvasInput: ({ onRequestAutoSpell }: { onRequestAutoSpell?: () => void }) => (
-        <button type="button" data-testid="auto-spell" onClick={() => onRequestAutoSpell?.()}>
-            Auto-spell
-        </button>
+    // Reports the software-owned (auto-spell) spelling it is handed.
+    GlyphCanvasInput: ({ locked }: { locked?: { glyphOrder: string[] | null } | null }) => (
+        <output data-testid="locked-spelling">{locked ? JSON.stringify(locked.glyphOrder) : 'unlocked'}</output>
     ),
 }));
 vi.mock('@src/components/form/customInput/glyphCanvasInput', () => ({
-    GlyphCanvasInput: ({ onRequestAutoSpell }: { onRequestAutoSpell?: () => void }) => (
-        <button type="button" data-testid="auto-spell" onClick={() => onRequestAutoSpell?.()}>
-            Auto-spell
-        </button>
+    // Reports the software-owned (auto-spell) spelling it is handed.
+    GlyphCanvasInput: ({ locked }: { locked?: { glyphOrder: string[] | null } | null }) => (
+        <output data-testid="locked-spelling">{locked ? JSON.stringify(locked.glyphOrder) : 'unlocked'}</output>
     ),
 }));
 vi.mock('../../customInput/meaningTableInput', () => ({
@@ -201,17 +195,14 @@ describe('LexiconFormFields — create-mode prefill', () => {
         expect(hasNameSource).toBe(true);
     });
 
-    it('lets auto-spell read the value immediately', async () => {
+    it('auto-spells the prefilled value immediately, with no click', async () => {
         mount(<Host prefill="kato" />);
         await settle();
 
-        act(() => {
-            container.querySelector<HTMLButtonElement>('[data-testid="auto-spell"]')!.click();
-        });
-
-        // Auto-spell reads the DOM node, not the store — this is the assertion
-        // that `defaultValue` alone would not satisfy.
+        // Auto-spell owns the spelling and follows the pronunciation live: the
+        // prefill is spelled on arrival and handed to the canvas as locked.
         expect(previewAutoSpelling).toHaveBeenCalledWith('kato');
+        expect(container.querySelector('[data-testid="locked-spelling"]')!.textContent).not.toBe('unlocked');
     });
 
     it('becomes changed once the user edits it', async () => {

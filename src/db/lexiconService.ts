@@ -30,6 +30,8 @@ import {
     deserializeGlyphOrder,
     parseGlyphOrder,
     createGraphemeEntry,
+    extractGraphemeId,
+    stripVariantPins,
     type SpellingEntry,
 } from './utils/spellingUtils';
 import type {
@@ -828,7 +830,12 @@ export function buildSpellingDisplay(
         if (entry.type === 'grapheme' && entry.graphemeId) {
             const grapheme = index.get(entry.graphemeId);
             if (grapheme) {
-                entries.push({ type: 'grapheme', position, grapheme });
+                // A pinned variant (`grapheme-12@34`) travels with the entry;
+                // the renderer falls back to the default when it is unknown.
+                // Unpinned entries keep their exact pre-v9 shape.
+                entries.push(entry.variantId !== undefined
+                    ? { type: 'grapheme', position, grapheme, variantId: entry.variantId }
+                    : { type: 'grapheme', position, grapheme });
             } else {
                 // Grapheme no longer exists — surface a visible placeholder.
                 entries.push({ type: 'ipa', position, ipaCharacter: `[?${entry.graphemeId}]` });
@@ -889,13 +896,15 @@ export function handleGraphemeDeletion(
     const db = getDatabase();
     return withTransaction(db, () => {
         const affected = getLexiconEntriesUsingGrapheme(graphemeId);
-        const target = createGraphemeEntry(graphemeId);
         const fallback = deletedGraphemePronunciation || '?';
         const respelledLexiconIds: number[] = [];
         let markedForAttentionCount = 0;
 
         for (const entry of affected) {
-            const glyphOrder = deserializeGlyphOrder(entry.glyph_order).map(e => (e === target ? fallback : e));
+            const glyphOrder = deserializeGlyphOrder(entry.glyph_order).map(e => (
+                // Pinned references (`grapheme-<id>@<variantId>`) count too.
+                extractGraphemeId(e) === graphemeId ? fallback : e
+            ));
             // A manually spelled word needs review; a word that was ALREADY
             // flagged stays flagged — this is not the place to clear it.
             //
@@ -926,6 +935,51 @@ export function handleGraphemeDeletion(
             affectedLexiconIds: affected.map(e => e.id),
             respelledLexiconIds,
         };
+    });
+}
+
+// =============================================================================
+// VARIANT DELETION HANDLING
+// =============================================================================
+
+/**
+ * Words whose `glyph_order` pins `variantId` (`"grapheme-<id>@<variantId>"`).
+ *
+ * The `LIKE` is only a prefilter over the JSON text (`…@34"…` — the closing
+ * quote keeps `@34` from matching `@345`); every candidate is re-parsed, so an
+ * IPA entry that merely CONTAINS `@34` can never be mistaken for a pin.
+ */
+export function getLexiconEntriesPinningVariant(variantId: number): Lexicon[] {
+    const candidates = execRows(
+        getDatabase(),
+        `SELECT ${lexiconColumns()} FROM lexicon WHERE glyph_order LIKE ? ORDER BY id ASC`,
+        [`%@${variantId}"%`],
+    ).map(mapLexiconRecord);
+    return candidates.filter(entry => {
+        const glyphOrder = deserializeGlyphOrder(entry.glyph_order);
+        return stripVariantPins(glyphOrder, variantId).some((e, i) => e !== glyphOrder[i]);
+    });
+}
+
+/**
+ * Strip every `@<variantId>` pin so the variant can be deleted: each pinned
+ * entry falls back to its grapheme's automatically chosen variant. The
+ * grapheme itself stays in the spelling, so `lexicon_spelling` is unchanged in
+ * content (it is rebuilt by `updateLexicon` all the same). Words are NOT
+ * flagged for attention — the user confirmed the fallback when deleting the
+ * form. Runs in one transaction.
+ *
+ * @returns ids of the words that were rewritten
+ */
+export function handleVariantDeletion(variantId: number): number[] {
+    const db = getDatabase();
+    return withTransaction(db, () => {
+        const affected = getLexiconEntriesPinningVariant(variantId);
+        for (const entry of affected) {
+            const glyphOrder = stripVariantPins(deserializeGlyphOrder(entry.glyph_order), variantId);
+            updateLexicon(entry.id, { glyph_order: glyphOrder });
+        }
+        return affected.map(entry => entry.id);
     });
 }
 

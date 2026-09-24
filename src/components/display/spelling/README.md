@@ -62,6 +62,7 @@ Interactive appearance without user interactions:
 | `glyphs` | `SpellingDisplayEntry[] \| Glyph[] \| GraphemeComplete[] \| number[]` | Glyph data (supports multiple formats) |
 | `glyphMap` | `Map<number, Glyph>` | Required when glyphs is `number[]` |
 | `graphemeMap` | `Map<number, GraphemeComplete>` | For resolving grapheme references |
+| `blockScheme` | `BlockScheme \| null` | Block-script override: `undefined` = the provider's scheme, a scheme = use it (designer preview), `null` = blocks off. See [Blocks](#blocks) |
 ### Layout
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
@@ -115,6 +116,27 @@ Every strategy advances by the cell (`utils/cell.ts` — `stepX = cellWidth + sp
 | `tree` | 14 | 1 | 2 | Etymology tree |
 | `input` | 48 | 8 | 16 | The glyph canvas input |
 | `card` | 80 | 0 | 0 | The lexicon grid card's glyph band (with `fit="shrink"`) |
+## Blocks
+
+A script with an enabled **block scheme** (`BLOCK_SCRIPT_PLAN.md`; roles + templates, one per script, stored in the `block_scheme` table) draws runs of spelling entries as ONE composed picture — an abugida syllable, a Mayan-style glyph block. The work happens in normalization, so every layout strategy, the core renderer and the interactive wrapper are unchanged: **a strategy sees one glyph per block** and positions it like any other glyph.
+
+**What composes.** Only `SpellingDisplayEntry[]` input (words, translator output, previews built from a spelling). `Glyph[]`, `GraphemeComplete[]`, `number[]` and pre-normalized `RenderableGlyph[]` never go through the engine — which is how the Script Maker's per-variant previews show exactly one variant. Within a spelling, `normalizeSpellingDisplay` runs `segmentEntries` (`src/blocks`, pure, first template wins):
+
+| Segment | Renders as |
+|---------|------------|
+| `block` | ONE `RenderableGlyph`: `svg_data` = the composed `<svg viewBox="0 0 100 100">` with one nested `<svg>` per template slot (the slot's variant-group form of that grapheme, the default when it has none), `block = { templateId, entryIndices, slots, containsVirtual }`, `isVirtual: false`, `sourceIndex` = the first entry |
+| `single` (no template matched) | as without a scheme — one glyph per grapheme glyph — except that a **pinned** variant (`grapheme-12@34`, `entry.variantId`) is honoured |
+| `passthrough` (word separator / line break / punctuation) | exactly as without a scheme — word boundaries are never crossed |
+| `.` boundary | nothing: the IPA syllable separator only splits blocks. The speller keeps a `.` in a pronunciation as the IPA entry `'.'`, so `ka.ta` can compose as `ka` + `ta` |
+
+**Where the scheme comes from.** `EtymologProvider` exposes the scheme and a `graphemeMap` (variants included) through a narrow context read by `useOptionalBlockScheme()` / `useOptionalGraphemeMap()` (`db/context/useOptionalBlockScheme.ts`). Both return `null` outside a provider, so the component renders anywhere, and their value changes only when the scheme or the graphemes do — a lexicon refresh does not re-render every display on screen. Callers do not thread the scheme through props.
+
+**The prop.** `blockScheme` overrides the context: a scheme object is used as-is (the Block Designer previews its draft), `null` forces blocks off. When the effective scheme is enabled and the caller passed no `graphemeMap`, the provider's map is used so cards, the translator and charts compose without every call site changing; a caller's own map always wins.
+
+**No scheme ⇒ no change.** With no scheme, `null`, or a disabled one, normalization runs the pre-block code path verbatim and the output is byte-identical (`__tests__/normalizationIdentity.test.ts` holds a snapshot recorded from the pre-block code — never regenerate it to make a change pass). That includes the `.` entry, which still draws as a text glyph with blocks off; the word form's canvas (`GlyphCanvasInput`) draws it as a slim boundary tile only while blocks are on. Pins are NOT honoured on this path either: with blocks off a `grapheme-12@34` entry draws the grapheme's default form (the pin stays stored and applies again once blocks are on).
+
+**Ids.** A block's id is `generateVirtualGlyphId(blockKey(composed) + ':' + firstEntryIndex)` — the key covers the template, each slot's entry and chosen variant; the entry index makes two identical blocks in one word distinct. Block ids are negative (the virtual-glyph hash space) but blocks are **not** virtual: check `glyph.block`, not the id's sign.
+
 ## Ref Methods
 | Method | Description |
 |--------|-------------|
@@ -145,7 +167,10 @@ display/spelling/
 ├── index.ts                      # Public exports
 ├── types.ts                      # TypeScript interfaces
 ├── __tests__/
-│   └── GlyphSpellingDisplay.test.tsx
+│   ├── GlyphSpellingDisplay.test.tsx
+│   ├── blocks.test.tsx               # Block composition inside the provider
+│   ├── blockFixtures.ts
+│   └── normalizationIdentity.test.ts # No-scheme byte-identity snapshot
 ├── hooks/
 │   ├── index.ts
 │   ├── useNormalizedGlyphs.ts    # Input normalization

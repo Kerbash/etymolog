@@ -6,7 +6,14 @@
  * - Grapheme: a written character composed of ≥ 1 glyphs (the invariant every
  *   writer here preserves — `createGrapheme`, `setGraphemeGlyphs` and
  *   `removeGlyphFromGrapheme` refuse to leave a grapheme empty).
- * - GraphemeGlyph: junction rows with `position` ordering.
+ * - Variant (schema v9): a grapheme has one or more visual forms; exactly one
+ *   is the DEFAULT. Every glyph writer here (`addGlyphToGrapheme`,
+ *   `setGraphemeGlyphs`, `reorderGraphemeGlyphs`, `removeGlyphFromGrapheme`)
+ *   acts on the default unless an explicit `variantId` is passed, and every
+ *   `glyphs` field this module returns is the DEFAULT variant's glyphs — the
+ *   meaning it had before variants existed. The full list rides in the
+ *   optional `variants` field. Variant CRUD lives in `variantService`.
+ * - GraphemeGlyph: junction rows with `position` ordering, one set per variant.
  * - Phoneme: a pronunciation attached to a grapheme.
  *
  * Every multi-statement write runs in `withTransaction()`; inner helpers
@@ -19,6 +26,16 @@ import { getDatabase } from './database';
 import { withTransaction } from './utils/transaction';
 import { execRows, execOne, execScalar, lastInsertId, type SqlRecord } from './utils/sql';
 import { validateStringLength, LIMITS } from './utils/sanitize';
+import {
+    DEFAULT_VARIANT_NAME,
+    getDefaultVariantId,
+    getVariantsByGraphemeId,
+    insertVariantRow,
+    loadVariantsByGrapheme,
+    pickDefaultVariant,
+    validateVariantInput,
+    writeVariantGlyphs,
+} from './variantService';
 import type {
     Grapheme,
     CreateGraphemeInput,
@@ -80,12 +97,38 @@ function touchGrapheme(graphemeId: number): void {
     getDatabase().run(`UPDATE graphemes SET updated_at = datetime('now') WHERE id = ?`, [graphemeId]);
 }
 
+/**
+ * The variant a glyph writer acts on: `variantId` when given (it must belong
+ * to `graphemeId`), otherwise the grapheme's default.
+ * @throws when the grapheme has no default or the variant is not its own
+ */
+function resolveVariantId(graphemeId: number, variantId?: number): number {
+    if (variantId !== undefined) {
+        const owner = execScalar<number>(getDatabase(), 'SELECT grapheme_id FROM grapheme_variants WHERE id = ?', [variantId]);
+        if (owner !== graphemeId) {
+            throw new Error(`Variant ${variantId} does not belong to grapheme ${graphemeId}`);
+        }
+        return variantId;
+    }
+    const defaultId = getDefaultVariantId(graphemeId);
+    if (defaultId === null) {
+        throw new Error(`Grapheme ${graphemeId} not found (or has no default variant)`);
+    }
+    return defaultId;
+}
+
 // =============================================================================
 // GRAPHEME CRUD OPERATIONS
 // =============================================================================
 
 /**
  * Create a new grapheme with its glyph composition and optional phonemes.
+ *
+ * The grapheme gets a 'Default' variant holding `input.glyphs`; every entry
+ * of `input.variants` becomes an additional (non-default) variant. Every
+ * variant input is validated before the first write, and the whole creation
+ * is one transaction — a bad variant (empty, or a second form in the same
+ * group) creates nothing.
  */
 export function createGrapheme(input: CreateGraphemeInput): GraphemeComplete {
     const db = getDatabase();
@@ -96,6 +139,9 @@ export function createGrapheme(input: CreateGraphemeInput): GraphemeComplete {
     validateStringLength(input.name, LIMITS.GRAPHEME_NAME, 'Grapheme name');
     if (input.category) validateStringLength(input.category, LIMITS.CATEGORY, 'Category');
     if (input.notes) validateStringLength(input.notes, LIMITS.NOTES, 'Notes');
+    for (const variantInput of input.variants ?? []) {
+        validateVariantInput(variantInput);
+    }
 
     const graphemeId = withTransaction(db, () => {
         db.run(
@@ -103,9 +149,19 @@ export function createGrapheme(input: CreateGraphemeInput): GraphemeComplete {
             [input.name, input.category ?? null, input.notes ?? null, input.folder_id ?? null],
         );
         const id = lastInsertId(db);
+        const defaultVariantId = insertVariantRow(id, { name: DEFAULT_VARIANT_NAME, is_default: true, sort_order: 0 });
         for (const glyphInput of input.glyphs) {
-            addGlyphToGrapheme(id, glyphInput);
+            addGlyphToGrapheme(id, glyphInput, defaultVariantId);
         }
+        (input.variants ?? []).forEach((variantInput, index) => {
+            const variantId = insertVariantRow(id, {
+                name: variantInput.name,
+                group_id: variantInput.group_id ?? null,
+                is_default: false,
+                sort_order: variantInput.sort_order ?? index + 1,
+            });
+            writeVariantGlyphs(id, variantId, variantInput.glyphs);
+        });
         for (const phonemeInput of input.phonemes ?? []) {
             addPhoneme(id, phonemeInput);
         }
@@ -128,7 +184,8 @@ export function getGraphemeById(id: number): Grapheme | null {
 export function getGraphemeWithGlyphs(id: number): GraphemeWithGlyphs | null {
     const grapheme = getGraphemeById(id);
     if (!grapheme) return null;
-    return { ...grapheme, glyphs: getGlyphsByGraphemeId(id) };
+    const variants = getVariantsByGraphemeId(id);
+    return { ...grapheme, glyphs: pickDefaultVariant(variants)?.glyphs ?? [], variants };
 }
 
 export function getGraphemeWithPhonemes(id: number): GraphemeWithPhonemes | null {
@@ -137,10 +194,21 @@ export function getGraphemeWithPhonemes(id: number): GraphemeWithPhonemes | null
     return { ...grapheme, phonemes: getPhonemesByGraphemeId(id) };
 }
 
+/**
+ * A grapheme with its default-variant glyphs, phonemes and every variant.
+ * `glyphs` is derived from the default entry of `variants` (one query loads
+ * both), so the two can never disagree.
+ */
 export function getGraphemeComplete(id: number): GraphemeComplete | null {
     const grapheme = getGraphemeById(id);
     if (!grapheme) return null;
-    return { ...grapheme, glyphs: getGlyphsByGraphemeId(id), phonemes: getPhonemesByGraphemeId(id) };
+    const variants = getVariantsByGraphemeId(id);
+    return {
+        ...grapheme,
+        glyphs: pickDefaultVariant(variants)?.glyphs ?? [],
+        phonemes: getPhonemesByGraphemeId(id),
+        variants,
+    };
 }
 
 /** All graphemes, newest first. */
@@ -148,9 +216,13 @@ export function getAllGraphemes(): Grapheme[] {
     return execRows(getDatabase(), `SELECT ${GRAPHEME_COLUMNS} FROM graphemes ORDER BY created_at DESC`).map(mapGrapheme);
 }
 
+/** All graphemes with default-variant glyphs and every variant — TWO statements. */
 export function getAllGraphemesWithGlyphs(): GraphemeWithGlyphs[] {
-    const glyphsOf = loadGlyphsByGrapheme();
-    return getAllGraphemes().map(grapheme => ({ ...grapheme, glyphs: glyphsOf.get(grapheme.id) ?? [] }));
+    const variantsOf = loadVariantsByGrapheme();
+    return getAllGraphemes().map(grapheme => {
+        const variants = variantsOf.get(grapheme.id) ?? [];
+        return { ...grapheme, glyphs: pickDefaultVariant(variants)?.glyphs ?? [], variants };
+    });
 }
 
 export function getAllGraphemesWithPhonemes(): GraphemeWithPhonemes[] {
@@ -159,33 +231,24 @@ export function getAllGraphemesWithPhonemes(): GraphemeWithPhonemes[] {
 }
 
 /**
- * All graphemes with glyphs and phonemes — THREE statements regardless of
- * grapheme count.
+ * All graphemes with glyphs, phonemes and variants — THREE statements
+ * regardless of grapheme count: graphemes, variants-with-glyphs (one JOIN;
+ * `glyphs` is the default entry of it), phonemes. Loading the variants did
+ * not add a statement because the old per-grapheme glyph loader is subsumed
+ * by the variant loader.
  */
 export function getAllGraphemesComplete(): GraphemeComplete[] {
-    const glyphsOf = loadGlyphsByGrapheme();
+    const variantsOf = loadVariantsByGrapheme();
     const phonemesOf = loadPhonemesByGrapheme();
-    return getAllGraphemes().map(grapheme => ({
-        ...grapheme,
-        glyphs: glyphsOf.get(grapheme.id) ?? [],
-        phonemes: phonemesOf.get(grapheme.id) ?? [],
-    }));
-}
-
-/** grapheme id → ordered glyphs, one statement. */
-function loadGlyphsByGrapheme(): Map<number, Glyph[]> {
-    const out = new Map<number, Glyph[]>();
-    for (const rec of execRows(getDatabase(), `
-        SELECT gg.grapheme_id, g.id, g.name, g.svg_data, g.category, g.notes, g.folder_id, g.created_at, g.updated_at
-        FROM grapheme_glyphs gg
-        JOIN glyphs g ON g.id = gg.glyph_id
-        ORDER BY gg.grapheme_id, gg.position ASC
-    `)) {
-        const graphemeId = rec.grapheme_id as number;
-        if (!out.has(graphemeId)) out.set(graphemeId, []);
-        out.get(graphemeId)!.push(mapGlyph(rec));
-    }
-    return out;
+    return getAllGraphemes().map(grapheme => {
+        const variants = variantsOf.get(grapheme.id) ?? [];
+        return {
+            ...grapheme,
+            glyphs: pickDefaultVariant(variants)?.glyphs ?? [],
+            phonemes: phonemesOf.get(grapheme.id) ?? [],
+            variants,
+        };
+    });
 }
 
 /** grapheme id → phonemes, one statement. */
@@ -261,8 +324,13 @@ export function deleteGrapheme(id: number): boolean {
     }
 
     return withTransaction(db, () => {
+        // Explicit child-first order (CASCADE covers it with FKs on; this keeps
+        // an FK-off connection consistent too): glyph rows → variants → grapheme.
+        // No word pins one of its variants: a pin names the grapheme, and the
+        // lexicon guard above refused any word that spells with it.
         db.run('DELETE FROM phonemes WHERE grapheme_id = ?', [id]);
         db.run('DELETE FROM grapheme_glyphs WHERE grapheme_id = ?', [id]);
+        db.run('DELETE FROM grapheme_variants WHERE grapheme_id = ?', [id]);
         db.run('DELETE FROM graphemes WHERE id = ?', [id]);
         return db.getRowsModified() > 0;
     });
@@ -276,93 +344,119 @@ export function getGraphemeCount(): number {
 // GRAPHEME-GLYPH RELATIONSHIP OPERATIONS
 // =============================================================================
 
-/** Glyphs for a grapheme, ordered by position. */
-export function getGlyphsByGraphemeId(graphemeId: number): Glyph[] {
+/**
+ * Glyphs of a grapheme's DEFAULT variant (or of `variantId`, which must be one
+ * of its variants), ordered by position. Empty for an unknown grapheme.
+ */
+export function getGlyphsByGraphemeId(graphemeId: number, variantId?: number): Glyph[] {
+    const variantFilter = variantId === undefined ? 'v.is_default = 1' : 'v.id = ?';
+    const params = variantId === undefined ? [graphemeId] : [graphemeId, variantId];
     return execRows(getDatabase(), `
         SELECT g.id, g.name, g.svg_data, g.category, g.notes, g.folder_id, g.created_at, g.updated_at
-        FROM glyphs g
-        JOIN grapheme_glyphs gg ON g.id = gg.glyph_id
-        WHERE gg.grapheme_id = ?
+        FROM grapheme_variants v
+        JOIN grapheme_glyphs gg ON gg.variant_id = v.id
+        JOIN glyphs g ON g.id = gg.glyph_id
+        WHERE v.grapheme_id = ? AND ${variantFilter}
         ORDER BY gg.position ASC
-    `, [graphemeId]).map(mapGlyph);
+    `, params).map(mapGlyph);
 }
 
-/** Junction rows for a grapheme. */
-export function getGraphemeGlyphEntries(graphemeId: number): GraphemeGlyph[] {
+/**
+ * Junction rows of a grapheme's DEFAULT variant (or of `variantId`), ordered
+ * by position. Empty for an unknown grapheme.
+ */
+export function getGraphemeGlyphEntries(graphemeId: number, variantId?: number): GraphemeGlyph[] {
+    const variantFilter = variantId === undefined ? 'v.is_default = 1' : 'v.id = ?';
+    const params = variantId === undefined ? [graphemeId] : [graphemeId, variantId];
     return execRows(getDatabase(), `
-        SELECT id, grapheme_id, glyph_id, position, transform
-        FROM grapheme_glyphs WHERE grapheme_id = ? ORDER BY position ASC
-    `, [graphemeId]).map(rec => ({
+        SELECT gg.id, gg.grapheme_id, gg.variant_id, gg.glyph_id, gg.position, gg.transform
+        FROM grapheme_glyphs gg
+        JOIN grapheme_variants v ON v.id = gg.variant_id
+        WHERE v.grapheme_id = ? AND ${variantFilter}
+        ORDER BY gg.position ASC
+    `, params).map(rec => ({
         id: rec.id as number,
         grapheme_id: rec.grapheme_id as number,
+        variant_id: rec.variant_id as number,
         glyph_id: rec.glyph_id as number,
         position: rec.position as number,
         transform: (rec.transform as string | null) ?? null,
     }));
 }
 
-/** Add a glyph to a grapheme at a specific position. */
-export function addGlyphToGrapheme(graphemeId: number, input: CreateGraphemeGlyphInput): GraphemeGlyph {
+/**
+ * Add a glyph at a specific position of the grapheme's DEFAULT variant (or of
+ * `variantId`).
+ * @throws if the grapheme does not exist or `variantId` is not one of its variants
+ */
+export function addGlyphToGrapheme(graphemeId: number, input: CreateGraphemeGlyphInput, variantId?: number): GraphemeGlyph {
     const db = getDatabase();
     return withTransaction(db, () => {
+        const targetVariantId = resolveVariantId(graphemeId, variantId);
         db.run(
-            `INSERT INTO grapheme_glyphs (grapheme_id, glyph_id, position, transform) VALUES (?, ?, ?, ?)`,
-            [graphemeId, input.glyph_id, input.position, input.transform ?? null],
+            `INSERT INTO grapheme_glyphs (grapheme_id, variant_id, glyph_id, position, transform) VALUES (?, ?, ?, ?, ?)`,
+            [graphemeId, targetVariantId, input.glyph_id, input.position, input.transform ?? null],
         );
         const id = lastInsertId(db);
         touchGrapheme(graphemeId);
-        return { id, grapheme_id: graphemeId, glyph_id: input.glyph_id, position: input.position, transform: input.transform ?? null };
+        return {
+            id,
+            grapheme_id: graphemeId,
+            variant_id: targetVariantId,
+            glyph_id: input.glyph_id,
+            position: input.position,
+            transform: input.transform ?? null,
+        };
     });
 }
 
 /**
- * Remove a glyph from a grapheme.
- * @throws if it is the grapheme's last glyph
+ * Remove a glyph from the grapheme's DEFAULT variant (or from `variantId`).
+ * @returns false when the glyph is not in that variant (or the grapheme does not exist)
+ * @throws if it is the variant's last glyph
  */
-export function removeGlyphFromGrapheme(graphemeId: number, glyphId: number): boolean {
+export function removeGlyphFromGrapheme(graphemeId: number, glyphId: number, variantId?: number): boolean {
     const db = getDatabase();
     return withTransaction(db, () => {
-        const total = execScalar<number>(db, 'SELECT COUNT(*) FROM grapheme_glyphs WHERE grapheme_id = ?', [graphemeId]) ?? 0;
-        const present = execScalar<number>(db, 'SELECT COUNT(*) FROM grapheme_glyphs WHERE grapheme_id = ? AND glyph_id = ?', [graphemeId, glyphId]) ?? 0;
+        if (variantId === undefined && getDefaultVariantId(graphemeId) === null) return false;
+        const targetVariantId = resolveVariantId(graphemeId, variantId);
+        const total = execScalar<number>(db, 'SELECT COUNT(*) FROM grapheme_glyphs WHERE variant_id = ?', [targetVariantId]) ?? 0;
+        const present = execScalar<number>(db, 'SELECT COUNT(*) FROM grapheme_glyphs WHERE variant_id = ? AND glyph_id = ?', [targetVariantId, glyphId]) ?? 0;
         if (present === 0) return false;
         if (total - present <= 0) {
             throw new Error('Cannot remove the last glyph from a grapheme');
         }
-        db.run('DELETE FROM grapheme_glyphs WHERE grapheme_id = ? AND glyph_id = ?', [graphemeId, glyphId]);
+        db.run('DELETE FROM grapheme_glyphs WHERE variant_id = ? AND glyph_id = ?', [targetVariantId, glyphId]);
         touchGrapheme(graphemeId);
         return true;
     });
 }
 
 /**
- * Replace all glyphs for a grapheme with a new ordered list.
- * @throws if the list is empty
+ * Replace all glyphs of the grapheme's DEFAULT variant (or of `variantId`)
+ * with a new ordered list. Other variants are untouched.
+ * @throws if the list is empty, the grapheme does not exist, or `variantId`
+ *         is not one of its variants
  */
-export function setGraphemeGlyphs(graphemeId: number, glyphs: CreateGraphemeGlyphInput[]): void {
+export function setGraphemeGlyphs(graphemeId: number, glyphs: CreateGraphemeGlyphInput[], variantId?: number): void {
     if (glyphs.length === 0) {
         throw new Error('At least one glyph is required for a grapheme');
     }
     const db = getDatabase();
     withTransaction(db, () => {
-        db.run('DELETE FROM grapheme_glyphs WHERE grapheme_id = ?', [graphemeId]);
-        for (const glyphInput of glyphs) {
-            db.run(
-                `INSERT INTO grapheme_glyphs (grapheme_id, glyph_id, position, transform) VALUES (?, ?, ?, ?)`,
-                [graphemeId, glyphInput.glyph_id, glyphInput.position, glyphInput.transform ?? null],
-            );
-        }
+        writeVariantGlyphs(graphemeId, resolveVariantId(graphemeId, variantId), glyphs);
         touchGrapheme(graphemeId);
     });
 }
 
-/** Reorder glyphs within a grapheme. */
-export function reorderGraphemeGlyphs(graphemeId: number, glyphIds: number[]): void {
+/** Reorder the glyphs of the grapheme's DEFAULT variant (or of `variantId`). */
+export function reorderGraphemeGlyphs(graphemeId: number, glyphIds: number[], variantId?: number): void {
     const db = getDatabase();
     withTransaction(db, () => {
         // Match each requested glyph to ONE junction row (first unused occurrence),
-        // so a grapheme that uses the same glyph twice keeps two rows. Two passes
-        // keep UNIQUE(grapheme_id, glyph_id, position) satisfied mid-update.
-        const rows = getGraphemeGlyphEntries(graphemeId);
+        // so a variant that uses the same glyph twice keeps two rows. Two passes
+        // keep UNIQUE(variant_id, glyph_id, position) satisfied mid-update.
+        const rows = getGraphemeGlyphEntries(graphemeId, resolveVariantId(graphemeId, variantId));
         const used = new Set<number>();
         const rowIds = glyphIds.map(glyphId => {
             const row = rows.find(r => r.glyph_id === glyphId && !used.has(r.id));

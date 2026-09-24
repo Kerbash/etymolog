@@ -18,7 +18,15 @@ import { SmartForm, useSmartForm } from "smart-form/smartForm";
 
 import { useEtymolog, type Glyph } from "../../../../db";
 import { ROUTES } from "../../../../url_mapping";
-import { GraphemeFormFields, useGraphemeSubmit } from "../../../form/graphemeForm";
+import { GraphemeFormFields, initialIsLogogram, useGraphemeSubmit } from "../../../form/graphemeForm";
+// The pure forms model, imported from its own module (no React in it).
+import {
+    formsChanged,
+    initialDefaultForm,
+    initialVariantDrafts,
+    type DefaultFormDraft,
+    type VariantDraft,
+} from "../../../form/graphemeForm/variantDrafts";
 import { DialogPanel } from "../../../shared";
 import { useRegisterUnsaved } from "../../../shell";
 import EntityEditLayout from "../entityEdit/EntityEditLayout";
@@ -54,12 +62,33 @@ export default function GraphemeEditPage() {
     const [glyphEdits, setGlyphEdits] = useState<Glyph[] | null>(null);
     const selectedGlyphs = glyphEdits ?? graphemeData?.glyphs ?? [];
 
+    // "No sound (logogram)" — plain state reported by the fields, like the glyph
+    // list. `null` until the fields report, then compared with what is stored.
+    const [isLogogram, setIsLogogram] = useState<boolean | null>(null);
+    const logogramChanged =
+        isLogogram !== null && isLogogram !== initialIsLogogram('edit', graphemeData);
+
+    // The other forms and the default form's identity, derived the same way
+    // as the glyph list: `null` = untouched, so the stored forms show through.
+    // Stored drafts have id-derived keys, so re-deriving them every render
+    // keeps every card (and its focused input) mounted.
+    const [variantEdits, setVariantEdits] = useState<VariantDraft[] | null>(null);
+    const [defaultFormEdits, setDefaultFormEdits] = useState<DefaultFormDraft | null>(null);
+    const variants = variantEdits ?? initialVariantDrafts('edit', graphemeData);
+    const defaultForm = defaultFormEdits ?? initialDefaultForm('edit', graphemeData);
+    const variantsChanged =
+        (variantEdits !== null || defaultFormEdits !== null) &&
+        formsChanged(graphemeData, defaultForm, variants);
+
     const handleSuccess = useCallback(() => navigate(ROUTES.scriptMaker), [navigate]);
 
     const submitFunc = useGraphemeSubmit({
         mode: 'edit',
         initialData: graphemeData,
         glyphs: selectedGlyphs,
+        isLogogram: isLogogram ?? initialIsLogogram('edit', graphemeData),
+        variants,
+        defaultForm,
         onSuccess: handleSuccess,
     });
 
@@ -69,7 +98,7 @@ export default function GraphemeEditPage() {
     // form FIELD — `isChanged` alone would report "nothing to lose" for a
     // grapheme whose glyph order the user has just rearranged.
     const isDirty =
-        (formProps.formState.isChanged || glyphEdits !== null) &&
+        (formProps.formState.isChanged || glyphEdits !== null || logogramChanged || variantsChanged) &&
         !formProps.formState.isSubmitting;
     useRegisterUnsaved("edit-grapheme", isDirty);
 
@@ -126,6 +155,11 @@ export default function GraphemeEditPage() {
                         initialData={graphemeData}
                         selectedGlyphs={selectedGlyphs}
                         onSelectedGlyphsChange={setGlyphEdits}
+                        onIsLogogramChange={setIsLogogram}
+                        variants={variants}
+                        onVariantsChange={setVariantEdits}
+                        defaultForm={defaultForm}
+                        onDefaultFormChange={setDefaultFormEdits}
                     />
                     {actionBar}
                 </SmartForm>

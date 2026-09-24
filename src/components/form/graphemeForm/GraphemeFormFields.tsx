@@ -20,6 +20,13 @@
  *    bugs lived, and the glyph edit page is a real URL that can be returned to.
  *    The link is a sibling of the card, never inside it (no nested anchors).
  *
+ * Phase 2 of the block-script epic added the grapheme's FORMS: the glyph
+ * section is the DEFAULT form, and "Other forms" ({@link VariantsSection})
+ * holds the rest. Both glyph lists use the one {@link GlyphListEditor}. The
+ * forms are page state like the glyph list (`variants` / `defaultForm`), never
+ * SmartForm fields — see `variantDrafts.ts` for the model and for why "Make
+ * default" is an identity swap.
+ *
  * `registerField()` runs on every render by SmartForm's contract — it registers
  * once internally and returns fresh state each time; caching it produces stale
  * values.
@@ -27,25 +34,32 @@
 
 import classNames from "classnames";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
 
-import ReorderableList from "cyber-components/interactable/reorderableList";
-import IconButton from "cyber-components/interactable/buttons/iconButton/iconButton.tsx";
-import Button, { buttonStyles } from "cyber-components/interactable/buttons/button";
 import HoverToolTip from "cyber-components/interactable/information/hoverToolTip/hoverToolTip.tsx";
 import NumberedSectionHeader from "cyber-components/graphics/decor/numbered-section-header";
-import SvgIcon from "cyber-components/graphics/decor/svgIcon/svgIcon";
 import LabelShiftTextInput from "smart-form/input/fancy/redditStyle/labelShiftTextInput/labelShiftTextInput.tsx";
 import TextInputValidatorFactory from "smart-form/commonValidatorFactory/textValidatorFactory/textValidatorFactory.ts";
 import type { registerFieldReturnType } from "smart-form/types";
 import { flex, sizing } from "utils-styles";
 
-import type { Glyph, GraphemeComplete, GlyphWithUsage } from "../../../db";
-import { ROUTES, resolveUrl } from "../../../url_mapping";
-import GlyphCard from "../../display/glyphs/glyphCard/glyphCard";
+import { useEtymolog, type Glyph, type GraphemeComplete } from "../../../db";
 import { PronunciationTableInput, type PronunciationRowValue } from "../customInput/pronunciationTableInput";
-import NewGlyphModal from "../../tabs/grapheme/newGlyph/NewGlyphModal.tsx";
-import GlyphPickerModal from "./GlyphPickerModal";
+import GlyphListEditor from "./GlyphListEditor";
+import VariantsSection from "./VariantsSection";
+import {
+    categoryForNoSoundKind,
+    initialIsLogogram,
+    initialNoSoundKind,
+    type NoSoundKind,
+} from "./logogramOption";
+import {
+    DEFAULT_FORM_NAME,
+    initialDefaultForm,
+    initialVariantDrafts,
+    makeDraftDefault,
+    type DefaultFormDraft,
+    type VariantDraft,
+} from "./variantDrafts";
 
 import styles from "./graphemeFormFields.module.scss";
 
@@ -65,7 +79,32 @@ export interface GraphemeFormFieldsProps {
     selectedGlyphs?: Glyph[];
     /** Pre-filled pronunciations, e.g. arriving from an IPA chart cell. */
     defaultPronunciations?: PronunciationRowValue[];
+    /**
+     * Reports the "No sound" choice upward — plain state, like the glyph
+     * list, not a form field. When true the grapheme is saved with NO
+     * pronunciations. Which KIND of no-sound sign it is (a word symbol or a
+     * mark, `logogramOption.ts`) is not reported: it lives only in the
+     * category field, which the kind radios stamp.
+     */
+    onIsLogogramChange?: (isLogogram: boolean) => void;
+    /**
+     * Controlled "other forms" (every non-default variant). Omit to let the
+     * component own them; `onVariantsChange` reports them either way.
+     */
+    variants?: VariantDraft[];
+    onVariantsChange?: (variants: VariantDraft[]) => void;
+    /**
+     * Controlled identity of the DEFAULT form (its glyphs are
+     * `selectedGlyphs`). Changes only through "Make default".
+     */
+    defaultForm?: DefaultFormDraft;
+    onDefaultFormChange?: (defaultForm: DefaultFormDraft) => void;
 }
+
+// `initialVariantDrafts` / `initialDefaultForm` live in `variantDrafts.ts`
+// (re-exported by the folder index) — a component module may only export
+// components (react-refresh).
+export type { VariantDraft, DefaultFormDraft };
 
 /** The shape `GraphemeFormFields` produces on submit. */
 export interface GraphemeFormData {
@@ -76,6 +115,21 @@ export interface GraphemeFormData {
 }
 
 export type { PronunciationRowValue };
+
+/** The "What kind of sign is it?" radios under "No sound", in display order. */
+const NO_SOUND_KINDS: readonly { value: NoSoundKind; name: string; description: string }[] = [
+    {
+        value: 'wordSymbol',
+        name: 'A word symbol (logogram)',
+        description: 'Stands for a whole word or idea.',
+    },
+    {
+        value: 'mark',
+        name: 'A mark',
+        description:
+            'Added to other signs, like a vowel-killer or an accent. It is never used on its own in auto-spelling.',
+    },
+];
 
 /** Write a value into an uncontrolled SmartForm input and sync its field state. */
 function setSmartFieldValue(field: registerFieldReturnType, value: string): void {
@@ -104,9 +158,28 @@ function getSmartFieldValue(field: registerFieldReturnType): string {
     return el?.value ?? '';
 }
 
-/** `GlyphCard` wants a usage count; inside the form there is nothing to count. */
-function toGlyphWithUsage(glyph: Glyph): GlyphWithUsage {
-    return { ...glyph, usageCount: 0 };
+/**
+ * Controlled-or-internal state: the controlled value wins when given; the
+ * internal one is reported upward so the owner can still read it.
+ */
+function useControllable<T>(
+    controlled: T | undefined,
+    onChange: ((value: T) => void) | undefined,
+    initial: () => T,
+): [T, (next: T) => void] {
+    const [internal, setInternal] = useState<T>(initial);
+    const value = controlled ?? internal;
+    const update = useCallback(
+        (next: T) => {
+            if (controlled !== undefined) onChange?.(next);
+            else setInternal(next);
+        },
+        [controlled, onChange],
+    );
+    useEffect(() => {
+        if (controlled === undefined) onChange?.(internal);
+    }, [internal, controlled, onChange]);
+    return [value, update];
 }
 
 export default function GraphemeFormFields({
@@ -117,17 +190,36 @@ export default function GraphemeFormFields({
     onSelectedGlyphsChange,
     selectedGlyphs: controlledSelectedGlyphs,
     defaultPronunciations: propDefaultPronunciations,
+    onIsLogogramChange,
+    variants: controlledVariants,
+    onVariantsChange,
+    defaultForm: controlledDefaultForm,
+    onDefaultFormChange,
 }: GraphemeFormFieldsProps) {
     const sectionId = useId();
+    const { data } = useEtymolog();
     const initializedRef = useRef(false);
+
+    const [isLogogram, setIsLogogram] = useState<boolean>(() => initialIsLogogram(mode, initialData));
+    useEffect(() => {
+        onIsLogogramChange?.(isLogogram);
+    }, [isLogogram, onIsLogogramChange]);
 
     const [internalSelectedGlyphs, setInternalSelectedGlyphs] = useState<Glyph[]>(() =>
         mode === 'edit' && initialData?.glyphs ? initialData.glyphs : [],
     );
     const selectedGlyphs = controlledSelectedGlyphs ?? internalSelectedGlyphs;
 
-    const [isNewGlyphOpen, setIsNewGlyphOpen] = useState(false);
-    const [isPickerOpen, setIsPickerOpen] = useState(false);
+    const [variants, setVariants] = useControllable<VariantDraft[]>(
+        controlledVariants,
+        onVariantsChange,
+        () => initialVariantDrafts(mode, initialData),
+    );
+    const [defaultForm, setDefaultForm] = useControllable<DefaultFormDraft>(
+        controlledDefaultForm,
+        onDefaultFormChange,
+        () => initialDefaultForm(mode, initialData),
+    );
 
     const updateSelectedGlyphs = useCallback(
         (glyphsOrUpdater: Glyph[] | ((prev: Glyph[]) => Glyph[])) => {
@@ -201,202 +293,210 @@ export default function GraphemeFormFields({
         return () => clearTimeout(timer);
     }, [mode, initialData, graphemeNameField, categoryField, notesField]);
 
-    const addGlyph = useCallback(
-        (glyph: Glyph) => {
-            updateSelectedGlyphs((prev) => {
-                if (prev.some((g) => g.id === glyph.id)) return prev;
-
-                const isFirst = prev.length === 0;
-                if (isFirst) {
-                    // The first glyph seeds the grapheme's identity, but only
-                    // into fields the user has left empty. Deferred: this runs
-                    // inside a state updater.
-                    setTimeout(() => {
-                        if (getSmartFieldValue(graphemeNameField).trim() === '' && glyph.name) {
-                            setSmartFieldValue(graphemeNameField, glyph.name);
-                        }
-                        if (getSmartFieldValue(categoryField).trim() === '' && glyph.category) {
-                            setSmartFieldValue(categoryField, glyph.category);
-                        }
-                    }, 0);
+    // The first glyph seeds the grapheme's identity, but only into fields the
+    // user has left empty. Deferred: the list update has not rendered yet.
+    const handleDefaultGlyphAdded = useCallback(
+        (glyph: Glyph, wasFirst: boolean) => {
+            if (!wasFirst) return;
+            setTimeout(() => {
+                if (getSmartFieldValue(graphemeNameField).trim() === '' && glyph.name) {
+                    setSmartFieldValue(graphemeNameField, glyph.name);
                 }
-
-                return [...prev, glyph];
-            });
+                if (getSmartFieldValue(categoryField).trim() === '' && glyph.category) {
+                    setSmartFieldValue(categoryField, glyph.category);
+                }
+            }, 0);
         },
-        [updateSelectedGlyphs, graphemeNameField, categoryField],
+        [graphemeNameField, categoryField],
     );
 
-    const removeGlyph = useCallback(
-        (glyphId: number) => {
-            updateSelectedGlyphs((prev) => prev.filter((g) => g.id !== glyphId));
-        },
+    // The kind of no-sound sign ("No sound" → word symbol or mark). Plain
+    // state: the kind itself is not saved — only the category it stamps is.
+    const [noSoundKind, setNoSoundKind] = useState<NoSoundKind>(() => initialNoSoundKind(mode, initialData));
+
+    // Stamp the kind's category, but only over an empty category or the OTHER
+    // kind's own one — never over a category the user typed.
+    const applyKindCategory = (kind: NoSoundKind) => {
+        const category = categoryForNoSoundKind(getSmartFieldValue(categoryField), kind);
+        if (category !== null) setSmartFieldValue(categoryField, category);
+    };
+
+    const handleDefaultGlyphsChange = useCallback(
+        (next: Glyph[]) => updateSelectedGlyphs(next),
         [updateSelectedGlyphs],
     );
 
-    const handleReorder = useCallback(
-        (newOrderIds: string[]) => {
-            updateSelectedGlyphs((prev) => {
-                const byId = new Map(prev.map((glyph) => [String(glyph.id), glyph]));
-                return newOrderIds
-                    .map((id) => byId.get(id))
-                    .filter((glyph): glyph is Glyph => glyph !== undefined);
-            });
+    const handleMakeDefault = useCallback(
+        (key: string) => {
+            const next = makeDraftDefault(
+                { defaultGlyphs: selectedGlyphs, defaultForm, variants },
+                key,
+            );
+            updateSelectedGlyphs(next.defaultGlyphs);
+            setDefaultForm(next.defaultForm);
+            setVariants(next.variants);
         },
-        [updateSelectedGlyphs],
+        [selectedGlyphs, defaultForm, variants, updateSelectedGlyphs, setDefaultForm, setVariants],
     );
 
-    const selectedIds = useMemo(() => selectedGlyphs.map((g) => g.id), [selectedGlyphs]);
+    // The default form's own name/group only differ from the service's
+    // "Default"/none after a "Make default" — say so, since nothing else would.
+    const defaultGroupName =
+        defaultForm.groupId === null
+            ? null
+            : (data.variantGroups.find((g) => g.id === defaultForm.groupId)?.name ?? null);
+    const showDefaultIdentity = defaultForm.name !== DEFAULT_FORM_NAME || defaultGroupName !== null;
 
     return (
-        <>
-            <div className={classNames(flex.flexColumn, flex.flexGapM, className)}>
-                <section className={styles.section} aria-labelledby={`${sectionId}-glyphs`}>
-                    {/* `NumberedSectionHeader` hardcodes an <h2>; the page's
-                        PageHeader owns that level, so sections are level 3. */}
-                    <NumberedSectionHeader
-                        number="01"
-                        title="Glyphs"
-                        parts={{ title: { id: `${sectionId}-glyphs`, 'aria-level': 3 } }}
+        <div className={classNames(flex.flexColumn, flex.flexGapM, className)}>
+            <section className={styles.section} aria-labelledby={`${sectionId}-glyphs`}>
+                {/* `NumberedSectionHeader` hardcodes an <h2>; the page's
+                    PageHeader owns that level, so sections are level 3. */}
+                <NumberedSectionHeader
+                    number="01"
+                    title="Glyphs (default form)"
+                    parts={{ title: { id: `${sectionId}-glyphs`, 'aria-level': 3 } }}
+                />
+
+                {showDefaultIdentity && (
+                    <p className={styles.formIdentity}>
+                        Default form: <strong>{defaultForm.name.trim() || DEFAULT_FORM_NAME}</strong>
+                        {' · '}
+                        {defaultGroupName ?? 'no group'}
+                    </p>
+                )}
+
+                <GlyphListEditor
+                    glyphs={selectedGlyphs}
+                    onChange={handleDefaultGlyphsChange}
+                    onGlyphAdded={handleDefaultGlyphAdded}
+                    listLabel="Glyphs in this grapheme, in writing order"
+                    emptyText="No glyphs yet — draw one, or reuse a glyph you already have."
+                    preventRemovingLast={mode === 'edit'}
+                />
+            </section>
+
+            <section className={styles.section} aria-labelledby={`${sectionId}-forms`}>
+                <NumberedSectionHeader
+                    number="02"
+                    title="Other forms"
+                    parts={{ title: { id: `${sectionId}-forms`, 'aria-level': 3 } }}
+                />
+
+                <VariantsSection
+                    variants={variants}
+                    onChange={setVariants}
+                    onMakeDefault={handleMakeDefault}
+                    defaultGroupId={defaultForm.groupId}
+                />
+            </section>
+
+            <section className={styles.section} aria-labelledby={`${sectionId}-details`}>
+                <NumberedSectionHeader
+                    number="03"
+                    title="Details"
+                    parts={{ title: { id: `${sectionId}-details`, 'aria-level': 3 } }}
+                />
+
+                <div className={classNames(flex.flexColumn, flex.flexGapM)}>
+                    <HoverToolTip content="The name of the grapheme">
+                        <LabelShiftTextInput
+                            displayName="Grapheme name"
+                            asInput
+                            {...graphemeNameField}
+                        />
+                    </HoverToolTip>
+
+                    <HoverToolTip content="Category to organise your graphemes (e.g. Vowels, Consonants, Numbers). Inherited from the first glyph, but you can change it.">
+                        <LabelShiftTextInput displayName="Category" asInput {...categoryField} />
+                    </HoverToolTip>
+
+                    <HoverToolTip
+                        className={sizing.parentWidth}
+                        content="Additional notes, usage examples, or etymology information"
+                    >
+                        <LabelShiftTextInput
+                            displayName="Notes"
+                            asInput={false}
+                            {...notesField}
+                        />
+                    </HoverToolTip>
+                </div>
+            </section>
+
+            <section className={styles.section} aria-labelledby={`${sectionId}-pronunciation`}>
+                <NumberedSectionHeader
+                    number="04"
+                    title="Pronunciation"
+                    parts={{ title: { id: `${sectionId}-pronunciation`, 'aria-level': 3 } }}
+                />
+
+                <label className={styles.logogramToggle}>
+                    <input
+                        type="checkbox"
+                        checked={isLogogram}
+                        onChange={(e) => {
+                            const next = e.target.checked;
+                            setIsLogogram(next);
+                            // A no-sound grapheme with no category yet gets the
+                            // one its kind is recognised by.
+                            if (next) applyKindCategory(noSoundKind);
+                        }}
                     />
+                    <span>No sound</span>
+                </label>
 
-                    <div className={styles.glyphSelectionBox}>
-                        {selectedGlyphs.length === 0 ? (
-                            <p className={styles.emptyState}>
-                                No glyphs yet — draw one, or reuse a glyph you already have.
-                            </p>
-                        ) : (
-                            <>
-                                <p className={styles.orderHint}>
-                                    Drag a glyph, or focus its grip and use the arrow keys, to
-                                    change the order they are written in.
-                                </p>
-                                <ReorderableList<Glyph>
-                                    items={selectedGlyphs}
-                                    getId={(glyph) => String(glyph.id)}
-                                    onReorder={handleReorder}
-                                    aria-label="Glyphs in this grapheme, in writing order"
-                                    className={styles.glyphList}
-                                    renderItem={({ item, index, dragHandleProps }) => (
-                                        <div className={styles.glyphRow}>
-                                            <span
-                                                {...dragHandleProps}
-                                                className={styles.dragHandle}
-                                                aria-label={`Reorder ${item.name}, position ${index + 1} of ${selectedGlyphs.length}`}
-                                            >
-                                                <SvgIcon iconName="grip-vertical" aria-hidden="true" />
-                                            </span>
-
-                                            <span className={styles.glyphPosition}>{index + 1}</span>
-
-                                            <GlyphCard
-                                                glyph={toGlyphWithUsage(item)}
-                                                interactionMode="none"
-                                                hideDelete
-                                            />
-
-                                            {/* Siblings of the card, never inside it. */}
-                                            <div className={styles.glyphRowActions}>
-                                                <IconButton
-                                                    as={Link}
-                                                    to={resolveUrl(ROUTES.glyphEdit, { id: item.id })}
-                                                    iconName="pencil"
-                                                    aria-label={`Edit glyph ${item.name}`}
-                                                />
-                                                <IconButton
-                                                    type="button"
-                                                    iconName="x-lg"
-                                                    onClick={() => removeGlyph(item.id)}
-                                                    aria-label={`Remove glyph ${item.name} from this grapheme`}
-                                                />
-                                            </div>
-                                        </div>
-                                    )}
+                {isLogogram && (
+                    <fieldset className={styles.noSoundKind} data-no-sound-kind="">
+                        <legend className={styles.noSoundKindLegend}>What kind of sign is it?</legend>
+                        {NO_SOUND_KINDS.map((kind) => (
+                            <label key={kind.value} className={styles.noSoundKindOption}>
+                                <input
+                                    type="radio"
+                                    name={`${sectionId}-no-sound-kind`}
+                                    value={kind.value}
+                                    checked={noSoundKind === kind.value}
+                                    onChange={() => {
+                                        setNoSoundKind(kind.value);
+                                        applyKindCategory(kind.value);
+                                    }}
                                 />
-                            </>
-                        )}
+                                <span className={styles.noSoundKindText}>
+                                    <span className={styles.noSoundKindName}>{kind.name}</span>
+                                    <span className={styles.noSoundKindDescription}>{kind.description}</span>
+                                </span>
+                            </label>
+                        ))}
+                    </fieldset>
+                )}
 
-                        <div className={styles.glyphButtons}>
-                            <IconButton
-                                iconName="plus-lg"
-                                type="button"
-                                onClick={() => setIsNewGlyphOpen(true)}
-                                className={buttonStyles.primary}
-                            >
-                                Add new glyph
-                            </IconButton>
-                            <Button
-                                type="button"
-                                onClick={() => setIsPickerOpen(true)}
-                                className={buttonStyles.secondary}
-                            >
-                                Select existing glyph
-                            </Button>
-                        </div>
-                    </div>
-                </section>
+                {isLogogram && noSoundKind === 'wordSymbol' && (
+                    <p className={styles.logogramNote}>
+                        A logogram stands for a whole word or idea rather than a sound, so it has no
+                        pronunciation and auto-spell never uses it. Give a word this spelling from
+                        the word form&rsquo;s Logogram tab.
+                    </p>
+                )}
+                {isLogogram && noSoundKind === 'mark' && (
+                    <p className={styles.logogramNote}>
+                        A mark has no sound of its own, so it has no pronunciation. Choose it as the
+                        vowel-killer mark on Writing System &rarr; Blocks, or place it in a word by hand.
+                    </p>
+                )}
 
-                <section className={styles.section} aria-labelledby={`${sectionId}-details`}>
-                    <NumberedSectionHeader
-                        number="02"
-                        title="Details"
-                        parts={{ title: { id: `${sectionId}-details`, 'aria-level': 3 } }}
-                    />
-
-                    <div className={classNames(flex.flexColumn, flex.flexGapM)}>
-                        <HoverToolTip content="The name of the grapheme">
-                            <LabelShiftTextInput
-                                displayName="Grapheme name"
-                                asInput
-                                {...graphemeNameField}
-                            />
-                        </HoverToolTip>
-
-                        <HoverToolTip content="Category to organise your graphemes (e.g. Vowels, Consonants, Numbers). Inherited from the first glyph, but you can change it.">
-                            <LabelShiftTextInput displayName="Category" asInput {...categoryField} />
-                        </HoverToolTip>
-
-                        <HoverToolTip
-                            className={sizing.parentWidth}
-                            content="Additional notes, usage examples, or etymology information"
-                        >
-                            <LabelShiftTextInput
-                                displayName="Notes"
-                                asInput={false}
-                                {...notesField}
-                            />
-                        </HoverToolTip>
-                    </div>
-                </section>
-
-                <section className={styles.section} aria-labelledby={`${sectionId}-pronunciation`}>
-                    <NumberedSectionHeader
-                        number="03"
-                        title="Pronunciation"
-                        parts={{ title: { id: `${sectionId}-pronunciation`, 'aria-level': 3 } }}
-                    />
-
+                {/* Kept MOUNTED while hidden: the table is a registered
+                    SmartForm field, and unmounting it would leave the form
+                    holding a dead ref. Not required while it is a logogram,
+                    and its rows are ignored on submit. */}
+                <div hidden={isLogogram}>
                     <PronunciationTableInput
                         {...pronunciationsField}
                         defaultValue={defaultPronunciations}
                         maxRows={10}
-                        requirePronunciation
+                        requirePronunciation={!isLogogram}
                     />
-                </section>
-            </div>
-
-            <NewGlyphModal
-                isOpen={isNewGlyphOpen}
-                setIsOpen={setIsNewGlyphOpen}
-                onGlyphCreated={addGlyph}
-            />
-
-            <GlyphPickerModal
-                isOpen={isPickerOpen}
-                setIsOpen={setIsPickerOpen}
-                onSelect={addGlyph}
-                excludeIds={selectedIds}
-            />
-        </>
+                </div>
+            </section>
+        </div>
     );
 }

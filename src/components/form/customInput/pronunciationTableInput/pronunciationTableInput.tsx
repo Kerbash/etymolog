@@ -16,6 +16,7 @@ import { IPA_CHARACTERS } from "cyber-components/interactable/customKeyboard/ipa
 /** Translation keys live in a sibling module — see `translationMap.ts`. */
 import { defaultTranslationMap } from "./translationMap";
 import { useEditedSinceMount } from "../useEditedSinceMount";
+import { soundShapeHint } from "./soundShapeHint";
 
 /** Types -------------------------------------- */
 
@@ -246,6 +247,22 @@ const PronunciationTableInputInner = ({
         setRows(prev => prev.filter(row => row.id !== rowId));
     }, [rows.length, unregisterField, setRows]);
 
+    /**
+     * The text each row's input holds NOW, for the sound hint under it
+     * (`soundShapeHint`). The field is the inner SmartForm's UNCONTROLLED
+     * input, so it is observed rather than owned: every edit — typing, the
+     * IPA keyboard, the floating copy — ends in a bubbling native `input`
+     * event on the row's input, caught on the row's cell. A row not typed in
+     * yet falls back to the text it mounted with (edit mode).
+     */
+    const [typedText, setTypedText] = useState<Record<string, string>>({});
+    const handleRowInput = useCallback((rowId: string, event: React.FormEvent<HTMLTableCellElement>) => {
+        const target = event.target;
+        if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) return;
+        const value = target.value;
+        setTypedText(prev => (prev[rowId] === value ? prev : { ...prev, [rowId]: value }));
+    }, []);
+
     // Checkbox change handler
     const handleCheckboxChange = useCallback((rowId: string, checked: boolean) => {
         setRows(prev => prev.map(row =>
@@ -289,46 +306,54 @@ const PronunciationTableInputInner = ({
                         </tr>
                     </thead>
                     <tbody>
-                        {rows.map((row, rowIndex) => (
-                            <tr key={row.id}>
-                                <td>
-                                    {/* Every row repeats the same three controls,
-                                        so the column name alone does not identify
-                                        them — each carries the ROW as well. */}
-                                    <LabelShiftTextCustomKeyboardInput
-                                        {...registerField(`pronunciation-${row.id}`, {
-                                            defaultValue: row.pronunciation,
-                                            validation: requirePronunciation ? rowValidation : undefined,
-                                        })}
-                                        characters={IPA_CHARACTERS}
-                                        displayName={`${t("pronunciationLabel")} ${rowIndex + 1}`}
-                                        className={styles.textInput}
-                                    />
-                                </td>
-                                <td>
-                                    <input
-                                        type="checkbox"
-                                        checked={row.useInAutoSpelling}
-                                        onChange={(e) => handleCheckboxChange(row.id, e.target.checked)}
-                                        className={styles.checkbox}
-                                        aria-label={`${t("useInAutoSpellingLabel")} for pronunciation ${rowIndex + 1}`}
-                                    />
-                                </td>
-                                <td>
-                                    <HoverToolTip content={"Remove this row"}>
-                                        <IconButton
-                                            type={"button"}
-                                            onClick={() => handleRemoveRow(row.id)}
-                                            disabled={rows.length === 1}
-                                            iconName={"trash3"}
-                                            iconSize={'1.5em'}
-                                            iconColor={'var(--status-bad)'}
-                                            aria-label={`${t("removePronunciation")} pronunciation ${rowIndex + 1}`}
+                        {rows.map((row, rowIndex) => {
+                            const hint = soundShapeHint(typedText[row.id] ?? row.pronunciation);
+                            return (
+                                <tr key={row.id}>
+                                    <td onInput={(event) => handleRowInput(row.id, event)}>
+                                        {/* Every row repeats the same three controls,
+                                            so the column name alone does not identify
+                                            them — each carries the ROW as well. */}
+                                        <LabelShiftTextCustomKeyboardInput
+                                            {...registerField(`pronunciation-${row.id}`, {
+                                                defaultValue: row.pronunciation,
+                                                validation: requirePronunciation ? rowValidation : undefined,
+                                            })}
+                                            characters={IPA_CHARACTERS}
+                                            displayName={`${t("pronunciationLabel")} ${rowIndex + 1}`}
+                                            className={styles.textInput}
                                         />
-                                    </HoverToolTip>
-                                </td>
-                            </tr>
-                        ))}
+                                        {hint !== null && (
+                                            <p data-sound-hint="" role="note" className={styles.soundHint}>
+                                                {hint}
+                                            </p>
+                                        )}
+                                    </td>
+                                    <td>
+                                        <input
+                                            type="checkbox"
+                                            checked={row.useInAutoSpelling}
+                                            onChange={(e) => handleCheckboxChange(row.id, e.target.checked)}
+                                            className={styles.checkbox}
+                                            aria-label={`${t("useInAutoSpellingLabel")} for pronunciation ${rowIndex + 1}`}
+                                        />
+                                    </td>
+                                    <td>
+                                        <HoverToolTip content={"Remove this row"}>
+                                            <IconButton
+                                                type={"button"}
+                                                onClick={() => handleRemoveRow(row.id)}
+                                                disabled={rows.length === 1}
+                                                iconName={"trash3"}
+                                                iconSize={'1.5em'}
+                                                iconColor={'var(--status-bad)'}
+                                                aria-label={`${t("removePronunciation")} pronunciation ${rowIndex + 1}`}
+                                            />
+                                        </HoverToolTip>
+                                    </td>
+                                </tr>
+                            );
+                        })}
                     </tbody>
                 </table>
             </div>

@@ -8,6 +8,8 @@
     background: var(--surface-base);
     transition: all 0.2s ease;
     min-width: 100px;
+    /* Anchors the "+N forms" badge, which must not change the card's size. */
+    position: relative;
 }
 
 .compactCard.clickable {
@@ -51,4 +53,22 @@
     font-size: 0.8rem;
     color: var(--text-secondary);
     font-family: var(--font-mono);
+}
+
+/* "+N forms" - absolutely placed so a card with forms is the same size as one without. */
+.formsBadge {
+    position: absolute;
+    top: 0.25rem;
+    right: 0.25rem;
+    max-width: calc(100% - 0.5rem);
+    padding: 0.05rem 0.35rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.65rem;
+    line-height: 1.4;
+    color: var(--text-primary-muted);
+    background: var(--bg-tertiary);
+    border-radius: var(--radius-pill);
+    pointer-events: none;
 }

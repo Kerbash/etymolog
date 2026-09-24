@@ -11,7 +11,7 @@
  */
 
 import type { CSSProperties, ReactNode } from 'react';
-import type { AutoSpellResultExtended, Glyph, GlyphWithUsage } from '../../../../db/types';
+import type { Glyph, GlyphWithUsage } from '../../../../db/types';
 import type { SpellingEntry } from '../../../../db/utils/spellingUtils';
 import type { registerFieldReturnType } from 'smart-form/types';
 
@@ -245,6 +245,19 @@ export interface GlyphKeyboardOverlayProps {
     enableIpaMode?: boolean;
     /** Called when an IPA character is selected (creates virtual glyph) */
     onIpaSelect?: (ipaChar: string, virtualGlyph: VirtualGlyph) => void;
+    /**
+     * Block-script boundary. When provided (the script's block scheme is on),
+     * a "·" Boundary key is shown and the physical `.` key inserts a boundary;
+     * both call this. Omit to hide both.
+     */
+    onBoundary?: () => void;
+    /**
+     * Block-script join. When provided (the script's block scheme is on), a
+     * "‿" Join key is shown right after the Boundary key; it inserts the
+     * undertie that keeps the signs on both sides in one block. No physical
+     * key (nothing on a keyboard means ‿). Omit to hide it.
+     */
+    onJoin?: () => void;
 }
 
 // =============================================================================
@@ -287,6 +300,50 @@ export interface GlyphCanvasProps {
     style?: CSSProperties;
     /** Minimum height for the canvas */
     minHeight?: string;
+    /**
+     * Block-script outlines (only when the script's block scheme is on). Each
+     * groups the tiles at `entryIndices` — positions in `selectedGlyphIds` —
+     * with a thin coloured outline and a caption.
+     */
+    blocks?: CanvasBlockOutline[];
+    /** Called by a block's caption button / outline with that block's `key`. */
+    onOpenBlock?: (key: number) => void;
+    /**
+     * Draw the `.` boundary entry and the `‿` join entry as slim tiles
+     * instead of text glyphs. On only while the block scheme is on (off, they
+     * render as they always did — the same as the display does with the
+     * scheme off).
+     */
+    showBoundaries?: boolean;
+    /** Positions (in `selectedGlyphIds`) whose entry carries a pinned variant. */
+    pinnedIndices?: ReadonlySet<number>;
+    /** Per-position glyph replacing the id's own (a pinned entry shows its pinned form). */
+    glyphOverrides?: ReadonlyMap<number, GlyphForCanvas>;
+    /**
+     * The insertion point, as a position in `selectedGlyphIds` (`null` = the
+     * end). Only drawn, and only movable, when `onCursorMove` is given.
+     */
+    cursor?: number | null;
+    /**
+     * Makes the canvas focusable: the arrow keys (following the writing
+     * direction), Home and End move the insertion point and report the new
+     * one here. Omit it for a canvas that only displays.
+     */
+    onCursorMove?: (cursor: number | null) => void;
+    /** Draw the caret even while the canvas is not focused (e.g. the glyph keyboard is open). */
+    showCursor?: boolean;
+}
+
+/** One block outline on the canvas (see `GlyphCanvasProps.blocks`). */
+export interface CanvasBlockOutline {
+    /** Stable id for the block (its first entry's position). */
+    key: number;
+    /** Positions in `selectedGlyphIds`, contiguous, in order. */
+    entryIndices: number[];
+    /** Caption text (the template name). */
+    label: string;
+    /** Outline colour — a CSS colour or `var(--token)`. */
+    colour: string;
 }
 
 // =============================================================================
@@ -321,10 +378,37 @@ export interface GlyphCanvasInputProps extends registerFieldReturnType {
     style?: CSSProperties;
     /** Optional callback when selection changes - non-breaking hook */
     onSelectionChange?: (ids: number[]) => void;
-    /** Optional auto-spell preview data provided by parent (displayed by component) */
-    autoSpellPreview?: AutoSpellResultExtended | null;
-    /** Optional handler parent provides to generate/refresh auto-spell preview */
-    onRequestAutoSpell?: () => void;
+    /** Auto-spell toggle (the wand) shown in the header. Omit to hide it. */
+    autoSpell?: AutoSpellToggle;
+    /**
+     * When set, the spelling belongs to the software (auto-spell is on): the
+     * canvas shows it read-only, greyed, and every editing control is disabled.
+     */
+    locked?: LockedSpelling | null;
+}
+
+/**
+ * The auto-spell on/off switch. It IS the word's stored `auto_spell` boolean:
+ * the wand is a toggle, not a one-shot "generate" button.
+ */
+export interface AutoSpellToggle {
+    enabled: boolean;
+    onToggle: (next: boolean) => void;
+    /** Why the toggle cannot be used right now (e.g. an external word); disables it. */
+    disabledReason?: string | null;
+}
+
+/**
+ * A spelling the software owns. `glyphOrder` is what the canvas must show;
+ * `null` means "nothing to derive yet" and the current spelling stays as is
+ * (a word with no pronunciation keeps its spelling, exactly as on save).
+ */
+export interface LockedSpelling {
+    glyphOrder: SpellingEntry[] | null;
+    /** Visible status line explaining who owns the spelling and how to take it back. */
+    message: string;
+    /** Hover text on the greyed canvas and controls. */
+    tooltip: string;
 }
 
 /**

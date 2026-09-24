@@ -30,8 +30,9 @@ describe('roundTrip (service layer)', () => {
         db.run("INSERT INTO glyphs (name, svg_data, category) VALUES ('g1', '<svg>test</svg>', 'vowel')");
         db.run("INSERT INTO glyphs (name, svg_data) VALUES ('g2', '<svg>test2</svg>')");
         db.run("INSERT INTO graphemes (name, category) VALUES ('gr1', 'basic')");
-        db.run("INSERT INTO grapheme_glyphs (grapheme_id, glyph_id, position) VALUES (1, 1, 0)");
-        db.run("INSERT INTO grapheme_glyphs (grapheme_id, glyph_id, position) VALUES (1, 2, 1)");
+        db.run("INSERT INTO grapheme_variants (grapheme_id, name, is_default) VALUES (1, 'Default', 1)");
+        db.run("INSERT INTO grapheme_glyphs (grapheme_id, variant_id, glyph_id, position) VALUES (1, 1, 1, 0)");
+        db.run("INSERT INTO grapheme_glyphs (grapheme_id, variant_id, glyph_id, position) VALUES (1, 1, 2, 1)");
         db.run("INSERT INTO phonemes (grapheme_id, phoneme, use_in_auto_spelling) VALUES (1, 'a', 1)");
         db.run("INSERT INTO lexicon (lemma, meaning, part_of_speech) VALUES ('hello', 'greeting', 'noun')");
         db.run("INSERT INTO lexicon_spelling (lexicon_id, grapheme_id, position) VALUES (1, 1, 0)");

@@ -107,6 +107,15 @@ export type PhonemeFeatures = (ConsonantFeatures | VowelFeatures) & {
 /** Length mark, U+02D0 — the source of the `long` flag. */
 export const LENGTH_MARK = 'ː';
 
+/** Syllabic mark, U+0329 (combining vertical line below): r + this mark is an `r` that carries a syllable. */
+export const SYLLABIC_MARK = '\u0329';
+
+/**
+ * Every IPA syllabic mark: U+0329 (line below, `SYLLABIC_MARK`) and U+030D
+ * (vertical line ABOVE \u2014 the form used under letters with a descender, \u014b + U+030D).
+ */
+export const SYLLABIC_MARKS: readonly string[] = [SYLLABIC_MARK, '\u030d'];
+
 /**
  * Combining tilde, U+0303 — the source of the `nasalized` flag.
  *

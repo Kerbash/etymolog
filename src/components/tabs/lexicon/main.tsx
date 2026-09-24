@@ -13,6 +13,9 @@
  */
 
 import { Routes, Route } from 'react-router-dom';
+
+import { ROUTES } from '../../../url_mapping';
+import { NotFoundNotice } from '../../shared';
 import LexiconHome from './LexiconHome';
 import CreateLexiconPage from './createLexicon/CreateLexiconPage';
 import WordGeneratorPage from './generator/WordGeneratorPage';
@@ -29,6 +32,7 @@ export default function LexiconMain() {
             <Route path="generate" element={<WordGeneratorPage />} />
             <Route path="db/:id" element={<LexiconViewPage />} />
             <Route path="db/:id/edit" element={<EditLexiconPage />} />
+            <Route path="*" element={<NotFoundNotice backTo={ROUTES.lexicon} backLabel="Go to the lexicon" />} />
         </Routes>
     );
 }

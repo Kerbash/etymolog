@@ -6,6 +6,10 @@
  *
  * 1. glyph_order (JSON array) - The true ordered spelling, supporting:
  *    - Grapheme references: "grapheme-{id}" (e.g., "grapheme-123")
+ *    - Pinned grapheme references (schema v9): "grapheme-{id}@{variantId}"
+ *      (e.g., "grapheme-12@34") — grapheme 12 drawn with its variant 34
+ *      instead of the automatically chosen one. Pins live only in MANUAL
+ *      spellings; auto-spell never emits them.
  *    - IPA characters: Stored as-is (e.g., "ə", "ʃ", "aɪ")
  *
  * 2. lexicon_spelling (junction table) - Relational index for queries like
@@ -24,6 +28,36 @@ import type { AutoSpellEntry } from '../types';
  * Prefix used to identify grapheme references in glyph_order.
  */
 export const GRAPHEME_PREFIX = 'grapheme-';
+
+/**
+ * THE parser for grapheme references: `grapheme-<id>` with an optional
+ * `@<variantId>` pin. Every helper below goes through it — never `parseInt`
+ * a substring (`parseInt('12@34')` happens to return 12, which is exactly the
+ * kind of accident this regex exists to rule out).
+ *
+ * Both ids must be positive. Anything else (`grapheme-`, `grapheme-12@`,
+ * `grapheme-@34`, `grapheme-0`, `grapheme-12x`) is NOT a grapheme entry: the
+ * parse helpers treat it as literal IPA text, and `validateGlyphOrder`
+ * rejects it because it carries the grapheme prefix.
+ */
+export const GRAPHEME_ENTRY_RE = /^grapheme-(\d+)(?:@(\d+))?$/;
+
+interface GraphemeReference {
+    graphemeId: number;
+    variantId: number | null;
+}
+
+/** Parse a grapheme reference, or null when `entry` is not a valid one. */
+function matchGraphemeEntry(entry: string): GraphemeReference | null {
+    const match = GRAPHEME_ENTRY_RE.exec(entry);
+    if (!match) return null;
+    const graphemeId = Number(match[1]);
+    if (!Number.isSafeInteger(graphemeId) || graphemeId <= 0) return null;
+    if (match[2] === undefined) return { graphemeId, variantId: null };
+    const variantId = Number(match[2]);
+    if (!Number.isSafeInteger(variantId) || variantId <= 0) return null;
+    return { graphemeId, variantId };
+}
 
 // =============================================================================
 // TYPE DEFINITIONS
@@ -45,6 +79,8 @@ export interface ParsedSpellingEntry {
     rawValue: string;
     /** Extracted grapheme ID (only for grapheme type) */
     graphemeId?: number;
+    /** Pinned variant ID (only for a `grapheme-<id>@<variantId>` entry) */
+    variantId?: number;
     /** The IPA character (only for ipa type, or for display of grapheme phoneme) */
     ipaCharacter?: string;
 }
@@ -73,18 +109,14 @@ export interface ExtractedGraphemeIds {
  *
  * @example
  * ```ts
- * isGraphemeEntry('grapheme-123') // true
- * isGraphemeEntry('ə')            // false
- * isGraphemeEntry('grapheme-')    // false (no ID)
+ * isGraphemeEntry('grapheme-123')   // true
+ * isGraphemeEntry('grapheme-12@34') // true (pinned variant)
+ * isGraphemeEntry('ə')              // false
+ * isGraphemeEntry('grapheme-')      // false (no ID)
  * ```
  */
 export function isGraphemeEntry(entry: string): boolean {
-    if (!entry.startsWith(GRAPHEME_PREFIX)) {
-        return false;
-    }
-    const idPart = entry.substring(GRAPHEME_PREFIX.length);
-    const id = parseInt(idPart, 10);
-    return !isNaN(id) && id > 0;
+    return matchGraphemeEntry(entry) !== null;
 }
 
 /**
@@ -95,17 +127,29 @@ export function isGraphemeEntry(entry: string): boolean {
  *
  * @example
  * ```ts
- * extractGraphemeId('grapheme-123') // 123
- * extractGraphemeId('ə')            // null
+ * extractGraphemeId('grapheme-123')   // 123
+ * extractGraphemeId('grapheme-12@34') // 12
+ * extractGraphemeId('ə')              // null
  * ```
  */
 export function extractGraphemeId(entry: string): number | null {
-    if (!entry.startsWith(GRAPHEME_PREFIX)) {
-        return null;
-    }
-    const idPart = entry.substring(GRAPHEME_PREFIX.length);
-    const id = parseInt(idPart, 10);
-    return isNaN(id) || id <= 0 ? null : id;
+    return matchGraphemeEntry(entry)?.graphemeId ?? null;
+}
+
+/**
+ * Extract the pinned variant id from a grapheme reference entry.
+ *
+ * @returns the variant id of `grapheme-<id>@<variantId>`; null for an
+ *          unpinned reference or anything that is not a grapheme reference
+ *
+ * @example
+ * ```ts
+ * extractVariantId('grapheme-12@34') // 34
+ * extractVariantId('grapheme-12')    // null
+ * ```
+ */
+export function extractVariantId(entry: string): number | null {
+    return matchGraphemeEntry(entry)?.variantId ?? null;
 }
 
 /**
@@ -116,11 +160,14 @@ export function extractGraphemeId(entry: string): number | null {
  *
  * @example
  * ```ts
- * createGraphemeEntry(123) // 'grapheme-123'
+ * createGraphemeEntry(123)    // 'grapheme-123'
+ * createGraphemeEntry(12, 34) // 'grapheme-12@34'
  * ```
  */
-export function createGraphemeEntry(graphemeId: number): string {
-    return `${GRAPHEME_PREFIX}${graphemeId}`;
+export function createGraphemeEntry(graphemeId: number, variantId?: number | null): string {
+    return variantId != null
+        ? `${GRAPHEME_PREFIX}${graphemeId}@${variantId}`
+        : `${GRAPHEME_PREFIX}${graphemeId}`;
 }
 
 /**
@@ -134,19 +181,28 @@ export function createGraphemeEntry(graphemeId: number): string {
  * parseSpellingEntry('grapheme-123')
  * // { type: 'grapheme', rawValue: 'grapheme-123', graphemeId: 123 }
  *
+ * parseSpellingEntry('grapheme-12@34')
+ * // { type: 'grapheme', rawValue: 'grapheme-12@34', graphemeId: 12, variantId: 34 }
+ *
  * parseSpellingEntry('ə')
  * // { type: 'ipa', rawValue: 'ə', ipaCharacter: 'ə' }
  * ```
  */
 export function parseSpellingEntry(entry: string): ParsedSpellingEntry {
-    const graphemeId = extractGraphemeId(entry);
+    const reference = matchGraphemeEntry(entry);
 
-    if (graphemeId !== null) {
-        return {
+    if (reference !== null) {
+        const parsed: ParsedSpellingEntry = {
             type: 'grapheme',
             rawValue: entry,
-            graphemeId,
+            graphemeId: reference.graphemeId,
         };
+        // Only set when pinned, so unpinned entries keep their exact old shape
+        // (tests compare them with toEqual).
+        if (reference.variantId !== null) {
+            parsed.variantId = reference.variantId;
+        }
+        return parsed;
     }
 
     return {
@@ -376,13 +432,13 @@ export function validateGlyphOrder(glyphOrder: unknown): string[] {
  * @returns true if the spelling contains the grapheme
  */
 export function spellingContainsGrapheme(glyphOrder: SpellingEntry[], graphemeId: number): boolean {
-    const targetEntry = createGraphemeEntry(graphemeId);
-    return glyphOrder.includes(targetEntry);
+    return glyphOrder.some(entry => extractGraphemeId(entry) === graphemeId);
 }
 
 /**
  * Replace a grapheme in a spelling with an IPA character.
- * Used when a grapheme is deleted and IPA fallback is needed.
+ * Used when a grapheme is deleted and IPA fallback is needed. Pinned
+ * references (`grapheme-<id>@<variantId>`) are replaced too.
  *
  * @param glyphOrder - The glyph_order array
  * @param graphemeId - The grapheme ID to replace
@@ -394,12 +450,11 @@ export function replaceGraphemeWithIpa(
     graphemeId: number,
     ipaCharacter: string
 ): SpellingEntry[] {
-    const targetEntry = createGraphemeEntry(graphemeId);
-    return glyphOrder.map(entry => entry === targetEntry ? ipaCharacter : entry);
+    return glyphOrder.map(entry => extractGraphemeId(entry) === graphemeId ? ipaCharacter : entry);
 }
 
 /**
- * Remove a grapheme from a spelling entirely.
+ * Remove a grapheme from a spelling entirely (pinned references included).
  *
  * @param glyphOrder - The glyph_order array
  * @param graphemeId - The grapheme ID to remove
@@ -409,8 +464,24 @@ export function removeGraphemeFromSpelling(
     glyphOrder: SpellingEntry[],
     graphemeId: number
 ): SpellingEntry[] {
-    const targetEntry = createGraphemeEntry(graphemeId);
-    return glyphOrder.filter(entry => entry !== targetEntry);
+    return glyphOrder.filter(entry => extractGraphemeId(entry) !== graphemeId);
+}
+
+/**
+ * Remove every `@<variantId>` pin naming `variantId` from a spelling: a
+ * `grapheme-12@34` entry becomes `grapheme-12`. The grapheme stays; only the
+ * pin goes, so the word falls back to the automatically chosen variant. Used
+ * when a variant is deleted. Other entries (and other pins) are untouched.
+ *
+ * @returns a new array — equal to the input when nothing pinned the variant
+ */
+export function stripVariantPins(glyphOrder: SpellingEntry[], variantId: number): SpellingEntry[] {
+    return glyphOrder.map(entry => {
+        const reference = matchGraphemeEntry(entry);
+        return reference !== null && reference.variantId === variantId
+            ? createGraphemeEntry(reference.graphemeId)
+            : entry;
+    });
 }
 
 /**

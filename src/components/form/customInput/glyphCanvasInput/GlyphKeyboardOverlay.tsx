@@ -21,9 +21,18 @@ import IconButton from 'cyber-components/interactable/buttons/iconButton/iconBut
 import HoverToolTip from 'cyber-components/interactable/information/hoverToolTip/hoverToolTip';
 
 import type {GlyphKeyboardOverlayProps, GlyphLike, KeyboardMode} from './types';
-import {createVirtualGlyph} from './utils';
+import {createSpaceGlyph, createVirtualGlyph} from './utils';
 
 import styles from './GlyphKeyboardOverlay.module.scss';
+
+/**
+ * Glyph-specific wording for the shared keyboard's key row: here a space is a
+ * word separator and backspace removes a whole glyph, not a text character.
+ */
+const KEYBOARD_TRANSLATIONS = {
+    spaceAriaLabel: 'Space - insert a word separator',
+    backspaceAriaLabel: 'Backspace - remove the glyph before the insertion point',
+};
 
 /**
  * Map a GlyphLike to KeyboardCharacter format.
@@ -116,6 +125,8 @@ export default function GlyphKeyboardOverlay({
                                                  style,
                                                  enableIpaMode = false,
                                                  onIpaSelect,
+                                                 onBoundary,
+                                                 onJoin,
                                              }: GlyphKeyboardOverlayProps) {
     const overlayRef = useRef<HTMLDivElement>(null);
     const previousFocusRef = useRef<HTMLElement | null>(null);
@@ -135,6 +146,7 @@ export default function GlyphKeyboardOverlay({
 
     // Current characters based on mode
     const characters = mode === 'glyphs' ? glyphCharacters : ipaCharacters;
+    const isGlyphsEmpty = mode === 'glyphs' && availableGlyphs.length === 0;
 
     // Create a map for quick glyph lookup by ID
     const glyphMap = useMemo(() => {
@@ -184,6 +196,20 @@ export default function GlyphKeyboardOverlay({
         }
     }, [mode, handleGlyphSelect, handleIpaCharacterSelect]);
 
+    // Space bar: inserts the word-separator virtual glyph in either mode.
+    // Goes through onSelect exactly like an IPA key, so the parent registers
+    // it in its virtual-glyph map and it serialises to " " in glyph_order.
+    const handleSpace = useCallback(() => {
+        const spaceGlyph = createSpaceGlyph();
+        onSelect({
+            id: spaceGlyph.id,
+            name: spaceGlyph.name,
+            svg_data: spaceGlyph.svg_data,
+            category: spaceGlyph.category,
+            notes: spaceGlyph.notes,
+        });
+    }, [onSelect]);
+
     // Handle keyboard close on Escape
     useEffect(() => {
         if (!isOpen) return;
@@ -193,21 +219,43 @@ export default function GlyphKeyboardOverlay({
                 e.preventDefault();
                 onClose();
             }
+            const activeElement = document.activeElement as HTMLElement | null;
+            const isInInput = activeElement?.tagName === 'INPUT' ||
+                activeElement?.tagName === 'TEXTAREA' ||
+                activeElement?.isContentEditable === true;
+
             // Backspace triggers remove when not in search input
-            if (e.key === 'Backspace' && onRemove) {
-                const activeElement = document.activeElement;
-                const isInInput = activeElement?.tagName === 'INPUT' ||
-                    activeElement?.tagName === 'TEXTAREA';
-                if (!isInInput) {
-                    e.preventDefault();
-                    onRemove();
-                }
+            if (e.key === 'Backspace' && onRemove && !isInInput) {
+                e.preventDefault();
+                onRemove();
+            }
+
+            // Space inserts a word separator when not typing in the search box.
+            // A focused button (a glyph key, the space bar itself) already
+            // activates on Space natively — handling it here too would insert
+            // twice or swallow the button's own action.
+            const isOnButton = activeElement?.tagName === 'BUTTON' ||
+                activeElement?.getAttribute('role') === 'button';
+            if (e.key === ' ' && !e.repeat && !isInInput && !isOnButton) {
+                e.preventDefault();
+                handleSpace();
+            }
+
+            // `.` inserts a block boundary (only while the block scheme is on,
+            // i.e. `onBoundary` is provided). Same guards as Space, except the
+            // focused-button one: `.` does not activate a button, so after
+            // tapping a glyph key the physical `.` must still work. Modified
+            // presses (Ctrl+., Alt+.) are left to the browser / OS.
+            if (e.key === '.' && onBoundary && !e.repeat && !isInInput
+                && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                e.preventDefault();
+                onBoundary();
             }
         };
 
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [isOpen, onClose, onRemove]);
+    }, [isOpen, onClose, onRemove, handleSpace, onBoundary]);
 
     // Focus management
     useEffect(() => {
@@ -280,18 +328,6 @@ export default function GlyphKeyboardOverlay({
                 </div>
 
                 <div className={styles.actions}>
-                    {onRemove && (
-                        <HoverToolTip content={"Backspace"} contentPin="top">
-                            <IconButton
-                                type="button"
-                                iconName="backspace"
-                                onClick={onRemove}
-                                aria-label="Remove last glyph"
-                                themeType="basic"
-                                iconSize="1rem"
-                            />
-                        </HoverToolTip>
-                    )}
                     {onClear && (
                         <HoverToolTip content={"Clear all glyphs"} contentPin="top">
                             <IconButton
@@ -315,47 +351,67 @@ export default function GlyphKeyboardOverlay({
                 </div>
             </div>
 
-            {/* Keyboard content */}
+            {/* Keyboard content. `fill` makes the key grid the panel's ONE
+                scroll area; the shared key row (Space + Backspace) sits under
+                it and stays visible, including when there are no glyphs yet. */}
             <div className={styles.content}>
-                {mode === 'glyphs' && availableGlyphs.length === 0 ? (
-                    <div className={styles.emptyState}>
-                        No glyphs available. Create some glyphs first.
-                        {enableIpaMode && (
-                            <button
-                                type="button"
-                                className={styles.switchModeLink}
-                                onClick={() => setMode('ipa')}
-                            >
-                                Switch to IPA keyboard
-                            </button>
+                <CustomKeyboard
+                    fill
+                    characters={isGlyphsEmpty ? [] : characters}
+                    onSelect={handleSelect}
+                    searchable={searchable && !isGlyphsEmpty}
+                    groupBy="category"
+                    height={height}
+                    emptyStateText={mode === 'glyphs' ? 'No matching glyphs' : 'No matching IPA characters'}
+                    emptyState={isGlyphsEmpty ? (
+                        <div className={styles.emptyState}>
+                            No glyphs available. Create some glyphs first.
+                            {enableIpaMode && (
+                                <button
+                                    type="button"
+                                    className={styles.switchModeLink}
+                                    onClick={() => setMode('ipa')}
+                                >
+                                    Switch to IPA keyboard
+                                </button>
+                            )}
+                        </div>
+                    ) : undefined}
+                    renderCharacter={mode === 'glyphs' ? renderGlyphCharacter : undefined}
+                    onSpace={handleSpace}
+                    onBackspace={onRemove}
+                    translationMap={KEYBOARD_TRANSLATIONS}
+                />
+                {/* Block-script boundary and join keys, beside the shared key
+                    row (the shared keyboard has no slot for extra keys, so it
+                    is a row of its own directly under Space / Backspace). */}
+                {(onBoundary || onJoin) && (
+                    <div className={styles.extraKeyRow}>
+                        {onBoundary && (
+                            <HoverToolTip content="Insert a block boundary (or press .)" contentPin="top">
+                                <button
+                                    type="button"
+                                    className={styles.boundaryKey}
+                                    onClick={onBoundary}
+                                    aria-label="Boundary - insert a block boundary"
+                                >
+                                    <span className={styles.boundaryKeyMark} aria-hidden="true">·</span>
+                                    Boundary
+                                </button>
+                            </HoverToolTip>
                         )}
-                    </div>
-                ) : (
-                    <div className={styles.keyboardWrapper}>
-                        <CustomKeyboard
-                            characters={characters}
-                            onSelect={handleSelect}
-                            searchable={searchable}
-                            groupBy="category"
-                            height={height}
-                            emptyStateText={mode === 'glyphs' ? 'No matching glyphs' : 'No matching IPA characters'}
-                            renderCharacter={mode === 'glyphs' ? renderGlyphCharacter : undefined}
-                        />
-                        {/* Backspace button - prominent keyboard-style */}
-                        {onRemove && (
-                            <div className={styles.keyboardActions}>
-                                <HoverToolTip content="Backspace - Remove last glyph" contentPin="top">
-                                    <button
-                                        type="button"
-                                        className={styles.backspaceButton}
-                                        onClick={onRemove}
-                                        aria-label="Backspace - Remove last glyph"
-                                    >
-                                        <i className="bi-backspace" aria-hidden="true"/>
-                                        <span className={styles.backspaceLabel}>Backspace</span>
-                                    </button>
-                                </HoverToolTip>
-                            </div>
+                        {onJoin && (
+                            <HoverToolTip content="Keep the signs on both sides in one block" contentPin="top">
+                                <button
+                                    type="button"
+                                    className={styles.boundaryKey}
+                                    onClick={onJoin}
+                                    aria-label="Join - keep the signs on both sides in one block"
+                                >
+                                    <span className={styles.boundaryKeyMark} aria-hidden="true">‿</span>
+                                    Join
+                                </button>
+                            </HoverToolTip>
                         )}
                     </div>
                 )}

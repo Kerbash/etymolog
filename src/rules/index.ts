@@ -18,7 +18,13 @@ import { glyphDirectionRule, wordOrderRule, lineProgressionRule } from './direct
 import { wordWrapRule, baselineAlignmentRule } from './layout';
 
 export type { TypographyRule, TypographyRuleOption } from './types';
-export { validateWritingSystem, type WritingSystemWarning } from './validateWritingSystem';
+export {
+    validateWritingSystem,
+    validateBlockSchemeUsage,
+    BLOCKS_WITHOUT_TEMPLATES_MESSAGE,
+    type WritingSystemWarning,
+    type WritingSystemWarningKey,
+} from './validateWritingSystem';
 
 const ALL_RULES: TypographyRule[] = [
     glyphDirectionRule,

@@ -43,6 +43,8 @@ export const ROUTES = {
 
     // Writing System
     writingSystem: '/writing-system',
+    /** The block-script designer (roles, templates, layouts). */
+    writingSystemBlocks: '/writing-system/blocks',
 
     // Translator
     translator: '/translator',

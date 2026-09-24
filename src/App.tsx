@@ -8,9 +8,9 @@ import ConlangGuard from './components/pages/new-conlang/ConlangGuard.tsx';
 import { AppShell } from './components/shell';
 import LexiconMain from './components/tabs/lexicon/main.tsx';
 import GraphemeMain from './components/tabs/grapheme/main.tsx';
-import { WritingSystemPage } from './components/tabs/writingSystem';
+import { WritingSystemMain } from './components/tabs/writingSystem';
 import TranslatorMain from './components/tabs/translator/main.tsx';
-import { ConfirmDialogProvider, NotificationProvider } from './components/shared';
+import { ConfirmDialogProvider, NotFoundNotice, NotificationProvider } from './components/shared';
 import { ROUTES } from './url_mapping';
 
 function App() {
@@ -47,12 +47,13 @@ function App() {
                                     <Routes> — hence the trailing `/*`. */}
                                 <Route path="lexicon/*" element={<LexiconMain />} />
                                 <Route path="script-maker/*" element={<GraphemeMain />} />
-                                <Route path="writing-system/*" element={<WritingSystemPage />} />
+                                <Route path="writing-system/*" element={<WritingSystemMain />} />
                                 <Route path="translator/*" element={<TranslatorMain />} />
                                 {/* Anything else inside the shell is a typo or a
-                                    stale bookmark: land on the lexicon rather
-                                    than on a blank panel. */}
-                                <Route path="*" element={<Navigate to={ROUTES.lexicon} replace />} />
+                                    stale bookmark: say so and offer the way to
+                                    the lexicon, rather than a blank panel or a
+                                    silent bounce to another page. */}
+                                <Route path="*" element={<NotFoundNotice backTo={ROUTES.lexicon} backLabel="Go to the lexicon" />} />
                             </Route>
                         </Routes>
                     </ConfirmDialogProvider>

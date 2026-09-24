@@ -35,10 +35,11 @@ import {
 import { getCurrentSettings, settingsApi } from '../api/settingsApi';
 import { withTransaction, TransactionRollbackFailed } from '../utils/transaction';
 import { rebuildClosureTable } from '../closureService';
+import { backfillDefaultVariants } from '../migrations/repair';
 import type { EtymologExportData, ExportTables, ImportReport, ProgressCallback } from './types';
 import { TABLE_INSERTION_ORDER, AUTOINCREMENT_TABLES } from './types';
 import { APP_VERSION, EXPORT_SCHEMA_VERSION } from '../../config/version';
-import { validateExportData, INSERTABLE_TABLES, type ValidatedExport } from './validateExport';
+import { validateExportData, INSERTABLE_TABLES, type ValidatedExport, type ValidatedRow } from './validateExport';
 
 const EXPECTED_TABLES: (keyof ExportTables)[] = TABLE_INSERTION_ORDER;
 
@@ -102,8 +103,9 @@ export function exportDataToJson(data: EtymologExportData): string {
  *
  * Checks, in order: JSON syntax, magic string, version (1..CURRENT), `tables`
  * object, every expected table key (with `lexicon_meanings`,
- * `lexicon_ancestry_closure`, `lexicon_folders`, `glyph_folders` and
- * `grapheme_folders` optional for older exports), each table is an array,
+ * `lexicon_ancestry_closure`, `lexicon_folders`, `glyph_folders`,
+ * `grapheme_folders`, `variant_groups`, `grapheme_variants` and
+ * `block_scheme` optional for older exports), each table is an array,
  * `settings` is an object. Row CONTENT is validated later by
  * `validateExportData()`.
  *
@@ -145,14 +147,18 @@ export function parseAndValidateJson(json: string): EtymologExportData {
         if (!(name in tables)) {
             // Optional for backward compatibility with older exports:
             // lexicon_meanings + closure (pre-v5/v6 exports), lexicon_folders
-            // (v1 exports, before nested folders existed), and glyph_folders /
-            // grapheme_folders (v1–v2 exports, before schema v8).
+            // (v1 exports, before nested folders existed), glyph_folders /
+            // grapheme_folders (v1–v2 exports, before schema v8), and the
+            // variant + block-scheme tables (v1–v3 exports, before schema v9).
             if (
                 name === 'lexicon_meanings' ||
                 name === 'lexicon_ancestry_closure' ||
                 name === 'lexicon_folders' ||
                 name === 'glyph_folders' ||
-                name === 'grapheme_folders'
+                name === 'grapheme_folders' ||
+                name === 'variant_groups' ||
+                name === 'grapheme_variants' ||
+                name === 'block_scheme'
             ) {
                 tables[name] = [];
                 continue;
@@ -170,24 +176,61 @@ export function parseAndValidateJson(json: string): EtymologExportData {
     return envelope as unknown as EtymologExportData;
 }
 
+/**
+ * The INSERT for one table. `grapheme_glyphs.variant_id` is the one column
+ * that may arrive NULL for a NOT NULL target (a v1–v3 envelope has no
+ * variants): it resolves to the row's grapheme's default variant, which
+ * `backfillDefaultVariants` has created by the time these rows go in.
+ */
+function insertStatement(
+    tableName: string,
+    columns: string[],
+): { sql: string; values: (row: ValidatedRow) => (string | number | null)[] } {
+    if (tableName === 'grapheme_glyphs') {
+        const placeholders = columns.map(col => col === 'variant_id'
+            ? 'COALESCE(?, (SELECT v.id FROM grapheme_variants v WHERE v.grapheme_id = ? AND v.is_default = 1))'
+            : '?').join(', ');
+        return {
+            sql: `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders})`,
+            values: row => columns.flatMap(col => (col === 'variant_id' ? [row[col], row.grapheme_id] : [row[col]])),
+        };
+    }
+    const placeholders = columns.map(() => '?').join(', ');
+    return {
+        sql: `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders})`,
+        values: row => columns.map(col => row[col]),
+    };
+}
+
+/**
+ * Insert every validated row. Returns how many default variants had to be
+ * created (for graphemes the file carried no variant for).
+ */
 function insertValidatedRows(
     db: ReturnType<typeof getDatabase>,
     validated: ValidatedExport,
     onProgress: ProgressCallback | undefined,
-): void {
+): number {
     const totalRows = INSERTABLE_TABLES.reduce((sum, t) => sum + validated.tables[t].length, 0);
     let insertedRows = 0;
+    let defaultVariantsCreated = 0;
 
     for (const tableName of INSERTABLE_TABLES) {
+        if (tableName === 'grapheme_glyphs') {
+            // graphemes + grapheme_variants are in: give every grapheme without
+            // a variant its default BEFORE the glyph rows that must name one.
+            // Runs even when the file has no glyph rows, so the invariant
+            // "every grapheme has a default variant" holds after any import.
+            defaultVariantsCreated += backfillDefaultVariants(db).created;
+        }
         const rows = validated.tables[tableName];
         if (rows.length === 0) continue;
         const columns = validated.columns[tableName];
-        const placeholders = columns.map(() => '?').join(', ');
-        const sql = `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders})`;
+        const { sql, values } = insertStatement(tableName, columns);
         const stmt = db.prepare(sql);
         try {
             for (const row of rows) {
-                stmt.run(columns.map(col => row[col]));
+                stmt.run(values(row));
                 insertedRows++;
                 if (insertedRows % 50 === 0 || insertedRows === totalRows) {
                     onProgress?.('import', 0.2 + 0.6 * (insertedRows / Math.max(totalRows, 1)), `Importing ${tableName}...`);
@@ -197,6 +240,7 @@ function insertValidatedRows(
             stmt.free();
         }
     }
+    return defaultVariantsCreated;
 }
 
 /** Old exports predate `lexicon_meanings`; derive rows from `lexicon.meaning`. */
@@ -251,6 +295,7 @@ export async function importExportData(data: EtymologExportData, onProgress?: Pr
     const snapshot = exportDatabaseBytes();
 
     let legacyMeanings = 0;
+    let defaultVariantsCreated = 0;
     try {
         withTransaction(db, () => {
             // Defer foreign-key enforcement to COMMIT for the whole import.
@@ -270,9 +315,14 @@ export async function importExportData(data: EtymologExportData, onProgress?: Pr
             db.run('PRAGMA defer_foreign_keys = ON');
             onProgress?.('import', 0.2, 'Clearing existing data...');
             clearAllTables(db);
-            insertValidatedRows(db, validated, onProgress);
+            defaultVariantsCreated = insertValidatedRows(db, validated, onProgress);
             onProgress?.('import', 0.85, 'Finalising...');
             legacyMeanings = backfillLegacyMeanings(db, validated);
+            // Every row is in: re-assert the variant invariants (a no-op after
+            // the pre-glyph backfill above, kept so the post-insert state is
+            // guaranteed by the same helper migration v9 and repair use).
+            const lateBackfill = backfillDefaultVariants(db);
+            defaultVariantsCreated += lateBackfill.created;
             fixAutoincrementSequences(db);
             rebuildClosureTable(db);
             const violations = countForeignKeyViolations(db);
@@ -302,6 +352,7 @@ export async function importExportData(data: EtymologExportData, onProgress?: Pr
         inserted: { ...validated.report.accepted, lexicon_ancestry_closure: 0 },
         pruned: { ...validated.report.pruned, lexicon_ancestry_closure: 0 },
         legacyMeaningsCreated: legacyMeanings,
+        defaultVariantsCreated,
         warnings: [...validated.report.warnings, ...settingsWarnings],
     };
     return report;

@@ -51,6 +51,11 @@ describe('ROUTES', () => {
         expect(resolveUrl(ROUTES.lexiconGenerate)).toBe('/lexicon/generate');
     });
 
+    it('declares the Blocks designer under the writing-system tab', () => {
+        expect(ROUTES.writingSystemBlocks).toBe('/writing-system/blocks');
+        expect(activeTabId(ROUTES.writingSystemBlocks)).toBe('writing-system');
+    });
+
     it('has no duplicate paths', () => {
         const values = Object.values(ROUTES);
         expect(new Set(values).size).toBe(values.length);

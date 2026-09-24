@@ -10,6 +10,7 @@ import BasicBody from 'cyber-components/layout/basic/body/body';
 
 import { TAB_ROUTES, activeTabId } from '../../url_mapping';
 import { useUnsavedChanges } from './unsavedChanges';
+import PageErrorBoundary from './PageErrorBoundary';
 import styles from './AppNav.module.scss';
 
 /**
@@ -47,7 +48,7 @@ export default function AppNav() {
                 toggle: tab.label,
                 content: (
                     <BasicBody className={styles.body}>
-                        <Outlet />
+                        <RoutedPage />
                     </BasicBody>
                 ),
             })),
@@ -76,5 +77,19 @@ export default function AppNav() {
                 panel: { className: classNames(tabContainerBorderStyle, styles.panel) },
             }}
         />
+    );
+}
+
+/**
+ * The routed page, inside an error boundary keyed on the pathname: a page that
+ * throws shows a recoverable notice in its place instead of blanking the app,
+ * and moving to another page clears it.
+ */
+function RoutedPage() {
+    const { pathname } = useLocation();
+    return (
+        <PageErrorBoundary resetKey={pathname}>
+            <Outlet />
+        </PageErrorBoundary>
     );
 }

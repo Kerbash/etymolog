@@ -15,6 +15,8 @@ import { createContext, useContext, useCallback } from 'react';
 import type { EtymologApi, EtymologSettings } from '../api';
 import type { DatabaseHealth } from '../database';
 import type { PersistenceState } from '../persistence';
+import type { BlockScheme } from '../../blocks/types';
+import { EMPTY_BLOCK_SCHEME } from '../../blocks/validate';
 
 import type {
     Glyph,
@@ -22,6 +24,7 @@ import type {
     GraphemeComplete,
     LexiconComplete,
     FolderRecord,
+    VariantGroup,
 } from '../types';
 
 // =============================================================================
@@ -30,7 +33,7 @@ import type {
 
 export interface RefreshError {
     /** Which slice failed to load */
-    slice: 'glyphs' | 'graphemes' | 'lexicon' | 'folders' | 'glyphFolders' | 'graphemeFolders';
+    slice: 'glyphs' | 'graphemes' | 'lexicon' | 'folders' | 'glyphFolders' | 'graphemeFolders' | 'variantGroups' | 'blockScheme';
     message: string;
     at: string;
 }
@@ -43,8 +46,15 @@ export interface EtymologData {
     glyphs: Glyph[];
     /** All glyphs with usage count */
     glyphsWithUsage: GlyphWithUsage[];
-    /** All graphemes with complete data (glyphs + phonemes) */
+    /** All graphemes with complete data (default-variant glyphs + phonemes + every variant) */
     graphemesComplete: GraphemeComplete[];
+    /**
+     * `graphemesComplete` indexed by id — rebuilt in the same state update, so
+     * the two can never disagree. Read-only by contract: never mutate it.
+     * Existing callers that build their own map keep working; new code should
+     * use this one.
+     */
+    graphemeMap: Map<number, GraphemeComplete>;
     /** All lexicon entries with complete data */
     lexiconComplete: LexiconComplete[];
     /** All nested lexicon folders (schema v7); the caller assembles the tree */
@@ -53,6 +63,13 @@ export interface EtymologData {
     glyphFolders: FolderRecord[];
     /** All nested grapheme folders (schema v8); the caller assembles the tree */
     graphemeFolders: FolderRecord[];
+    /** Script-level variant groups (schema v9), in the user's order */
+    variantGroups: VariantGroup[];
+    /**
+     * The script's block scheme (schema v9), validated. The empty, DISABLED
+     * scheme when none has been saved — renderers check `enabled`.
+     */
+    blockScheme: BlockScheme;
     glyphCount: number;
     graphemeCount: number;
     lexiconCount: number;
@@ -88,6 +105,8 @@ export interface EtymologContextValue {
     refreshFolders: () => void;
     refreshGlyphFolders: () => void;
     refreshGraphemeFolders: () => void;
+    refreshVariantGroups: () => void;
+    refreshBlockScheme: () => void;
     /**
      * Run `fn` with the per-mutation refreshes COALESCED into one per slice.
      *
@@ -123,6 +142,9 @@ export const EMPTY_DATA: EtymologData = {
     folders: [],
     glyphFolders: [],
     graphemeFolders: [],
+    variantGroups: [],
+    blockScheme: EMPTY_BLOCK_SCHEME,
+    graphemeMap: new Map(),
     glyphCount: 0,
     graphemeCount: 0,
     lexiconCount: 0,

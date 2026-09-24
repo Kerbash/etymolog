@@ -45,6 +45,7 @@ import {
     type EtymologData,
     type RefreshError,
 } from './etymologContext';
+import { BlockRenderingContext, type BlockRenderingValue } from './useOptionalBlockScheme';
 
 // =============================================================================
 // PROVIDER COMPONENT
@@ -55,10 +56,10 @@ interface EtymologProviderProps {
 }
 
 type AnyApiFn = (...args: never[]) => ApiResponse<unknown>;
-type Slice = 'glyphs' | 'graphemes' | 'lexicon' | 'folders' | 'glyphFolders' | 'graphemeFolders';
+type Slice = 'glyphs' | 'graphemes' | 'lexicon' | 'folders' | 'glyphFolders' | 'graphemeFolders' | 'variantGroups' | 'blockScheme';
 
 /** The one order refreshes ever run in, wherever they are triggered from. */
-const SLICE_ORDER: readonly Slice[] = ['glyphs', 'graphemes', 'lexicon', 'folders', 'glyphFolders', 'graphemeFolders'];
+const SLICE_ORDER: readonly Slice[] = ['glyphs', 'graphemes', 'lexicon', 'folders', 'glyphFolders', 'graphemeFolders', 'variantGroups', 'blockScheme'];
 
 /**
  * EtymologProvider
@@ -145,9 +146,12 @@ export function EtymologProvider({ children }: EtymologProviderProps) {
         if (!isReadyRef.current) return;
         const response = etymologApi.grapheme.getAllComplete();
         if (!response.success) return recordFailure('graphemes', response);
+        const graphemesComplete = response.data?.graphemes ?? [];
         setData(prev => ({
             ...prev,
-            graphemesComplete: response.data?.graphemes ?? [],
+            graphemesComplete,
+            // Built HERE, in the same update, so the index can never lag the list.
+            graphemeMap: new Map(graphemesComplete.map(grapheme => [grapheme.id, grapheme])),
             graphemeCount: response.data?.total ?? 0,
             lastRefreshError: clearFailure(prev, 'graphemes'),
         }));
@@ -198,6 +202,29 @@ export function EtymologProvider({ children }: EtymologProviderProps) {
         }));
     }, [recordFailure]);
 
+    const refreshVariantGroups = useCallback(() => {
+        if (!isReadyRef.current) return;
+        const response = etymologApi.variantGroup.getAll();
+        if (!response.success) return recordFailure('variantGroups', response);
+        setData(prev => ({
+            ...prev,
+            variantGroups: response.data?.groups ?? [],
+            lastRefreshError: clearFailure(prev, 'variantGroups'),
+        }));
+    }, [recordFailure]);
+
+    const refreshBlockScheme = useCallback(() => {
+        if (!isReadyRef.current) return;
+        const response = etymologApi.blockScheme.get();
+        if (!response.success || !response.data) return recordFailure('blockScheme', response);
+        const blockScheme = response.data;
+        setData(prev => ({
+            ...prev,
+            blockScheme,
+            lastRefreshError: clearFailure(prev, 'blockScheme'),
+        }));
+    }, [recordFailure]);
+
     const refresh = useCallback(() => {
         refreshGlyphs();
         refreshGraphemes();
@@ -205,7 +232,9 @@ export function EtymologProvider({ children }: EtymologProviderProps) {
         refreshFolders();
         refreshGlyphFolders();
         refreshGraphemeFolders();
-    }, [refreshGlyphs, refreshGraphemes, refreshLexicon, refreshFolders, refreshGlyphFolders, refreshGraphemeFolders]);
+        refreshVariantGroups();
+        refreshBlockScheme();
+    }, [refreshGlyphs, refreshGraphemes, refreshLexicon, refreshFolders, refreshGlyphFolders, refreshGraphemeFolders, refreshVariantGroups, refreshBlockScheme]);
 
     // Load data when database becomes ready
     useEffect(() => {
@@ -239,8 +268,10 @@ export function EtymologProvider({ children }: EtymologProviderProps) {
         else if (slice === 'folders') refreshFolders();
         else if (slice === 'glyphFolders') refreshGlyphFolders();
         else if (slice === 'graphemeFolders') refreshGraphemeFolders();
+        else if (slice === 'variantGroups') refreshVariantGroups();
+        else if (slice === 'blockScheme') refreshBlockScheme();
         else refreshLexicon();
-    }, [refreshGlyphs, refreshGraphemes, refreshLexicon, refreshFolders, refreshGlyphFolders, refreshGraphemeFolders]);
+    }, [refreshGlyphs, refreshGraphemes, refreshLexicon, refreshFolders, refreshGlyphFolders, refreshGraphemeFolders, refreshVariantGroups, refreshBlockScheme]);
 
     const batchMutations = useCallback(<T,>(fn: () => T): T => {
         batchDepth.current += 1;
@@ -263,9 +294,11 @@ export function EtymologProvider({ children }: EtymologProviderProps) {
                 if (slices.has('folders')) refreshFolders();
                 if (slices.has('glyphFolders')) refreshGlyphFolders();
                 if (slices.has('graphemeFolders')) refreshGraphemeFolders();
+                if (slices.has('variantGroups')) refreshVariantGroups();
+                if (slices.has('blockScheme')) refreshBlockScheme();
             }
         }
-    }, [refreshGlyphs, refreshGraphemes, refreshLexicon, refreshFolders, refreshGlyphFolders, refreshGraphemeFolders]);
+    }, [refreshGlyphs, refreshGraphemes, refreshLexicon, refreshFolders, refreshGlyphFolders, refreshGraphemeFolders, refreshVariantGroups, refreshBlockScheme]);
 
     // Wrapped API: every mutation refreshes the slices it can have changed.
     const wrappedApi = useMemo((): EtymologApi => {
@@ -284,11 +317,12 @@ export function EtymologProvider({ children }: EtymologProviderProps) {
             }) as T;
         };
         const afterAll = <T extends AnyApiFn>(fn: T): T => after(fn, 'glyphs', 'graphemes', 'lexicon');
-        // A whole-database operation (clear / reset) wipes the folder tables too,
-        // so it must refresh the three folder slices as well — otherwise a cleared
-        // or reset database leaves a stale folder tree on screen until a reload.
+        // A whole-database operation (clear / reset) wipes the folder,
+        // variant-group and block-scheme tables too, so it must refresh those
+        // slices as well — otherwise a cleared or reset database leaves a stale
+        // folder tree (or group list, or scheme) on screen until a reload.
         const afterAllWithFolders = <T extends AnyApiFn>(fn: T): T =>
-            after(fn, 'glyphs', 'graphemes', 'lexicon', 'folders', 'glyphFolders', 'graphemeFolders');
+            after(fn, 'glyphs', 'graphemes', 'lexicon', 'folders', 'glyphFolders', 'graphemeFolders', 'variantGroups', 'blockScheme');
 
         return {
             glyph: {
@@ -405,6 +439,32 @@ export function EtymologProvider({ children }: EtymologProviderProps) {
                 delete: after(etymologApi.graphemeFolder.delete, 'graphemeFolders', 'graphemes'),
                 setItemFolder: after(etymologApi.graphemeFolder.setItemFolder, 'graphemes'),
             },
+            // Variant groups (schema v9). Deleting a group ungroups its variants,
+            // which live inside graphemesComplete, so that one re-reads graphemes.
+            variantGroup: {
+                ...etymologApi.variantGroup,
+                create: after(etymologApi.variantGroup.create, 'variantGroups'),
+                update: after(etymologApi.variantGroup.update, 'variantGroups'),
+                delete: after(etymologApi.variantGroup.delete, 'variantGroups', 'graphemes'),
+            },
+            // Variants ride inside graphemesComplete. Glyph edits and deletes may
+            // (with autoManageGlyphs) remove orphaned glyphs; a delete also strips
+            // pins from words, so it re-reads the lexicon.
+            variant: {
+                ...etymologApi.variant,
+                create: after(etymologApi.variant.create, 'graphemes'),
+                update: after(etymologApi.variant.update, 'graphemes'),
+                setGlyphs: after(etymologApi.variant.setGlyphs, 'graphemes', 'glyphs'),
+                setDefault: after(etymologApi.variant.setDefault, 'graphemes'),
+                delete: after(etymologApi.variant.delete, 'graphemes', 'glyphs', 'lexicon'),
+            },
+            // The block scheme (schema v9) is its own slice; saving it changes
+            // no grapheme or word row — only how words are drawn. `validate`
+            // writes nothing and is passed through unwrapped.
+            blockScheme: {
+                ...etymologApi.blockScheme,
+                save: after(etymologApi.blockScheme.save, 'blockScheme'),
+            },
         };
     }, [refresh, requestRefresh]);
 
@@ -424,12 +484,25 @@ export function EtymologProvider({ children }: EtymologProviderProps) {
         refreshFolders,
         refreshGlyphFolders,
         refreshGraphemeFolders,
+        refreshVariantGroups,
+        refreshBlockScheme,
         batchMutations,
-    }), [wrappedApi, data, settings, persistence, health, isLoading, isReady, error, refresh, refreshGlyphs, refreshGraphemes, refreshLexicon, refreshFolders, refreshGlyphFolders, refreshGraphemeFolders, batchMutations]);
+    }), [wrappedApi, data, settings, persistence, health, isLoading, isReady, error, refresh, refreshGlyphs, refreshGraphemes, refreshLexicon, refreshFolders, refreshGlyphFolders, refreshGraphemeFolders, refreshVariantGroups, refreshBlockScheme, batchMutations]);
+
+    // The narrow value block renderers subscribe to (see useOptionalBlockScheme):
+    // it changes only when the scheme or the graphemes do, so a word or folder
+    // refresh does not re-render every spelling display on screen. The two
+    // fields are read out first — member expressions as memo dependencies
+    // defeat the React compiler (pitfall P8).
+    const blockScheme = data.blockScheme;
+    const graphemeMap = data.graphemeMap;
+    const blockRenderingValue = useMemo((): BlockRenderingValue => ({ blockScheme, graphemeMap }), [blockScheme, graphemeMap]);
 
     return (
         <EtymologContext.Provider value={contextValue}>
-            {children}
+            <BlockRenderingContext.Provider value={blockRenderingValue}>
+                {children}
+            </BlockRenderingContext.Provider>
         </EtymologContext.Provider>
     );
 }

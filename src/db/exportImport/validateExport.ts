@@ -17,10 +17,26 @@
  *
  * `lexicon_ancestry_closure` is accepted but IGNORED: it is derived data and
  * is rebuilt from `lexicon_ancestry` after insertion.
+ *
+ * Variants (schema v9 / export v4): a v1–v3 envelope has no `grapheme_variants`
+ * and no `grapheme_glyphs.variant_id`; its glyph rows keep `variant_id = null`
+ * and are attached to a default variant created at insert time
+ * (`backfillDefaultVariants`). A v4 envelope is normalised here so the
+ * database's variant invariants cannot abort the insert: one default per
+ * grapheme, one variant per (grapheme, group), glyph rows on a variant of
+ * THEIR grapheme, no empty non-default variant, and no `@<variantId>` pin
+ * naming a variant its grapheme does not have.
  */
 
 import type { EtymologExportData, ExportTables } from './types';
-import { deserializeGlyphOrder, serializeGlyphOrder, extractGraphemeId } from '../utils/spellingUtils';
+import {
+    createGraphemeEntry,
+    deserializeGlyphOrder,
+    extractGraphemeId,
+    extractVariantId,
+    serializeGlyphOrder,
+} from '../utils/spellingUtils';
+import { formatSchemeIssues, parseBlockSchemeDefinition, serializeBlockScheme } from '../utils/blockSchemeCodec';
 
 /** What a dangling `"grapheme-<id>"` spelling entry becomes on import. */
 export const MISSING_GRAPHEME_PLACEHOLDER = '?';
@@ -53,10 +69,12 @@ type TableSpec = Record<string, ColumnSpec>;
 export type InsertableTable = Exclude<keyof ExportTables, 'lexicon_ancestry_closure'>;
 
 export const INSERTABLE_TABLES: readonly InsertableTable[] = [
+    'variant_groups',
     'glyph_folders',
     'glyphs',
     'grapheme_folders',
     'graphemes',
+    'grapheme_variants',
     'grapheme_glyphs',
     'phonemes',
     'lexicon_folders',
@@ -64,6 +82,7 @@ export const INSERTABLE_TABLES: readonly InsertableTable[] = [
     'lexicon_spelling',
     'lexicon_meanings',
     'lexicon_ancestry',
+    'block_scheme',
 ];
 
 const NOW = "datetime('now')"; // marker: column omitted so SQLite applies its DEFAULT
@@ -80,6 +99,14 @@ const FOLDER_TABLE_SPEC: TableSpec = {
 };
 
 const TABLE_SPECS: Record<InsertableTable, TableSpec> = {
+    // Schema v9; absent (→ []) in a v1–v3 envelope.
+    variant_groups: {
+        id: { type: 'id' },
+        name: { type: 'text' },
+        sort_order: { type: 'int', default: 0 },
+        created_at: { type: 'text', default: NOW },
+        updated_at: { type: 'text', default: NOW },
+    },
     glyph_folders: FOLDER_TABLE_SPEC,
     glyphs: {
         id: { type: 'id' },
@@ -103,9 +130,22 @@ const TABLE_SPECS: Record<InsertableTable, TableSpec> = {
         created_at: { type: 'text', default: NOW },
         updated_at: { type: 'text', default: NOW },
     },
+    // Schema v9; absent (→ []) in a v1–v3 envelope.
+    grapheme_variants: {
+        id: { type: 'id' },
+        grapheme_id: { type: 'int' },
+        group_id: { type: 'int?', default: null },
+        name: { type: 'text' },
+        is_default: { type: 'bool', default: 0 },
+        sort_order: { type: 'int', default: 0 },
+        created_at: { type: 'text', default: NOW },
+        updated_at: { type: 'text', default: NOW },
+    },
     grapheme_glyphs: {
         id: { type: 'id' },
         grapheme_id: { type: 'int' },
+        // Absent (null) in a v1–v3 envelope → attached to the default at insert.
+        variant_id: { type: 'int?', default: null },
         glyph_id: { type: 'int' },
         position: { type: 'int', default: 0 },
         transform: { type: 'text?', default: null },
@@ -163,10 +203,18 @@ const TABLE_SPECS: Record<InsertableTable, TableSpec> = {
         position: { type: 'int', default: 0 },
         ancestry_type: { type: 'text', default: 'derived' },
     },
+    // Schema v9; at most one row, `id = 1` (a CHECK in the DDL). The
+    // `definition` JSON is validated by the block-scheme layer, not here.
+    block_scheme: {
+        id: { type: 'int' },
+        definition: { type: 'text' },
+        updated_at: { type: 'text', default: NOW },
+    },
 };
 
 /** child table → [column, parent table] pairs that must resolve. */
 const REFERENCES: Partial<Record<InsertableTable, [string, InsertableTable][]>> = {
+    grapheme_variants: [['grapheme_id', 'graphemes']],
     grapheme_glyphs: [['grapheme_id', 'graphemes'], ['glyph_id', 'glyphs']],
     phonemes: [['grapheme_id', 'graphemes']],
     lexicon_spelling: [['lexicon_id', 'lexicon'], ['grapheme_id', 'graphemes']],
@@ -374,32 +422,80 @@ export function validateExportData(data: EtymologExportData): ValidatedExport {
     coerceFolderDomain('glyph_folders', 'glyphs', 'glyph');
     coerceFolderDomain('grapheme_folders', 'graphemes', 'grapheme');
 
+    const variantOwner = normaliseVariants(tables, pruned, warnings);
+    accepted.grapheme_variants = tables.grapheme_variants.length;
+    accepted.grapheme_glyphs = tables.grapheme_glyphs.length;
+
+    // block_scheme is a single-row table (`CHECK (id = 1)`): anything else
+    // would abort the insert, so it is dropped here.
+    const schemeRows = tables.block_scheme;
+    tables.block_scheme = schemeRows.filter(row => row.id === 1);
+    if (tables.block_scheme.length !== schemeRows.length) {
+        pruned.block_scheme += schemeRows.length - tables.block_scheme.length;
+        warnings.push(`${schemeRows.length - tables.block_scheme.length} block_scheme row(s) with an id other than 1 were dropped`);
+    }
+    // The surviving row's `definition` is a JSON document no column type can
+    // police. Run it through the block-scheme validator and store the
+    // CANONICAL form: a corrupt or hand-edited document imports as whatever
+    // the validator makes of it (the empty scheme at worst) with a warning —
+    // it never fails the import, and it never lands in the database unvalidated.
+    for (const row of tables.block_scheme) {
+        const { scheme, issues } = parseBlockSchemeDefinition(String(row.definition ?? ''));
+        row.definition = serializeBlockScheme(scheme);
+        if (issues.length > 0) {
+            const shown = formatSchemeIssues(issues.slice(0, 3)).join('; ');
+            const more = issues.length > 3 ? ` (+${issues.length - 3} more)` : '';
+            warnings.push(`The block scheme needed ${issues.length} correction(s) and was imported as corrected: ${shown}${more}`);
+        }
+    }
+    accepted.block_scheme = tables.block_scheme.length;
+
     // `lexicon.glyph_order` is a JSON column, so no foreign key can see inside
     // it. Resolve every "grapheme-<id>" entry against the graphemes that are
     // actually being imported; a dangling one becomes the placeholder and the
     // word is flagged for review. Left alone, the word would render as "[?N]"
     // and then become UNEDITABLE: the first update re-syncs lexicon_spelling,
     // whose FK to graphemes fails, and the whole save rolls back.
+    //
+    // A `grapheme-<id>@<variantId>` pin naming a variant that is not one of
+    // that grapheme's (after the normalisation above) loses only its pin: the
+    // word still names the right sign, so it is NOT flagged.
     let repairedWords = 0;
     let repairedEntries = 0;
+    let strippedPins = 0;
     for (const row of tables.lexicon) {
         const order = deserializeGlyphOrder(row.glyph_order as string);
         let changed = 0;
+        let pinsChanged = 0;
         const repaired = order.map(entry => {
             const graphemeId = extractGraphemeId(entry);
-            if (graphemeId === null || ids.graphemes!.has(graphemeId)) return entry;
-            changed++;
-            return MISSING_GRAPHEME_PLACEHOLDER;
+            if (graphemeId === null) return entry;
+            if (!ids.graphemes!.has(graphemeId)) {
+                changed++;
+                return MISSING_GRAPHEME_PLACEHOLDER;
+            }
+            const variantId = extractVariantId(entry);
+            if (variantId !== null && variantOwner.get(variantId) !== graphemeId) {
+                pinsChanged++;
+                return createGraphemeEntry(graphemeId);
+            }
+            return entry;
         });
-        if (changed > 0) {
+        if (changed > 0 || pinsChanged > 0) {
             row.glyph_order = serializeGlyphOrder(repaired);
+        }
+        if (changed > 0) {
             row.needs_attention = 1;
             repairedWords++;
             repairedEntries += changed;
         }
+        strippedPins += pinsChanged;
     }
     if (repairedWords > 0) {
         warnings.push(`${repairedWords} word(s) spelled with ${repairedEntries} missing grapheme(s); those entries were replaced with "${MISSING_GRAPHEME_PLACEHOLDER}" and the words flagged for review`);
+    }
+    if (strippedPins > 0) {
+        warnings.push(`${strippedPins} spelling pin(s) named a form their grapheme does not have; those entries now use the automatic form`);
     }
 
     // A grapheme with zero glyphs after pruning would violate the creation
@@ -411,4 +507,104 @@ export function validateExportData(data: EtymologExportData): ValidatedExport {
     }
 
     return { tables, columns, report: { accepted, pruned, warnings } };
+}
+
+/**
+ * Bring `grapheme_variants` / `grapheme_glyphs` rows in line with the
+ * schema-v9 invariants, in place (see the module comment). Parents were
+ * already pruned by the REFERENCES pass. Returns variant id → grapheme id of
+ * the surviving variants, for the pin check.
+ */
+function normaliseVariants(
+    tables: Record<InsertableTable, ValidatedRow[]>,
+    pruned: Record<InsertableTable, number>,
+    warnings: string[],
+): Map<number, number> {
+    const groupIds = new Set(tables.variant_groups.map(row => row.id as number));
+    let clearedGroups = 0;
+    let demotedDefaults = 0;
+    let promotedDefaults = 0;
+
+    // Per-grapheme lists in (sort_order, id) order, so "the first variant" is
+    // the same one `backfillDefaultVariants` would promote.
+    const byGrapheme = new Map<number, ValidatedRow[]>();
+    for (const row of [...tables.grapheme_variants].sort(
+        (a, b) => (a.sort_order as number) - (b.sort_order as number) || (a.id as number) - (b.id as number),
+    )) {
+        // A dangling group becomes "no group", like a dangling folder.
+        if (row.group_id !== null && !groupIds.has(row.group_id as number)) {
+            row.group_id = null;
+            clearedGroups++;
+        }
+        const list = byGrapheme.get(row.grapheme_id as number);
+        if (list) list.push(row);
+        else byGrapheme.set(row.grapheme_id as number, [row]);
+    }
+
+    const defaultOf = new Map<number, number>();
+    for (const [graphemeId, variants] of byGrapheme) {
+        // Exactly one default: the first flagged one wins, others are demoted;
+        // none flagged → the first variant is promoted.
+        const flagged = variants.filter(v => v.is_default === 1);
+        const chosen = flagged[0] ?? variants[0];
+        if (flagged.length === 0) promotedDefaults++;
+        demotedDefaults += Math.max(0, flagged.length - 1);
+        for (const v of variants) v.is_default = v === chosen ? 1 : 0;
+        defaultOf.set(graphemeId, chosen.id as number);
+
+        // At most one variant per (grapheme, group): later duplicates are ungrouped.
+        const seenGroups = new Set<number>();
+        for (const v of variants) {
+            if (v.group_id === null) continue;
+            if (seenGroups.has(v.group_id as number)) {
+                v.group_id = null;
+                clearedGroups++;
+            } else {
+                seenGroups.add(v.group_id as number);
+            }
+        }
+    }
+
+    // Glyph rows: attach null rows of a grapheme that HAS variants to its
+    // default here (a grapheme with none gets its default at insert time),
+    // and drop rows naming a missing variant or another grapheme's. A
+    // duplicate (variant_id, glyph_id, position) slot is deliberately NOT
+    // repaired: it violates the table's UNIQUE and fails the import cleanly
+    // (rolled back), exactly like a duplicate slot did before variants.
+    const variantOwner = new Map(tables.grapheme_variants.map(v => [v.id as number, v.grapheme_id as number]));
+    let droppedGlyphRows = 0;
+    tables.grapheme_glyphs = tables.grapheme_glyphs.filter(row => {
+        const graphemeId = row.grapheme_id as number;
+        if (row.variant_id === null && defaultOf.has(graphemeId)) {
+            row.variant_id = defaultOf.get(graphemeId)!;
+        }
+        if (row.variant_id !== null && variantOwner.get(row.variant_id as number) !== graphemeId) {
+            droppedGlyphRows++;
+            return false;
+        }
+        return true;
+    });
+    if (droppedGlyphRows > 0) {
+        pruned.grapheme_glyphs += droppedGlyphRows;
+        warnings.push(`${droppedGlyphRows} grapheme_glyphs row(s) named a missing form (or another grapheme's) and were dropped`);
+    }
+
+    // "Every variant has ≥ 1 glyph": an empty NON-default variant is dropped.
+    const glyphedVariants = new Set(tables.grapheme_glyphs.map(row => row.variant_id as number | null));
+    const before = tables.grapheme_variants.length;
+    tables.grapheme_variants = tables.grapheme_variants.filter(v => v.is_default === 1 || glyphedVariants.has(v.id as number));
+    const emptyDropped = before - tables.grapheme_variants.length;
+    if (emptyDropped > 0) {
+        pruned.grapheme_variants += emptyDropped;
+        warnings.push(`${emptyDropped} grapheme form(s) had no glyphs and were dropped`);
+    }
+
+    if (clearedGroups > 0) {
+        warnings.push(`${clearedGroups} grapheme form(s) referenced a missing or already-used variant group and were ungrouped`);
+    }
+    if (demotedDefaults > 0 || promotedDefaults > 0) {
+        warnings.push(`${demotedDefaults + promotedDefaults} grapheme(s) did not have exactly one default form; the first form was made the default`);
+    }
+
+    return new Map(tables.grapheme_variants.map(v => [v.id as number, v.grapheme_id as number]));
 }

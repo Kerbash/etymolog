@@ -43,14 +43,18 @@ import type { WritingSystemSettings } from '../../../db/api/types';
 import { getRuleCategories, getRulesByCategory, validateWritingSystem } from '../../../rules';
 import { PageHeader, useApiAction } from '../../shared';
 
+import { INLINE_BANNER_PARTS } from './inlineBanner';
 import styles from './writingSystem.module.scss';
 
 export default function WritingSystemPage() {
-    const { api, settings } = useEtymolog();
+    const { api, data, settings } = useEtymolog();
     const runApiAction = useApiAction();
     const idPrefix = useId();
 
     const writingSystem = settings.writingSystem;
+    // Read out first (P8): the SAVED scheme, for the "blocks on, no
+    // templates" warning. The Blocks page checks its own draft.
+    const blockScheme = data.blockScheme;
 
     const handleChange = useCallback(
         (key: keyof WritingSystemSettings, value: string) => {
@@ -71,7 +75,10 @@ export default function WritingSystemPage() {
     // Re-evaluated on every change, because that is when a combination becomes
     // contradictory — a warning that only appears on load is a warning nobody
     // sees at the moment they cause the problem.
-    const warnings = useMemo(() => validateWritingSystem(writingSystem), [writingSystem]);
+    const warnings = useMemo(
+        () => validateWritingSystem(writingSystem, blockScheme),
+        [writingSystem, blockScheme],
+    );
 
     const categories = useMemo(() => getRuleCategories(), []);
 
@@ -87,23 +94,9 @@ export default function WritingSystemPage() {
                     key={warning.keys.join('-')}
                     visible
                     severity="warning"
-                    title="These rules contradict each other"
+                    title={warning.title}
                     message={warning.message}
-                    // The banner is `position: fixed` by default (it is normally
-                    // a toast). An INLINE warning has to sit with the rules it
-                    // is about, and an inline style is the only override that
-                    // reliably beats the component's own stylesheet — a class
-                    // would depend on bundle order for equal specificity.
-                    parts={{
-                        root: {
-                            style: {
-                                position: 'static',
-                                maxWidth: '100%',
-                                marginInline: 0,
-                                width: '100%',
-                            },
-                        },
-                    }}
+                    parts={INLINE_BANNER_PARTS}
                 />
             ))}
 

@@ -30,7 +30,7 @@
  */
 
 import { getAutoSpellingPhonemes } from './graphemeService';
-import type { Phoneme, CreateLexiconSpellingInput, AutoSpellResultExtended, AutoSpellEntry } from './types';
+import type { Phoneme, CreateLexiconSpellingInput, AutoSpellResultExtended, AutoSpellEntry, GraphemeComplete } from './types';
 import { createVirtualGlyph, generateVirtualGlyphId } from '../components/form/customInput/glyphCanvasInput/utils';
 // The fallback's unit of "one thing I could not spell" is a SOUND, and the one
 // definition of what a sound is lives in the generator's tokenizer. The db
@@ -601,6 +601,25 @@ export function getAvailablePhonemeMap(): PhonemeMapping[] {
  */
 export function buildAutoSpellMappings(): PhonemeMapping[] {
     return buildPhonemeMap(getAutoSpellingPhonemes());
+}
+
+/**
+ * The same phoneme → grapheme map `buildAutoSpellMappings` reads from the
+ * database, built from graphemes already in memory (the provider's
+ * `graphemesComplete`) — for renderers that spell previews without touching
+ * the database. Phonemes are taken in the database query's order
+ * (`grapheme_id`, then phoneme `id`), so the two agree on which grapheme wins
+ * a shared phoneme.
+ */
+export function autoSpellMappingsFromGraphemes(graphemes: Iterable<Pick<GraphemeComplete, 'phonemes'>>): PhonemeMapping[] {
+    const phonemes: Phoneme[] = [];
+    for (const grapheme of graphemes) {
+        for (const phoneme of grapheme.phonemes) {
+            if (phoneme.use_in_auto_spelling) phonemes.push(phoneme);
+        }
+    }
+    phonemes.sort((a, b) => a.grapheme_id - b.grapheme_id || a.id - b.id);
+    return buildPhonemeMap(phonemes);
 }
 
 /**

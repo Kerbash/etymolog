@@ -28,6 +28,12 @@ import { databaseApi } from '../api/databaseApi';
 
 const ZERO_REPORT: RepairReport = {
     graphemeGlyphsPruned: 0,
+    graphemeVariantsPruned: 0,
+    variantGroupRefsCleared: 0,
+    defaultVariantsCreated: 0,
+    defaultVariantsPromoted: 0,
+    glyphRowsAttachedToDefault: 0,
+    variantPinsStripped: 0,
     phonemesPruned: 0,
     lexiconSpellingPruned: 0,
     lexiconMeaningsPruned: 0,
@@ -51,7 +57,9 @@ function count(db: Database, table: string): number {
 function seedConsistent(db: Database): void {
     db.run(`INSERT INTO glyphs (id, name, svg_data) VALUES (1, 'g1', '<svg/>'), (2, 'g2', '<svg/>')`);
     db.run(`INSERT INTO graphemes (id, name) VALUES (1, 'A'), (2, 'B')`);
-    db.run(`INSERT INTO grapheme_glyphs (grapheme_id, glyph_id, position) VALUES (1, 1, 0), (2, 2, 0)`);
+    // Schema v9: every grapheme has a default variant (ids 1, 2) holding its glyphs.
+    db.run(`INSERT INTO grapheme_variants (id, grapheme_id, name, is_default) VALUES (1, 1, 'Default', 1), (2, 2, 'Default', 1)`);
+    db.run(`INSERT INTO grapheme_glyphs (grapheme_id, variant_id, glyph_id, position) VALUES (1, 1, 1, 0), (2, 2, 2, 0)`);
     db.run(`INSERT INTO phonemes (grapheme_id, phoneme) VALUES (1, 'a'), (2, 'b')`);
     db.run(`INSERT INTO lexicon (id, lemma, glyph_order) VALUES (1, 'a', '["grapheme-1"]'), (2, 'ab', '["grapheme-1","grapheme-2"]')`);
     db.run(`INSERT INTO lexicon_spelling (lexicon_id, grapheme_id, position) VALUES (1, 1, 0), (2, 1, 0), (2, 2, 1)`);
@@ -64,8 +72,8 @@ function seedConsistent(db: Database): void {
 function seedOrphans(db: Database): void {
     db.run('PRAGMA foreign_keys = OFF');
     try {
-        db.run(`INSERT INTO grapheme_glyphs (grapheme_id, glyph_id, position) VALUES (999, 1, 0)`); // missing grapheme
-        db.run(`INSERT INTO grapheme_glyphs (grapheme_id, glyph_id, position) VALUES (1, 999, 5)`); // missing glyph
+        db.run(`INSERT INTO grapheme_glyphs (grapheme_id, variant_id, glyph_id, position) VALUES (999, 999, 1, 0)`); // missing grapheme
+        db.run(`INSERT INTO grapheme_glyphs (grapheme_id, variant_id, glyph_id, position) VALUES (1, 1, 999, 5)`); // missing glyph
         db.run(`INSERT INTO phonemes (grapheme_id, phoneme) VALUES (999, 'x')`);
         db.run(`INSERT INTO lexicon_spelling (lexicon_id, grapheme_id, position) VALUES (999, 1, 0)`); // missing word
         db.run(`INSERT INTO lexicon_spelling (lexicon_id, grapheme_id, position) VALUES (1, 999, 7)`); // missing grapheme
@@ -111,6 +119,7 @@ describe('repairOrphans on the live database', () => {
         const report = withTransaction(db, () => repairOrphans(db));
 
         expect(report).toEqual<RepairReport>({
+            ...ZERO_REPORT,
             graphemeGlyphsPruned: 2,
             phonemesPruned: 1,
             lexiconSpellingPruned: 2,
@@ -207,5 +216,107 @@ describe('databaseApi.repair / getStatus', () => {
         expect(status.data?.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
         expect(status.data?.initialized).toBe(true);
         expect(status.data?.glyphCount).toBe(2);
+    });
+});
+
+describe('repairOrphans — schema-v9 variant invariants', () => {
+    beforeAll(async () => {
+        await initDatabase();
+    });
+
+    beforeEach(() => {
+        clearDatabase();
+        seedConsistent(getDatabase());
+    });
+
+    /** Run `fn` with foreign keys off (the FK-off era / a corrupt file). */
+    function withFksOff(db: Database, fn: () => void): void {
+        db.run('PRAGMA foreign_keys = OFF');
+        try {
+            fn();
+        } finally {
+            db.run('PRAGMA foreign_keys = ON');
+        }
+    }
+
+    it('prunes variants of a missing grapheme and glyph rows on a missing or FOREIGN variant', () => {
+        const db = getDatabase();
+        withFksOff(db, () => {
+            db.run(`INSERT INTO grapheme_variants (id, grapheme_id, name, is_default) VALUES (50, 999, 'Ghost', 1)`);
+            db.run(`INSERT INTO grapheme_glyphs (grapheme_id, variant_id, glyph_id, position) VALUES (1, 777, 2, 3)`); // missing variant
+            db.run(`INSERT INTO grapheme_glyphs (grapheme_id, variant_id, glyph_id, position) VALUES (1, 2, 2, 4)`);   // grapheme 2's variant
+        });
+        const report = withTransaction(db, () => repairOrphans(db));
+        expect(report.graphemeVariantsPruned).toBe(1);
+        expect(report.graphemeGlyphsPruned).toBe(2);
+        expect(count(db, 'grapheme_variants')).toBe(2);
+        expect(count(db, 'grapheme_glyphs')).toBe(2);
+        expect(scalar(db, `
+            SELECT COUNT(*) FROM grapheme_glyphs gg
+            JOIN grapheme_variants v ON v.id = gg.variant_id AND v.grapheme_id = gg.grapheme_id
+        `)).toBe(2);
+        expect(countForeignKeyViolations(db)).toBe(0);
+    });
+
+    it('clears a dangling group reference to NULL instead of deleting the variant', () => {
+        const db = getDatabase();
+        withFksOff(db, () => {
+            db.run(`INSERT INTO grapheme_variants (id, grapheme_id, group_id, name, is_default) VALUES (10, 1, 404, 'Head', 0)`);
+            db.run(`INSERT INTO grapheme_glyphs (grapheme_id, variant_id, glyph_id, position) VALUES (1, 10, 1, 0)`);
+        });
+        const report = withTransaction(db, () => repairOrphans(db));
+        expect(report.variantGroupRefsCleared).toBe(1);
+        expect(scalar(db, 'SELECT group_id FROM grapheme_variants WHERE id = 10')).toBe(null);
+        expect(countForeignKeyViolations(db)).toBe(0);
+    });
+
+    it('deletes an EMPTY non-default variant and strips the pins naming it (word not flagged)', () => {
+        const db = getDatabase();
+        db.run(`INSERT INTO grapheme_variants (id, grapheme_id, name, is_default) VALUES (11, 1, 'Empty', 0)`);
+        db.run(`UPDATE lexicon SET glyph_order = '["grapheme-1@11","grapheme-2"]' WHERE id = 2`);
+        const report = withTransaction(db, () => repairOrphans(db));
+        expect(report.graphemeVariantsPruned).toBe(1);
+        expect(report.variantPinsStripped).toBe(1);
+        expect(report.lexiconEntriesFlagged).toBe(0);
+        expect(scalar(db, 'SELECT COUNT(*) FROM grapheme_variants WHERE id = 11')).toBe(0);
+        expect(scalar(db, 'SELECT glyph_order FROM lexicon WHERE id = 2')).toBe('["grapheme-1","grapheme-2"]');
+        expect(scalar(db, 'SELECT needs_attention FROM lexicon WHERE id = 2')).toBe(0);
+        // The derived index is unchanged in content.
+        expect(db.exec('SELECT grapheme_id, position FROM lexicon_spelling WHERE lexicon_id = 2 ORDER BY position')[0].values)
+            .toEqual([[1, 0], [2, 1]]);
+    });
+
+    it('strips a pin naming ANOTHER grapheme\'s variant but keeps a valid pin', () => {
+        const db = getDatabase();
+        db.run(`INSERT INTO grapheme_variants (id, grapheme_id, name, is_default) VALUES (12, 1, 'Alt', 0)`);
+        db.run(`INSERT INTO grapheme_glyphs (grapheme_id, variant_id, glyph_id, position) VALUES (1, 12, 2, 0)`);
+        // grapheme-2@12 names grapheme 1's variant; grapheme-1@12 is valid.
+        db.run(`UPDATE lexicon SET glyph_order = '["grapheme-1@12","grapheme-2@12"]' WHERE id = 2`);
+        const report = withTransaction(db, () => repairOrphans(db));
+        expect(report.variantPinsStripped).toBe(1);
+        expect(scalar(db, 'SELECT glyph_order FROM lexicon WHERE id = 2')).toBe('["grapheme-1@12","grapheme-2"]');
+    });
+
+    it('promotes the first variant when a grapheme has variants but no default', () => {
+        const db = getDatabase();
+        db.run(`INSERT INTO grapheme_variants (id, grapheme_id, name, is_default, sort_order) VALUES (20, 2, 'Late', 0, 5), (21, 2, 'Early', 0, 1)`);
+        db.run(`INSERT INTO grapheme_glyphs (grapheme_id, variant_id, glyph_id, position) VALUES (2, 20, 1, 0), (2, 21, 1, 0)`);
+        db.run('UPDATE grapheme_variants SET is_default = 0 WHERE id = 2');
+        const report = withTransaction(db, () => repairOrphans(db));
+        expect(report.defaultVariantsPromoted).toBe(1);
+        expect(report.defaultVariantsCreated).toBe(0);
+        // Old default (sort_order 0) is first in (sort_order, id) order.
+        expect(scalar(db, 'SELECT id FROM grapheme_variants WHERE grapheme_id = 2 AND is_default = 1')).toBe(2);
+    });
+
+    it('creates a Default variant for a grapheme that has none at all', () => {
+        const db = getDatabase();
+        db.run(`INSERT INTO graphemes (id, name) VALUES (3, 'C')`);
+        const report = withTransaction(db, () => repairOrphans(db));
+        expect(report.defaultVariantsCreated).toBe(1);
+        expect(db.exec('SELECT name, is_default, sort_order FROM grapheme_variants WHERE grapheme_id = 3')[0].values)
+            .toEqual([['Default', 1, 0]]);
+        // …and is idempotent afterwards.
+        expect(withTransaction(db, () => repairOrphans(db))).toEqual(ZERO_REPORT);
     });
 });

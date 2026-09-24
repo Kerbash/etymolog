@@ -15,6 +15,7 @@ A comprehensive form input component for selecting and displaying ordered glyph 
   - [Writing Directions](#writing-directions)
   - [Virtual Glyph System](#virtual-glyph-system)
   - [Insertion Strategies](#insertion-strategies)
+  - [Blocks](#blocks)
 - [API Reference](#api-reference)
 - [Styling Guide](#styling-guide)
 - [Modification Guide](#modification-guide)
@@ -73,6 +74,8 @@ glyphCanvasInput/
 ├── GlyphCanvasInput.tsx           # Main orchestrator component
 ├── GlyphCanvas.tsx                # Canvas display with pan/zoom
 ├── GlyphKeyboardOverlay.tsx       # Glyph/IPA selection keyboard
+├── BlockPreviewStrip.tsx          # Block script: the composed word above the tiles
+├── BlockPopover.tsx               # Block script: per-block forms / split / join
 ├── types.ts                       # TypeScript type definitions
 ├── strategies.ts                  # Insertion/removal strategies
 │
@@ -80,11 +83,15 @@ glyphCanvasInput/
 │   ├── index.ts                   # Utility exports
 │   ├── layoutUtils.ts             # Glyph positioning calculations
 │   ├── graphemeUtils.ts           # Grapheme normalization
-│   └── virtualGlyphUtils.ts       # Virtual glyph generation
+│   ├── virtualGlyphUtils.ts       # Virtual glyph generation (IPA, space, boundary)
+│   ├── selectionModel.ts          # The entry list + pins, pin-carrying strategy ops
+│   └── blockUtils.ts              # Entries → blocks (segmentEntries), popover model
 │
 ├── GlyphCanvasInput.module.scss   # Main component styles
-├── GlyphCanvas.module.scss        # Canvas styles
-├── GlyphKeyboardOverlay.module.scss # Keyboard styles
+├── GlyphCanvas.module.scss        # Canvas styles (incl. outlines, boundary tile, pin dot)
+├── GlyphKeyboardOverlay.module.scss # Keyboard styles (incl. the Boundary key)
+├── BlockPreviewStrip.module.scss
+├── BlockPopover.module.scss
 └── README.md                      # This file
 ```
 
@@ -148,37 +155,36 @@ function MyForm() {
 
 ### With IPA Mode & Auto-Spell
 
+Auto-spell is a TOGGLE (the wand in the header), and while it is on the
+software owns the spelling: pass the derived spelling as `locked` and the canvas
+shows it read-only, greyed, with the notice on screen and every editing control
+disabled. A spelling written by the lock is not a user edit (it never dirties
+the form).
+
 ```tsx
 function LexiconForm() {
-    const [autoSpellPreview, setAutoSpellPreview] = useState(null);
-
-    const spellingField = registerField('spelling', { defaultValue: [] });
-    const pronunciationField = registerField('pronunciation', { defaultValue: '' });
-
-    const handleRequestAutoSpell = async () => {
-        const ipa = pronunciationField.value;
-        const result = await generateSpellingWithFallback(ipa);
-        setAutoSpellPreview(result);
-    };
+    const [autoSpell, setAutoSpell] = useState(true);
+    const derived = autoSpell ? deriveSpelling(pronunciation) : null; // SpellingEntry[] | null
 
     return (
-        <>
-            <input {...pronunciationField} placeholder="IPA Pronunciation" />
-
-            <GlyphCanvasInput
-                {...spellingField}
-                availableGlyphs={glyphs}
-                enableIpaMode={true}
-                autoSpellPreview={autoSpellPreview}
-                onRequestAutoSpell={handleRequestAutoSpell}
-                onSelectionChange={(ids) => {
-                    console.log('Spelling changed:', ids);
-                }}
-            />
-        </>
+        <GlyphCanvasInput
+            {...spellingField}
+            availableGlyphs={graphemes}
+            enableIpaMode={true}
+            autoSpell={{ enabled: autoSpell, onToggle: setAutoSpell }}
+            locked={autoSpell ? {
+                glyphOrder: derived,   // null = nothing to derive yet; the canvas keeps its spelling
+                message: 'Auto-spell is on: this spelling is generated from the pronunciation…',
+                tooltip: 'Disable auto-spell to modify the spelling',
+            } : null}
+        />
     );
 }
 ```
+
+`LexiconFormFields` is the reference consumer: it derives with the same speller
+`lexicon.create` / `lexicon.update` use on save, so the canvas shows exactly what
+will be stored.
 
 ---
 
@@ -199,7 +205,8 @@ function LexiconForm() {
 **State Management:**
 ```tsx
 const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
-const [selectedIds, setSelectedIds] = useState<number[]>(defaultValue);
+// One state: entry ids + the pinned variant of each (see "Blocks" → pins)
+const [selection, setSelection] = useState<CanvasSelection>(initialSelection);
 const transformRef = useRef<GlyphCanvasRef>(null);
 ```
 
@@ -733,6 +740,143 @@ const insertAtCursorStrategy: InsertionStrategy = {
 | **Rule-based** | Phonotactic constraints, syllable structure |
 | **Template** | Fixed slots, fill-in-the-blank patterns |
 
+### Blocks
+
+Block script (see `apps/etymolog/BLOCK_SCRIPT_PLAN.md`, Phase 6). Everything in
+this section is **off unless the script's block scheme is enabled**: the canvas
+reads the scheme and the grapheme index from `EtymologProvider` through
+`useOptionalBlockScheme()` / `useOptionalGraphemeMap()` (both `null` outside a
+provider), so no prop is threaded through `LexiconFormFields` and the canvas
+still mounts anywhere. With the scheme off (or no provider) none of the block
+UI mounts and a stored `.` renders as the ordinary IPA text tile, exactly as
+the display does with the scheme off.
+
+The canvas stays **entry-based**: one tile per `glyph_order` entry. Cursor,
+insert, backspace and clear behave exactly as without blocks.
+
+#### Outlines
+
+The canvas' current entries (built with `glyphOrderToDisplayEntries`, 1:1 with
+the tiles, resolved against the provider's grapheme map) are segmented with the
+engine's own `segmentEntries`. Every `block` segment gets a thin outline around
+its tiles' cells, coloured with the template's **first role's** `colour`
+(`var(--interactive-base)` when it has none), and a caption in a band above the
+tiles: the template name and a **Block…** button (the outline is clickable too).
+`single` / `passthrough` entries get no outline. Outlines speak *selection
+positions*, so an id missing from the glyph map never shifts them onto the wrong
+tiles (such a block is simply not outlined).
+
+#### Preview strip
+
+`BlockPreviewStrip` renders the current entries with the real
+`GlyphSpellingDisplay` (scheme and grapheme map from context) under the line
+"This is how the word renders everywhere else" — the composed blocks, slot
+variants, pins and boundaries, exactly as a card or the translator draws them.
+It is hidden when the scheme is off and stays visible under the auto-spell lock.
+
+#### Boundaries
+
+The explicit block break is the IPA syllable separator `.` (`BLOCK_BOUNDARY`).
+It is a real entry, a virtual glyph like the space:
+`createBoundaryGlyph()` / `isBoundaryGlyphName()` / `BOUNDARY_CHARACTER` in
+`utils/virtualGlyphUtils.ts`.
+
+```
+keyboard "· Boundary" key ─┐
+physical "." key ──────────┼─► handleSelect(BOUNDARY_GLYPH) ─► strategy.insert (at the cursor)
+popover "Split before X" ──┘   (split: insertAt(entryIndex))
+        │
+        ▼
+selection.ids gets the boundary's (negative) virtual id; the glyph is registered
+in the virtual-glyph map, so buildGlyphOrder serialises it as "."
+        │
+        ▼
+glyph_order  ["grapheme-1", "grapheme-2", ".", "grapheme-3"]
+        │
+        ▼
+canvas: a slim dashed bar with a "·" mark (tooltip "Block boundary"), never a
+text glyph; segmentEntries consumes it as a block break.
+```
+
+- The "·" **Boundary** key is shown only while the scheme is on. The shared
+  keyboard has no slot for extra keys, so it sits in its own row directly under
+  the Space / Backspace row.
+- The physical `.` key works while the keyboard is open (the same condition as
+  the physical Space), not while typing in the search box, not on key repeat
+  and not with Ctrl / Alt / Meta. Unlike Space it is allowed while a key button
+  has focus — `.` does not activate a button, so there is no double insert.
+- The auto-speller emits `.` for a `ka.ta` pronunciation, so a derived spelling
+  shown under the lock gets boundary tiles too.
+- While blocks are on, a boundary does not count as an "IPA fallback" for the
+  header's "(includes IPA)" hint and the IPA notice (it is not drawn as a dashed
+  IPA tile). The `onSelectionChange` `hasVirtualGlyphs` flag is unchanged.
+- **Join** (`‿`, `BLOCK_JOIN`) is the mirror of the boundary: it keeps the signs
+  on both sides in ONE block (`createJoinGlyph()` / `isJoinGlyphName()` /
+  `JOIN_CHARACTER`). The "‿ Join" key sits right after Boundary, under the same
+  rule (only while the scheme is on; `onJoin`), and goes through
+  `handleSelect(JOIN_GLYPH)` like the Boundary key. It has no physical key.
+  The canvas draws it as a slim SOLID bar with a "‿" mark (tooltip "Block
+  join", `data-join="true"`); like the boundary it is not an "IPA fallback"
+  while blocks are on.
+
+#### Pins in the selection model
+
+A pinned variant (`grapheme-12@34`) belongs to ONE entry. The selection is one
+state, `CanvasSelection = { ids: number[]; pins: (number | null)[] }`
+(`utils/selectionModel.ts`), with `pins` aligned to `ids` by position:
+
+```
+ids:  [ 12,   5,  -9 ]   →  glyph_order ["grapheme-12@34", "grapheme-5", "a"]
+pins: [ 34, null, null ]
+```
+
+A parallel array rather than `{ id, variantId }` items keeps the insertion
+strategies (typed over `number[]`, including any custom one a caller passes)
+**untouched**. `insertWithStrategy` / `removeWithStrategy` run the strategy on
+the real ids AND a second time on position tokens, so every pin follows its own
+entry — even between identical graphemes (`[k@7, k]` under a front-removing
+strategy loses the right `k`). A strategy that inspects ids and so disagrees
+with the token run falls back to keeping pins only on the provable common
+prefix/suffix, never guessing. `setPinAt` always produces a new `ids` identity,
+so the change effect (keyed on the whole selection) fires for a pin-only edit.
+
+- **In**: `initialGlyphOrder`, `setGlyphOrder` and the auto-spell lock all go
+  through one parser (`parseOrderToSelection`), which keeps `variantId`.
+- **Out**: `buildGlyphOrder` → `createGraphemeEntry(id, pin)`; the imperative
+  `glyphOrder` getter, `onSelectionChange`'s `glyphOrder` and the hidden input
+  all carry the pin. `value` (number[]) and `setValue(number[])` cannot carry
+  pins; entries set through `setValue` are unpinned.
+- A pinned tile draws the pinned form and shows a small dot. This is
+  independent of the scheme (a pin is part of the stored spelling and the
+  display honours it on the non-block path too), so a pinned spelling
+  round-trips unchanged with the scheme on or off.
+
+The hidden input's `value` is rendered from the same glyph order
+(`serializeGlyphOrder`), not written into the DOM from the change effect: the
+input is React-controlled, so the re-render that effect triggers used to reset a
+DOM write back to the bare id list.
+
+#### Block popover
+
+`BlockPopover` (the app's `<Modal>` + `<DialogPanel>`, portalled out of the
+form, so its controls are never SmartForm fields) shows the template name and,
+per slot in pattern order: the role label, the sign, and a variant `<select>` —
+"Auto (<slot group name>)" or "Auto (default form)" first, then every variant
+of the grapheme. Choosing a variant pins it on that entry; **Auto** strips the
+pin. IPA entries in a slot have no forms. "Split before <role>" (every slot but
+the first) inserts a `.` before that slot's entry; "Join with next block"
+(offered only when a `.` directly follows the block) removes it. Split / Join
+close the popover, since the block they were opened on no longer exists.
+
+#### Under the auto-spell lock
+
+The outlines, captions and preview strip still show (pins are a manual-spelling
+thing: `deriveAutoSpelledGlyphOrder` never emits them — plan P11). The popover
+still opens but is **read-only**: every select and button is disabled and the
+lock's own text (`locked.tooltip`, "Disable auto-spell to modify the spelling"
+in the lexicon form) is shown on screen. The handlers refuse under the lock as
+well, so no path writes a pin into a software-owned spelling.
+
 ---
 
 ## API Reference
@@ -800,11 +944,11 @@ interface GlyphCanvasInputProps extends registerFieldReturnType {
     /** Called when selection changes */
     onSelectionChange?: (ids: number[]) => void;
 
-    /** Auto-spell preview data (displayed below canvas) */
-    autoSpellPreview?: AutoSpellResult | null;
+    /** The wand: an on/off toggle for the word's auto-spell flag. Omit to hide it. */
+    autoSpell?: { enabled: boolean; onToggle: (next: boolean) => void; disabledReason?: string | null };
 
-    /** Handler to generate/refresh auto-spell preview */
-    onRequestAutoSpell?: () => void;
+    /** Software-owned spelling: shown read-only while set (see "With IPA Mode & Auto-Spell"). */
+    locked?: { glyphOrder: SpellingEntry[] | null; message: string; tooltip: string } | null;
 }
 ```
 

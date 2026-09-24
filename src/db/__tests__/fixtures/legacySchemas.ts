@@ -324,3 +324,70 @@ export async function buildLegacyBytes(
         db.close();
     }
 }
+
+// =============================================================================
+// VERSIONED FIXTURE: schema v8 (the last shape before grapheme variants)
+// =============================================================================
+
+/**
+ * Seed data of the v8 fixture, on top of the legacy seed (graphemes 1 = glyphs
+ * {1,2}, 2 = glyph {3}; words 1 'ab' and 2 'aba'). Word 3 is spelled with both
+ * graphemes and an IPA fallback. The `grapheme_glyphs` AUTOINCREMENT sequence
+ * sits ABOVE the highest surviving row id (as it does after deletions), so the
+ * v9 rebuild's high-water-mark preservation is observable.
+ */
+export const V8_SEED = {
+    /** grapheme_glyphs rows as (id, grapheme_id, glyph_id, position). */
+    glyphRows: [
+        [1, 1, 1, 0],
+        [2, 1, 2, 1],
+        [3, 2, 3, 0],
+    ] as const,
+    word3GlyphOrder: ['grapheme-2', 'ə', 'grapheme-1'],
+    /** The high-water mark of `grapheme_glyphs` AUTOINCREMENT before v9. */
+    graphemeGlyphsSeq: 10,
+} as const;
+
+/**
+ * A STAMPED schema-v8 database (`user_version = 8`) — what the last
+ * pre-variant build persisted. Built by running the frozen v6–v8 migrations
+ * over the `preV6` fixture (exactly the path a real v8 file took; the
+ * structural test in `migrations.test.ts` proves it equal to a fresh v8
+ * `createSchema`), then adding word 3 and bumping the glyph-row sequence past
+ * the surviving ids.
+ *
+ * `migrations` is passed in (rather than imported) so this fixture module
+ * stays free of app imports, like the rest of the file.
+ */
+export async function buildV8Bytes(
+    migrations: readonly { version: number; foreignKeysOff?: boolean; up(db: Database): void }[],
+    mutate?: (db: Database) => void
+): Promise<Uint8Array> {
+    const db = await openRawDatabase();
+    try {
+        LEGACY_FIXTURES.preV6.apply(db);
+        for (const version of [6, 7, 8]) {
+            const migration = migrations.find(m => m.version === version);
+            if (!migration) throw new Error(`migration v${version} missing`);
+            if (migration.foreignKeysOff) db.run('PRAGMA foreign_keys = OFF');
+            try {
+                db.run('BEGIN');
+                migration.up(db);
+                db.run(`PRAGMA user_version = ${version}`);
+                db.run('COMMIT');
+            } finally {
+                if (migration.foreignKeysOff) db.run('PRAGMA foreign_keys = ON');
+            }
+        }
+        db.run(
+            `INSERT INTO lexicon (id, lemma, glyph_order) VALUES (3, 'bea', ?)`,
+            [JSON.stringify(V8_SEED.word3GlyphOrder)]
+        );
+        db.run(`INSERT INTO lexicon_spelling (lexicon_id, grapheme_id, position) VALUES (3, 2, 0), (3, 1, 2)`);
+        db.run(`UPDATE sqlite_sequence SET seq = ? WHERE name = 'grapheme_glyphs'`, [V8_SEED.graphemeGlyphsSeq]);
+        mutate?.(db);
+        return db.export();
+    } finally {
+        db.close();
+    }
+}

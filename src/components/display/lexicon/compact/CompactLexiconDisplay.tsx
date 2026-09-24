@@ -16,6 +16,12 @@
  * the drawings, which the drawings already show. What identifies a word to a
  * reader is how it sounds, so the title is the pronunciation — the IPA the
  * author typed — and the lemma only when there is no pronunciation.
+ *
+ * EVERY CARD IS THE SAME SIZE. Each row below the band (title, meaning,
+ * badges) is always rendered — empty rows keep their height — and every text
+ * row is ONE line that ends in an ellipsis, with the full text on hover. A
+ * word with a long meaning, no meaning, or a part-of-speech badge therefore
+ * lines up with every other card in the grid.
  */
 
 import classNames from 'classnames';
@@ -31,21 +37,13 @@ interface CompactLexiconDisplayProps {
     onClick?: () => void;
 }
 
-/** The longest meaning the card shows before an ellipsis. */
-const MEANING_MAX = 50;
-
 export default function CompactLexiconDisplay({ lexiconData, graphemeMap, onClick }: CompactLexiconDisplayProps) {
     // Get the primary meaning from meanings array, or fall back to meaning field
     const primaryMeaning = lexiconData.meanings && lexiconData.meanings.length > 0
         ? lexiconData.meanings[0].meaning
         : lexiconData.meaning;
 
-    // Truncate meaning for compact display
-    const truncatedMeaning = primaryMeaning
-        ? primaryMeaning.length > MEANING_MAX
-            ? `${primaryMeaning.substring(0, MEANING_MAX - 3)}...`
-            : primaryMeaning
-        : null;
+    const title = lexiconData.pronunciation ? `/${lexiconData.pronunciation}/` : lexiconData.lemma;
 
     const hasSpelling = Boolean(lexiconData.spellingDisplay && lexiconData.spellingDisplay.length > 0);
     const additionalMeaningCount = lexiconData.meanings && lexiconData.meanings.length > 1
@@ -75,25 +73,34 @@ export default function CompactLexiconDisplay({ lexiconData, graphemeMap, onClic
             </div>
 
             {/* Title: the pronunciation in /slashes/, the lemma only without one. */}
-            <h3 className={styles.title}>
-                {lexiconData.pronunciation ? `/${lexiconData.pronunciation}/` : lexiconData.lemma}
+            <h3 className={styles.title} title={title}>
+                {title}
             </h3>
 
-            {truncatedMeaning && (
-                <p className={styles.meaning}>
-                    {truncatedMeaning}
-                    {additionalMeaningCount > 0 && (
-                        <span className={styles.moreMeaningsBadge}>+{additionalMeaningCount} more</span>
-                    )}
-                </p>
-            )}
+            {/* Always rendered — an empty row keeps its height — so a word
+                without a meaning is as tall as one with. The text ellipsizes;
+                the "+N more" badge never does. */}
+            <p className={styles.meaning} title={primaryMeaning ?? undefined}>
+                {primaryMeaning ? (
+                    <>
+                        <span className={styles.meaningText}>{primaryMeaning}</span>
+                        {additionalMeaningCount > 0 && (
+                            <span className={styles.moreMeaningsBadge}>+{additionalMeaningCount} more</span>
+                        )}
+                    </>
+                ) : (
+                    <span aria-hidden="true">{'\u00a0'}</span>
+                )}
+            </p>
 
             <div className={styles.badges}>
                 {!lexiconData.is_native && (
                     <span className={styles.externalBadge}>External</span>
                 )}
                 {lexiconData.part_of_speech && (
-                    <span className={styles.posBadge}>{lexiconData.part_of_speech}</span>
+                    <span className={styles.posBadge} title={lexiconData.part_of_speech}>
+                        {lexiconData.part_of_speech}
+                    </span>
                 )}
             </div>
         </div>

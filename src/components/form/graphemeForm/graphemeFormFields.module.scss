@@ -1,4 +1,5 @@
-/* GraphemeFormFields — the ordered glyph list and the form's section chrome. */
+/* GraphemeFormFields — the form's section chrome. The glyph-list styles live
+   in glyphListEditor.module.scss (shared by every form of the grapheme). */
 
 .section {
     display: flex;
@@ -6,88 +7,113 @@
     gap: 1rem;
 }
 
-.glyphSelectionBox {
-    border: var(--border-width) dashed var(--border-primary);
-    border-radius: var(--radius-surface);
-    padding: var(--surface-padding);
-    background: var(--surface-raised);
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-}
-
-.emptyState {
-    text-align: center;
-    color: var(--text-secondary);
-    margin: 0;
-    padding: 1.5rem;
-}
-
-.orderHint {
+/* "Default form: head · heads" — only after a Make default moved a named form in. */
+.formIdentity {
     margin: 0;
     color: var(--text-secondary);
-    font-size: 0.85rem;
+    font-size: 0.875rem;
 }
 
-.glyphList {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    list-style: none;
-    margin: 0;
-    padding: 0;
-}
-
-.glyphRow {
+/* "No sound (logogram)" switch in the Pronunciation section. */
+.logogramToggle {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    padding: 0.5rem;
-    background: var(--surface-base);
-    border: var(--border-width) solid var(--border-secondary);
-    border-radius: var(--radius-surface);
-    /* The row must be able to shrink inside a narrow form column, or the
-       glyph card's intrinsic width pushes the page into a sideways scroll. */
+    gap: 0.5rem;
+    color: var(--text-primary);
+    cursor: pointer;
+}
+
+.logogramNote {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    line-height: 1.45;
+}
+
+/* "What kind of sign is it?" — the radio pair under "No sound". */
+.noSoundKind {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin: 0;
+    padding: 0 0 0 1.5rem;
+    border: none;
     min-width: 0;
 }
 
-.dragHandle {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0.25rem;
+.noSoundKindLegend {
+    padding: 0;
+    margin-bottom: 0.25rem;
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.noSoundKindOption {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    cursor: pointer;
+
+    input {
+        margin-top: 0.2rem;
+    }
+}
+
+.noSoundKindText {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 0;
+}
+
+.noSoundKindName {
+    color: var(--text-primary);
+}
+
+.noSoundKindDescription {
     color: var(--text-secondary);
-    cursor: grab;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+}
+
+/* Grapheme picker filter (Word symbols / Marks / All). */
+.pickerFilter {
+    display: inline-flex;
+    width: fit-content;
+    align-self: flex-start;
+    margin-bottom: 0.75rem;
+    border: 1px solid var(--border-primary);
     border-radius: var(--radius-control);
+    overflow: hidden;
+}
+
+.pickerFilterButton {
+    padding: 0.35rem 0.85rem;
+    border: none;
+    background: var(--surface-base);
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    cursor: pointer;
+
+    &:not(:last-child) {
+        border-right: 1px solid var(--border-primary);
+    }
+
+    &:hover {
+        color: var(--text-primary);
+    }
 
     &:focus-visible {
-        outline: 2px solid var(--interactive-base);
-        outline-offset: 2px;
-    }
-
-    &:active {
-        cursor: grabbing;
+        outline: 2px solid var(--status-info);
+        outline-offset: -2px;
     }
 }
 
-.glyphPosition {
-    min-width: 1.5em;
-    text-align: center;
-    color: var(--text-secondary);
-    font-size: 0.85rem;
-    font-variant-numeric: tabular-nums;
-}
+.pickerFilterActive {
+    background: var(--interactive-base);
+    color: var(--bg-tertiary);
 
-.glyphRowActions {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-    margin-left: auto;
-}
-
-.glyphButtons {
-    display: flex;
-    gap: 1rem;
-    justify-content: center;
-    flex-wrap: wrap;
+    &:hover {
+        color: var(--bg-tertiary);
+    }
 }

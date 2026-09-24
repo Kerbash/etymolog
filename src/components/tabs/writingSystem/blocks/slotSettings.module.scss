@@ -1,0 +1,34 @@
+/**
+ * SlotSettings — the "Selected box" panel under the template layout, and the
+ * small count readout drawn inside each layout rectangle.
+ *
+ * Theme tokens only (pitfall P5); the panel reuses the page's `.field`,
+ * `.fieldLabel`, `.select` and `.hint` classes for its controls.
+ */
+
+.panel {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-width: 0;
+    padding: 0.75rem;
+    border: var(--border-width) solid var(--border-secondary);
+    border-radius: var(--radius-control);
+}
+
+.title {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.rectCount {
+    display: block;
+    margin-top: 0.15rem;
+    font-size: 0.7rem;
+    line-height: 1.2;
+    color: var(--text-primary-muted);
+    pointer-events: none;
+    user-select: none;
+}

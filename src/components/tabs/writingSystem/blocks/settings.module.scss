@@ -1,0 +1,220 @@
+/**
+ * Block Designer — the scheme-level option sections ("Splitting words into
+ * blocks", "Consonants with no vowel"). The section card, title, hint, field
+ * and select come from `blocksPage.module.scss`; this sheet only adds the
+ * radio cards, the notes and the chosen-mark row.
+ *
+ * Theme tokens only (the token ratchet in `src/styles/__tests__/tokens.test.ts`).
+ */
+
+.options {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+/* One radio choice: the button, its name, one sentence and an example. */
+.option {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    padding: 0.6rem 0.75rem;
+    min-width: 0;
+    background: var(--surface-raised);
+    border: var(--border-width) solid var(--border-secondary);
+    border-radius: var(--radius-control);
+    cursor: pointer;
+
+    &:hover {
+        border-color: var(--border-hover);
+    }
+
+    &:has(input:checked) {
+        border-color: var(--interactive-base);
+    }
+
+    &:has(input:focus-visible) {
+        outline: 2px solid var(--interactive-base);
+        outline-offset: 2px;
+    }
+
+    input {
+        flex: 0 0 auto;
+        width: 1.05rem;
+        height: 1.05rem;
+        margin: 0.1rem 0 0;
+        accent-color: var(--interactive-base);
+    }
+}
+
+.optionText {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+}
+
+.optionName {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.optionDescription {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+}
+
+.example {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.recommended {
+    padding: 0.05rem 0.45rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--status-success);
+    background: var(--status-success-bg);
+    border: var(--border-width) solid var(--status-success);
+    border-radius: var(--radius-pill);
+}
+
+/* The follow-up control under a chosen radio (checkbox, mark chooser). */
+.subOptions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-left: 1.65rem;
+    min-width: 0;
+}
+
+.checkbox {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    color: var(--text-primary);
+    cursor: pointer;
+
+    input {
+        flex: 0 0 auto;
+        width: 1.05rem;
+        height: 1.05rem;
+        margin: 0.1rem 0 0;
+        accent-color: var(--interactive-base);
+    }
+}
+
+/* A sound list (`SoundList`: "Vowels next to each other", "Consonants that
+   can carry a syllable"): chips + the add row, suggestions, example. */
+.soundList {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    min-width: 0;
+}
+
+.addRow,
+.suggestions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.chipList {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.chipRemove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 0.15rem;
+    font: inherit;
+    line-height: 1;
+    color: var(--text-secondary);
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-control);
+    cursor: pointer;
+
+    &:hover {
+        color: var(--interactive-hover);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--interactive-base);
+        outline-offset: 2px;
+    }
+}
+
+/* A visible explanation (never a tooltip) — e.g. "not chosen yet". */
+.note {
+    margin: 0;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    background: var(--status-info-bg);
+    border: var(--border-width) solid var(--status-info);
+    border-radius: var(--radius-control);
+}
+
+.warning {
+    margin: 0;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    background: var(--status-warning-bg);
+    border: var(--border-width) solid var(--status-warning);
+    border-radius: var(--radius-control);
+}
+
+.link {
+    color: var(--interactive-base);
+    font-weight: 600;
+
+    &:hover {
+        color: var(--interactive-hover);
+    }
+}
+
+/* The chosen mark: its picture, its name, [Change mark…]. */
+.markRow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+}
+
+.markPicture {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 3rem;
+    height: 3rem;
+    color: var(--text-primary);
+    background: var(--page-background-primary);
+    border: var(--border-width) solid var(--border-primary);
+    border-radius: var(--radius-control);
+    overflow: hidden;
+}
+
+.markName {
+    font-weight: 700;
+    color: var(--text-primary);
+    overflow-wrap: anywhere;
+}
+
+.placementField {
+    max-width: 16rem;
+}

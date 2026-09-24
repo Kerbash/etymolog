@@ -11,6 +11,8 @@
  */
 
 export { default as PageHeader } from './pageHeader';
+export { default as NotFoundNotice } from './notFound';
+export type { NotFoundNoticeProps } from './notFound';
 export type { PageHeaderProps, Crumb } from './pageHeader';
 
 export { default as LoadingState } from './loadingState';

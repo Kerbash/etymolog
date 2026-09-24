@@ -32,22 +32,35 @@ import type { Database } from 'sql.js';
 import { dbLog } from '../utils/logger';
 import { withTransaction } from '../utils/transaction';
 import {
+    createBlockSchemeTable,
     createGlyphFoldersIndex,
     createGlyphFoldersTable,
     createGraphemeFoldersIndex,
     createGraphemeFoldersTable,
+    createGraphemeGlyphsIndexes,
+    createGraphemeGlyphsTable,
+    createGraphemeVariantsIndexes,
+    createGraphemeVariantsTable,
     createLexiconAncestryIndexes,
     createLexiconAncestryTable,
     createLexiconFoldersIndex,
     createLexiconFoldersTable,
     createSchema,
+    createVariantGroupsTable,
 } from './schema';
-import { repairOrphans } from './repair';
+import { backfillDefaultVariants, repairOrphans } from './repair';
+import { tableExists, columnExists } from './probes';
 import { CURRENT_SCHEMA_VERSION } from './version';
 
 export { CURRENT_SCHEMA_VERSION } from './version';
 export { createSchema } from './schema';
-export { repairOrphans, MISSING_GRAPHEME_PLACEHOLDER, type RepairReport } from './repair';
+export {
+    repairOrphans,
+    backfillDefaultVariants,
+    MISSING_GRAPHEME_PLACEHOLDER,
+    type RepairReport,
+    type DefaultVariantBackfill,
+} from './repair';
 
 export interface Migration {
     /** The schema version this migration produces. */
@@ -80,18 +93,7 @@ export function readUserVersion(database: Database): number {
     return result.length > 0 ? Number(result[0].values[0][0]) : 0;
 }
 
-export function tableExists(database: Database, table: string): boolean {
-    const result = database.exec(
-        `SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?`,
-        [table]
-    );
-    return result.length > 0 && result[0].values.length > 0;
-}
-
-export function columnExists(database: Database, table: string, column: string): boolean {
-    const result = database.exec(`PRAGMA table_info(${table})`);
-    return result.length > 0 && result[0].values.some(row => row[1] === column);
-}
+export { tableExists, columnExists };
 
 function foreignKeyViolationCount(database: Database): number {
     const result = database.exec('PRAGMA foreign_key_check');
@@ -411,6 +413,70 @@ export const MIGRATIONS: Migration[] = [
             const violations = foreignKeyViolationCount(database);
             if (violations > 0) {
                 throw new Error(`Migration v8 left ${violations} foreign-key violation(s)`);
+            }
+        },
+    },
+    {
+        version: 9,
+        description: 'Add variant_groups, grapheme_variants and block_scheme; rebuild grapheme_glyphs keyed on variant_id',
+        foreignKeysOff: true,
+        up(database) {
+            // 1. New tables (shared DDL with createSchema).
+            createVariantGroupsTable(database);
+            createGraphemeVariantsTable(database);
+            createGraphemeVariantsIndexes(database);
+            createBlockSchemeTable(database);
+
+            // 2. One 'Default' variant per grapheme. `grapheme_glyphs` has no
+            //    `variant_id` column yet, so this only creates the variants; the
+            //    rebuild below attaches the glyph rows to them.
+            backfillDefaultVariants(database);
+
+            // 3. Rebuild grapheme_glyphs (SQLite table-rebuild recipe). The OLD
+            //    table is renamed aside and the new one created under the real
+            //    name by the shared creator, so its `sqlite_master` text is
+            //    byte-identical to a fresh database's (a rename would store the
+            //    quoted `"grapheme_glyphs"` instead). The old indexes travel with
+            //    the renamed table and vanish with its DROP, which is why the
+            //    indexes are recreated only after the DROP. Nothing references
+            //    grapheme_glyphs, so renaming it rewrites no other table.
+            const legacy = 'grapheme_glyphs_v8';
+            database.run(`DROP TABLE IF EXISTS ${legacy}`);
+            database.run(`ALTER TABLE grapheme_glyphs RENAME TO ${legacy}`);
+            createGraphemeGlyphsTable(database);
+            // Rows of a grapheme that no longer exists have no default variant
+            // and are dropped by the JOIN — they were orphans (FK-off era).
+            database.run(`
+                INSERT INTO grapheme_glyphs (id, grapheme_id, variant_id, glyph_id, position, transform)
+                SELECT gg.id, gg.grapheme_id, v.id, gg.glyph_id, gg.position, gg.transform
+                FROM ${legacy} gg
+                JOIN grapheme_variants v ON v.grapheme_id = gg.grapheme_id AND v.is_default = 1
+                ORDER BY gg.id
+            `);
+            // Keep the AUTOINCREMENT high-water mark: the rename moved the old
+            // sequence row to the legacy name, and the copy only seeded the
+            // new one up to the highest SURVIVING id.
+            const previousSeq = database.exec(
+                `SELECT seq FROM sqlite_sequence WHERE name = '${legacy}'`
+            )[0]?.values[0]?.[0] as number | undefined;
+            database.run(`DROP TABLE ${legacy}`);
+            if (typeof previousSeq === 'number') {
+                const currentSeq = database.exec(
+                    `SELECT seq FROM sqlite_sequence WHERE name = 'grapheme_glyphs'`
+                )[0]?.values[0]?.[0] as number | undefined;
+                database.run(`DELETE FROM sqlite_sequence WHERE name IN ('grapheme_glyphs', '${legacy}')`);
+                database.run(
+                    `INSERT INTO sqlite_sequence (name, seq) VALUES ('grapheme_glyphs', ?)`,
+                    [Math.max(previousSeq, currentSeq ?? 0)]
+                );
+            }
+            createGraphemeGlyphsIndexes(database);
+
+            // 4. Registry convention: an inconsistent rebuild must throw so the
+            //    whole migration rolls back.
+            const violations = foreignKeyViolationCount(database);
+            if (violations > 0) {
+                throw new Error(`Migration v9 left ${violations} foreign-key violation(s)`);
             }
         },
     },

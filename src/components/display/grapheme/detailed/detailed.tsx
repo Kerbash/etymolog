@@ -1,4 +1,7 @@
-import type { GraphemeComplete } from '../../../../db/types.ts';
+import { useContext } from 'react';
+
+import type { GraphemeComplete, VariantGroup } from '../../../../db/types.ts';
+import { EtymologContext } from '../../../../db/context';
 import { GlyphSpellingDisplay } from '../../spelling';
 import styles from './detailed.module.scss';
 
@@ -6,7 +9,18 @@ interface DetailedGraphemeDisplayProps {
     graphemeData: GraphemeComplete;
 }
 
+const NO_GROUPS: VariantGroup[] = [];
+const FORM_CONFIG = { glyphWidth: 40, glyphHeight: 40, spacing: 2, padding: 2 };
+
 export default function DetailedGraphemeDisplay({ graphemeData }: DetailedGraphemeDisplayProps) {
+    // Optional: a display rendered outside the provider simply has no group
+    // names to show (the caption then says "no group").
+    const context = useContext(EtymologContext);
+    const groups = context ? context.data.variantGroups : NO_GROUPS;
+
+    // `variants` absent ⇒ default form only (P5).
+    const otherForms = (graphemeData.variants ?? []).filter((variant) => !variant.is_default);
+
     return (
         <div className={styles.display}>
             <div className={styles.left}>
@@ -43,6 +57,37 @@ export default function DetailedGraphemeDisplay({ graphemeData }: DetailedGraphe
                         <p className={styles.noPhonemes}>No pronunciations defined</p>
                     )}
                 </div>
+
+                {otherForms.length > 0 && (
+                    <>
+                        <h3 className={styles.formsHeader}>Forms</h3>
+                        <ul className={styles.formList} aria-label={`Other forms of ${graphemeData.name}`}>
+                            {otherForms.map((variant) => {
+                                const groupName =
+                                    variant.group_id === null
+                                        ? null
+                                        : (groups.find((g) => g.id === variant.group_id)?.name ?? null);
+                                return (
+                                    <li key={variant.id} className={styles.formItem}>
+                                        <div className={styles.formSvg}>
+                                            {/* A plain Glyph[]: this input path never runs
+                                                the block engine. */}
+                                            <GlyphSpellingDisplay
+                                                glyphs={variant.glyphs}
+                                                strategy="ltr"
+                                                config={FORM_CONFIG}
+                                                emptyContent={<span>—</span>}
+                                            />
+                                        </div>
+                                        <span className={styles.formCaption}>
+                                            {variant.name} · {groupName ?? 'no group'}
+                                        </span>
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                    </>
+                )}
             </div>
         </div>
     );

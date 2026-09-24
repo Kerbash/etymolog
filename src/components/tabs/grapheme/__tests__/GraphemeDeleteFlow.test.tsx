@@ -49,13 +49,16 @@ function seedGraphemeUsedByAWord() {
         glyphs: [{ glyph_id: glyph.data!.id, position: 0 }],
         phonemes: [{ phoneme: 'ka', use_in_auto_spelling: true }],
     });
+    // An auto-spelled word's spelling is DERIVED on create (the sent
+    // glyph_order is ignored): "ka" matches the grapheme, "t" and "o" fall back
+    // to one IPA placeholder each.
     const word = lexiconApi.create({
         lemma: 'kato',
         pronunciation: 'kato',
         auto_spell: true,
-        glyph_order: [createGraphemeEntry(grapheme.data!.id), 'to'],
     });
     expect(word.success).toBe(true);
+    expect(word.data!.glyph_order).toBe(JSON.stringify([createGraphemeEntry(grapheme.data!.id), 't', 'o']));
     return { graphemeId: grapheme.data!.id, wordId: word.data!.id };
 }
 
@@ -110,7 +113,7 @@ describe('grapheme delete — when words use it', () => {
         // The spelling still REFERENCES the grapheme (`grapheme-<id>`), not
         // the phoneme it would be respelled to.
         const word = lexiconApi.getByIdComplete(wordId);
-        expect(word.data!.glyph_order).toBe(JSON.stringify([`grapheme-${graphemeId}`, 'to']));
+        expect(word.data!.glyph_order).toBe(JSON.stringify([`grapheme-${graphemeId}`, 't', 'o']));
     });
 
     it('respells the word and deletes the grapheme once confirmed', async () => {

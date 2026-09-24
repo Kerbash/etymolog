@@ -474,13 +474,19 @@ export const ALL_TABLES_CHILDREN_FIRST = [
     'lexicon',
     'lexicon_folders',
     'phonemes',
+    // Schema v9: glyph rows reference their variant, variants their grapheme.
     'grapheme_glyphs',
+    'grapheme_variants',
+    // variant_groups after grapheme_variants (grapheme_variants.group_id → variant_groups)
+    'variant_groups',
     'graphemes',
     // grapheme_folders after graphemes (graphemes.folder_id → grapheme_folders)
     'grapheme_folders',
     'glyphs',
     // glyph_folders after glyphs (glyphs.folder_id → glyph_folders)
     'glyph_folders',
+    // Single-row JSON document with no foreign keys; position is irrelevant.
+    'block_scheme',
 ] as const;
 
 /**

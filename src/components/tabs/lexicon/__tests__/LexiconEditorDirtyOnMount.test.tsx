@@ -74,8 +74,11 @@ const previewAutoSpelling = vi.fn(() => ({
  * the ancestry section calls three read APIs on mount and the glyph canvas
  * reads `data.graphemesComplete`.
  */
-vi.mock('../../../../db', () => ({
-    useEtymolog: () => ({
+vi.mock('../../../../db', () => {
+    // ONE stable value. The edit form's ancestry effect depends on `api`; a
+    // mock that built a fresh object per call re-fired it (and its setState)
+    // on every render — an infinite loop that killed the worker.
+    const value = {
         api: {
             lexicon: {
                 create,
@@ -87,14 +90,15 @@ vi.mock('../../../../db', () => ({
                 getAncestryTree: () => ({ success: true, data: null }),
             },
         },
-        data: { lexiconComplete: [], graphemesComplete: [] },
+        data: { lexiconComplete: [], graphemesComplete: [], folders: [], variantGroups: [] },
         settings: { defaultGalleryView: 'detailed' },
         refresh: vi.fn(),
         batchMutations: <T,>(fn: () => T): T => fn(),
         isReady: true,
         error: null,
-    }),
-}));
+    };
+    return { useEtymolog: () => value };
+});
 
 const { default: LexiconEditor } = await import('../editor/LexiconEditor');
 const { NotificationProvider } = await import('../../../shared/notifications/NotificationProvider');
@@ -115,6 +119,27 @@ function Probe() {
     return null;
 }
 
+/** A stored word for the EDIT route: pronunciation, one meaning, a manual spelling. */
+const STORED_WORD = {
+    id: 7,
+    lemma: 'kato',
+    pronunciation: 'kato',
+    is_native: true,
+    auto_spell: false,
+    meaning: 'thing',
+    part_of_speech: null,
+    notes: null,
+    glyph_order: '["k","a","t","o"]',
+    needs_attention: false,
+    created_at: '',
+    updated_at: '',
+    folder_id: null,
+    meanings: [{ id: 1, lexicon_id: 7, meaning: 'thing', part_of_speech: null, usage_notes: null, position: 0 }],
+    spelling: [],
+    ancestors: [],
+    descendants: [],
+};
+
 /** Mount the editor the way `main.tsx` does — inside `<StrictMode>`. */
 function mount(initialPath: string) {
     act(() => {
@@ -129,6 +154,11 @@ function mount(initialPath: string) {
                                     <Route
                                         path="/lexicon/create"
                                         element={<LexiconEditor mode="create" />}
+                                    />
+                                    <Route
+                                        path="/lexicon/db/:id/edit"
+                                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                        element={<LexiconEditor mode="edit" initialData={STORED_WORD as any} />}
                                     />
                                     <Route path="/lexicon/db/:id" element={<p>view page</p>} />
                                     <Route path="/lexicon" element={<p>list</p>} />
@@ -275,5 +305,30 @@ describe('LexiconEditor — an untouched create form is not dirty (StrictMode, r
 
         expect(dirtyProbe()).toBe(true);
         expect(beforeUnloadIsBlocked()).toBe(true);
+    });
+});
+
+describe('LexiconEditor — an untouched EDIT form is not dirty either', () => {
+    // The stored pronunciation is seeded into its field a tick after mount.
+    // That seed used to be marked as a user edit, so every edit form opened
+    // dirty and leaving it untouched asked "Leave site?" (found live in
+    // Chrome while checking the block script).
+    it('is clean on mount with the stored word seeded', async () => {
+        mount('/lexicon/db/7/edit');
+        await settle(6);
+
+        expect(pronunciationInput().value).toBe('kato');
+        expect(dirtyProbe()).toBe(false);
+        expect(beforeUnloadIsBlocked()).toBe(false);
+    });
+
+    it('becomes dirty once the pronunciation is edited', async () => {
+        mount('/lexicon/db/7/edit');
+        await settle(6);
+
+        typeInto(pronunciationInput(), 'kata');
+        await settle();
+
+        expect(dirtyProbe()).toBe(true);
     });
 });

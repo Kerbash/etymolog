@@ -48,7 +48,7 @@ describe('folder export/import round-trip', () => {
             seedFolders();
             const data = collectExportData();
             expect(data.version).toBe(EXPORT_SCHEMA_VERSION);
-            expect(EXPORT_SCHEMA_VERSION).toBe(3);
+            expect(EXPORT_SCHEMA_VERSION).toBe(4);
             expect(data.tables.lexicon_folders).toHaveLength(2);
             expect(data.tables.lexicon.find(l => l.id === 1)!.folder_id).toBe(2);
             expect(data.tables.lexicon.find(l => l.id === 2)!.folder_id).toBe(null);

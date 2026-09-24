@@ -354,6 +354,110 @@ export interface CreateGraphemeRequest {
     }>;
     /** Nesting folder id (schema v8); validated at the API layer. */
     folder_id?: number | null;
+    /**
+     * Additional (non-default) visual forms (schema v9). `glyphs` above is the
+     * DEFAULT form. Each needs a name and at least one glyph; at most one form
+     * per variant group.
+     */
+    variants?: CreateVariantRequest[];
+}
+
+// =============================================================================
+// VARIANT + VARIANT GROUP API TYPES (schema v9)
+// =============================================================================
+
+/** Ordered glyph references of one variant (same shape as a grapheme's). */
+export type VariantGlyphsRequest = Array<{
+    glyph_id: number;
+    position: number;
+    transform?: string;
+}>;
+
+/** Input for creating a variant (also used inside `CreateGraphemeRequest.variants`). */
+export interface CreateVariantRequest {
+    name: string;
+    group_id?: number | null;
+    glyphs: VariantGlyphsRequest;
+    sort_order?: number;
+}
+
+/** Input for renaming / regrouping / reordering a variant. */
+export interface UpdateVariantRequest {
+    name?: string;
+    group_id?: number | null;
+    sort_order?: number;
+}
+
+export interface CreateVariantGroupRequest {
+    name: string;
+    sort_order?: number;
+}
+
+export interface UpdateVariantGroupRequest {
+    name?: string;
+    sort_order?: number;
+}
+
+export interface VariantGroupListResponse {
+    groups: import('../types').VariantGroup[];
+    total: number;
+}
+
+export interface DeleteVariantGroupResult {
+    /** Variants that were in the group; they survive, ungrouped. */
+    variantsDetached: number;
+}
+
+export interface DeleteVariantResult {
+    /** Words whose `@<id>` pins were stripped (they fall back to the automatic form). */
+    affectedLexiconIds: number[];
+}
+
+export interface VariantGroupApi {
+    create(request: CreateVariantGroupRequest): ApiResponse<import('../types').VariantGroup>;
+    update(id: number, request: UpdateVariantGroupRequest): ApiResponse<import('../types').VariantGroup>;
+    /** Delete a group; its variants keep existing with no group. */
+    delete(id: number): ApiResponse<DeleteVariantGroupResult>;
+    getAll(): ApiResponse<VariantGroupListResponse>;
+    /** Number of variants in the group (for the delete confirm). */
+    getUsageCount(id: number): ApiResponse<number>;
+}
+
+export interface VariantApi {
+    /** A grapheme's variants with glyphs, default first. */
+    getByGrapheme(graphemeId: number): ApiResponse<import('../types').GraphemeVariantWithGlyphs[]>;
+    create(graphemeId: number, request: CreateVariantRequest): ApiResponse<import('../types').GraphemeVariantWithGlyphs>;
+    update(id: number, request: UpdateVariantRequest): ApiResponse<import('../types').GraphemeVariant>;
+    setGlyphs(id: number, glyphs: VariantGlyphsRequest): ApiResponse<void>;
+    setDefault(graphemeId: number, variantId: number): ApiResponse<void>;
+    /** Delete a non-default variant, stripping every word's pin on it first. */
+    delete(id: number): ApiResponse<DeleteVariantResult>;
+    /** Number of words whose spelling pins the variant (for the delete confirm). */
+    getPinUsageCount(id: number): ApiResponse<number>;
+}
+
+/**
+ * Result of `blockScheme.save` / `blockScheme.validate`: the validated scheme
+ * (what is — or would be — stored) and every correction the validator made,
+ * as `path: message` lines. Empty `issues` means the document was stored as
+ * sent.
+ */
+export interface BlockSchemeSaveResult {
+    scheme: import('../../blocks/types').BlockScheme;
+    issues: string[];
+}
+
+/** The script's block scheme (schema v9; one per script). */
+export interface BlockSchemeApi {
+    /** The stored scheme, corrected; the empty (disabled) scheme when none was saved. */
+    get(): ApiResponse<import('../../blocks/types').BlockScheme>;
+    /**
+     * Validate and store the whole scheme (single-row UPSERT). Lenient: the
+     * CORRECTED document is stored and returned alongside what was corrected.
+     */
+    save(scheme: unknown): ApiResponse<BlockSchemeSaveResult>;
+    /** Validate without storing (the designer's inline check). */
+    validate(scheme: unknown): ApiResponse<BlockSchemeSaveResult>;
 }
 
 /**
@@ -454,12 +558,17 @@ export type CreateGraphemeResult = import('../types').GraphemeComplete & {
 /** The backing glyph + grapheme ids a word symbol resolves to. */
 export type WordSymbolRefs = import('../wordSymbolService').WordSymbolRefs;
 
-/** Create a whole-word symbol (backing logogram glyph + grapheme). */
+/**
+ * Create a whole-word symbol (a logogram grapheme). Exactly one source: a new
+ * drawing (`svgData`, backed by a new glyph) or an existing glyph (`glyphId`).
+ */
 export interface CreateWordSymbolRequest {
     /** Symbol name; defaults, at the composite-create layer, to the display name. */
     name: string;
     /** The symbol SVG — a drawing or an imported image. */
-    svgData: string;
+    svgData?: string;
+    /** An existing glyph to use as the logogram (reuses its logogram grapheme). */
+    glyphId?: number;
 }
 
 /** Replace the drawing of an existing word symbol grapheme. */
@@ -647,4 +756,10 @@ export interface EtymologApi {
     glyphFolder: import('./folderApi').FolderApi;
     /** Grapheme folders (schema v8). */
     graphemeFolder: import('./folderApi').FolderApi;
+    /** Variant groups — script-level named buckets of forms (schema v9). */
+    variantGroup: VariantGroupApi;
+    /** Grapheme variants — alternative visual forms (schema v9). */
+    variant: VariantApi;
+    /** The block-script scheme — roles + templates (schema v9). */
+    blockScheme: BlockSchemeApi;
 }

@@ -12,6 +12,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 import type { Glyph, GraphemeComplete, SpellingDisplayEntry } from '../../../db/types';
 import { GLYPH_CELL_FRACTION } from '../../../db/utils/glyphMetrics';
+import type { BlockScheme, ComposedSlot } from '../../../blocks/types';
 
 // =============================================================================
 // LAYOUT STRATEGY TYPES
@@ -113,6 +114,24 @@ export interface RenderableGlyph {
     sourceIndex: number;
     /** Structural role copied from the source entry — drives word/line splitting */
     role?: import('../../../db/types').SpellingRole;
+    /**
+     * Present when this glyph is a composed block-script BLOCK: several
+     * spelling entries drawn as ONE picture (`svg_data`). `sourceIndex` is the
+     * block's first entry; `block.entryIndices` lists them all.
+     */
+    block?: RenderableBlock;
+}
+
+/** What a composed block renderable was made of (`BLOCK_SCRIPT_PLAN.md` §4). */
+export interface RenderableBlock {
+    /** The scheme template the entries matched. */
+    templateId: string;
+    /** Input entry indices, in pattern order. */
+    entryIndices: number[];
+    /** How each template slot was filled (variant chosen, missing group…). */
+    slots: ComposedSlot[];
+    /** At least one slot holds an IPA stand-in rather than a real grapheme. */
+    containsVirtual: boolean;
 }
 
 /**
@@ -333,6 +352,19 @@ export interface GlyphSpellingDisplayProps {
      * writing-system-aware text flow.
      */
     writingSystem?: import('../../../db/api/types').WritingSystemSettings;
+
+    /**
+     * Block-script scheme override.
+     *
+     * - `undefined` (default): the script's scheme from `EtymologProvider`
+     *   (`useOptionalBlockScheme`); none outside a provider.
+     * - a scheme: used instead (the Block Designer's live preview of a draft).
+     * - `null`: blocks OFF — every glyph on its own, as without a scheme (the
+     *   Script Maker's per-variant previews).
+     *
+     * Only `SpellingDisplayEntry[]` input is ever composed into blocks.
+     */
+    blockScheme?: BlockScheme | null;
 }
 
 // =============================================================================
@@ -347,6 +379,12 @@ export interface NormalizationContext {
     glyphMap?: Map<number, Glyph | RenderableGlyph>;
     /** Map of grapheme ID to GraphemeComplete data */
     graphemeMap?: Map<number, GraphemeComplete>;
+    /**
+     * Block-script scheme. Composition runs only when it is ENABLED and a
+     * `graphemeMap` (carrying variants) is present; otherwise normalization is
+     * exactly the pre-block path.
+     */
+    blockScheme?: BlockScheme | null;
 }
 
 /**

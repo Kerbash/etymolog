@@ -86,16 +86,19 @@ describe('glyph + grapheme folders', () => {
         db.run("INSERT INTO grapheme_folders (id, name, parent_id, position) VALUES (1, 'Vowels', NULL, 0)");
         db.run("INSERT INTO graphemes (id, name, folder_id) VALUES (1, 'a', 1)");
         db.run("INSERT INTO graphemes (id, name, folder_id) VALUES (2, 'b', NULL)");
-        db.run("INSERT INTO grapheme_glyphs (grapheme_id, glyph_id, position) VALUES (1, 1, 0)");
-        db.run("INSERT INTO grapheme_glyphs (grapheme_id, glyph_id, position) VALUES (2, 2, 0)");
+        // Schema v9: glyph rows belong to a variant; each grapheme has a default.
+        db.run("INSERT INTO grapheme_variants (id, grapheme_id, name, is_default) VALUES (1, 1, 'Default', 1), (2, 2, 'Default', 1)");
+        db.run("INSERT INTO grapheme_glyphs (grapheme_id, variant_id, glyph_id, position) VALUES (1, 1, 1, 0)");
+        db.run("INSERT INTO grapheme_glyphs (grapheme_id, variant_id, glyph_id, position) VALUES (2, 2, 2, 0)");
     }
 
-    describe('export v3', () => {
-        it('stamps version 3 and includes glyph_folders + grapheme_folders + folder_id', () => {
+    describe('export v3+', () => {
+        it('stamps the current version and includes glyph_folders + grapheme_folders + folder_id', () => {
             seedGlyphGraphemeFolders();
             const data = collectExportData();
             expect(data.version).toBe(EXPORT_SCHEMA_VERSION);
-            expect(EXPORT_SCHEMA_VERSION).toBe(3);
+            // v3 introduced these folders; v4 (variants) kept them.
+            expect(EXPORT_SCHEMA_VERSION).toBe(4);
             expect(data.tables.glyph_folders).toHaveLength(2);
             expect(data.tables.grapheme_folders).toHaveLength(1);
             expect(data.tables.glyphs.find(g => g.id === 1)!.folder_id).toBe(2);

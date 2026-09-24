@@ -25,7 +25,11 @@ import {
     normalizeToRenderable,
     createVirtualGlyph,
     isVirtualGlyphId,
+    createSpaceGlyph,
+    isWhitespaceGlyphName,
+    SPACE_CHARACTER,
 } from '../utils';
+import { parseGlyphOrder, validateGlyphOrder } from '../../../../../db/utils/spellingUtils';
 import type { Glyph, GlyphWithUsage, GraphemeComplete } from '../../../../../db/types';
 
 const SVG = '<svg viewBox="0 0 100 100"><path d="M0 0 L100 100"/></svg>';
@@ -155,5 +159,39 @@ describe('GlyphCanvasInput renderable normalisation', () => {
         expect(isVirtualGlyphId(7)).toBe(false);
         expect(first.source).toBe('virtual-ipa');
         expect(first.svg_data).toContain('<svg');
+    });
+});
+
+describe('GlyphCanvasInput space bar', () => {
+    it('creates a word-separator virtual glyph for a plain space', () => {
+        const space = createSpaceGlyph();
+
+        expect(SPACE_CHARACTER).toBe(' ');
+        expect(space.ipaCharacter).toBe(' ');
+        expect(space.name).toBe(' ');
+        expect(space.source).toBe('virtual-ipa');
+        expect(isVirtualGlyphId(space.id)).toBe(true);
+    });
+
+    it('uses the same id the auto-speller gives whitespace, so both spaces are one glyph', () => {
+        // The auto-speller turns a whitespace token into createVirtualGlyph(' ');
+        // the space bar must land on the identical id or lookups would miss.
+        expect(createSpaceGlyph().id).toBe(createVirtualGlyph(' ').id);
+        expect(createSpaceGlyph().id).not.toBe(createVirtualGlyph('ə').id);
+    });
+
+    it('serialises to a bare " " glyph_order entry that validates and parses back as IPA', () => {
+        const glyphOrder = ['grapheme-1', createSpaceGlyph().ipaCharacter, 'grapheme-2'];
+
+        expect(validateGlyphOrder(glyphOrder)).toEqual([]);
+        expect(parseGlyphOrder(glyphOrder)[1]).toEqual({ type: 'ipa', rawValue: ' ', ipaCharacter: ' ' });
+    });
+
+    it('recognises whitespace names and nothing else', () => {
+        expect(isWhitespaceGlyphName(' ')).toBe(true);
+        expect(isWhitespaceGlyphName(' ')).toBe(true);
+        expect(isWhitespaceGlyphName('')).toBe(false);
+        expect(isWhitespaceGlyphName('ə')).toBe(false);
+        expect(isWhitespaceGlyphName(' a ')).toBe(false);
     });
 });

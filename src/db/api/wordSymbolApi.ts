@@ -51,12 +51,23 @@ function create(request: CreateWordSymbolRequest): ApiResponse<WordSymbolRefs> {
     if (!request.name || request.name.trim() === '') {
         return errorResponse('VALIDATION_ERROR', 'A word symbol needs a name');
     }
-    if (!request.svgData || request.svgData.trim() === '') {
-        return errorResponse('VALIDATION_ERROR', 'A word symbol needs a drawing or an image');
+    const hasSvg = !!request.svgData && request.svgData.trim() !== '';
+    const hasGlyph = request.glyphId !== undefined && request.glyphId !== null;
+    if (hasSvg === hasGlyph) {
+        return errorResponse(
+            'VALIDATION_ERROR',
+            hasSvg
+                ? 'A word symbol takes a drawing or an existing glyph, not both'
+                : 'A word symbol needs a drawing, an image, or an existing glyph',
+        );
     }
 
     try {
-        const refs = serviceCreateWordSymbol({ name: request.name.trim(), svgData: request.svgData });
+        const refs = serviceCreateWordSymbol({
+            name: request.name.trim(),
+            svgData: hasSvg ? request.svgData : undefined,
+            glyphId: hasGlyph ? request.glyphId : undefined,
+        });
         return successResponse(refs);
     } catch (error) {
         return errorResponse(

@@ -38,6 +38,15 @@ import {
     deserializeGlyphOrder,
     serializeGlyphOrder,
     isGraphemeEntry,
+    extractGraphemeId,
+    extractVariantId,
+    parseSpellingEntry,
+    validateGlyphOrder,
+    spellingContainsGrapheme,
+    replaceGraphemeWithIpa,
+    removeGraphemeFromSpelling,
+    fromGlyphOrder,
+    stripVariantPins,
     // Grapheme deletion handling
     getLexiconEntriesUsingGrapheme,
     handleGraphemeDeletion,
@@ -508,6 +517,99 @@ describe('Two-List Architecture', () => {
 
             expect(withFallback!.hasIpaFallbacks).toBe(true);
             expect(withoutFallback!.hasIpaFallbacks).toBe(false);
+        });
+    });
+});
+
+// =============================================================================
+// PINNED VARIANTS (schema v9): "grapheme-<id>@<variantId>"
+// =============================================================================
+
+describe('Two-List Architecture — pinned variant entries', () => {
+    beforeAll(async () => {
+        await initDatabase();
+    });
+
+    beforeEach(() => {
+        clearDatabase();
+    });
+
+    describe('parsing (GRAPHEME_ENTRY_RE is the single parser)', () => {
+        it('parses grapheme-12@34 as grapheme 12 with variant 34', () => {
+            expect(isGraphemeEntry('grapheme-12@34')).toBe(true);
+            expect(extractGraphemeId('grapheme-12@34')).toBe(12);
+            expect(extractVariantId('grapheme-12@34')).toBe(34);
+            expect(parseSpellingEntry('grapheme-12@34')).toEqual({
+                type: 'grapheme', rawValue: 'grapheme-12@34', graphemeId: 12, variantId: 34,
+            });
+        });
+
+        it('an unpinned entry keeps its exact pre-v9 parsed shape (no variantId key)', () => {
+            expect(parseSpellingEntry('grapheme-12')).toEqual({ type: 'grapheme', rawValue: 'grapheme-12', graphemeId: 12 });
+            expect(extractVariantId('grapheme-12')).toBeNull();
+        });
+
+        it('malformed references are IPA text, never a grapheme', () => {
+            for (const entry of ['grapheme-12@', 'grapheme-@34', 'grapheme-12@0', 'grapheme-0@3', 'grapheme-12x', 'grapheme-12@34@5', 'grapheme- 12']) {
+                expect(isGraphemeEntry(entry), entry).toBe(false);
+                expect(extractGraphemeId(entry), entry).toBeNull();
+                expect(extractVariantId(entry), entry).toBeNull();
+                expect(parseSpellingEntry(entry), entry).toEqual({ type: 'ipa', rawValue: entry, ipaCharacter: entry });
+            }
+        });
+
+        it('validateGlyphOrder accepts pins and rejects malformed prefixed entries', () => {
+            expect(validateGlyphOrder(['grapheme-12@34', 'grapheme-3', 'ə'])).toEqual([]);
+            expect(validateGlyphOrder(['grapheme-12@'])).toHaveLength(1);
+            expect(validateGlyphOrder(['grapheme-@34'])).toHaveLength(1);
+        });
+
+        it('createGraphemeEntry(id, variantId) builds the pinned form; null/undefined builds the plain one', () => {
+            expect(createGraphemeEntry(12, 34)).toBe('grapheme-12@34');
+            expect(createGraphemeEntry(12)).toBe('grapheme-12');
+            expect(createGraphemeEntry(12, null)).toBe('grapheme-12');
+        });
+
+        it('extractGraphemeIds ignores pins (one id per grapheme, pinned or not)', () => {
+            expect(extractGraphemeIds(['grapheme-12@34', 'grapheme-12', 'ə', 'grapheme-5@1'])).toEqual({
+                graphemeIds: [12, 5], hasIpaFallbacks: true, ipaFallbackCount: 1,
+            });
+        });
+
+        it('the grapheme-level helpers match pinned entries too', () => {
+            const order = ['grapheme-12@34', 'ə', 'grapheme-12', 'grapheme-7@1'];
+            expect(spellingContainsGrapheme(order, 12)).toBe(true);
+            expect(spellingContainsGrapheme(['grapheme-7@1'], 7)).toBe(true);
+            expect(spellingContainsGrapheme(['grapheme-7@1'], 1)).toBe(false);
+            expect(replaceGraphemeWithIpa(order, 12, 'k')).toEqual(['k', 'ə', 'k', 'grapheme-7@1']);
+            expect(removeGraphemeFromSpelling(order, 12)).toEqual(['ə', 'grapheme-7@1']);
+            expect(fromGlyphOrder(order)).toEqual([12, 'ə', 12, 7]);
+        });
+
+        it('stripVariantPins removes only the named pin', () => {
+            const order = ['grapheme-12@34', 'grapheme-12@345', 'grapheme-3@34', 'grapheme-9', 'ə@34'];
+            expect(stripVariantPins(order, 34)).toEqual(['grapheme-12', 'grapheme-12@345', 'grapheme-3', 'grapheme-9', 'ə@34']);
+            expect(stripVariantPins(order, 99)).toEqual(order);
+        });
+    });
+
+    describe('grapheme deletion rewrites pinned occurrences', () => {
+        it('handleGraphemeDeletion substitutes pinned AND unpinned references', () => {
+            const grapheme = createTestGrapheme('k', 'k');
+            const other = createTestGrapheme('a', 'a');
+            const pinnedEntry = createGraphemeEntry(grapheme.id, grapheme.variants![0].id);
+            const word = createLexicon({
+                lemma: 'kak',
+                auto_spell: false,
+                glyph_order: [pinnedEntry, createGraphemeEntry(other.id), createGraphemeEntry(grapheme.id)],
+            });
+            expect(getLexiconEntriesUsingGrapheme(grapheme.id).map(l => l.id)).toEqual([word.id]);
+
+            const report = handleGraphemeDeletion(grapheme.id, 'k');
+
+            expect(report.affectedLexiconIds).toEqual([word.id]);
+            expect(deserializeGlyphOrder(getLexiconById(word.id)!.glyph_order)).toEqual(['k', createGraphemeEntry(other.id), 'k']);
+            expect(getLexiconById(word.id)!.needs_attention).toBe(true);
         });
     });
 });

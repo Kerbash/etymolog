@@ -1,0 +1,93 @@
+/* Block popover body (inside the app's DialogPanel, which owns the surface). */
+.body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.lockNotice {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin: 0;
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius-control);
+    background: var(--status-info-bg);
+    border: 1px solid var(--status-info);
+    color: var(--status-info);
+    font-size: 0.8125rem;
+    line-height: 1.4;
+}
+
+.slots {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.slot {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border-secondary);
+    border-radius: var(--radius-control);
+    background: var(--bg-secondary);
+}
+
+.slotHeader {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.role {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.sign {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.variantField {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.variantLabel {
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+}
+
+.select {
+    flex: 1;
+    min-width: 0;
+    padding: 0.3rem 0.5rem;
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-control);
+    background: var(--surface-raised);
+    color: var(--text-primary);
+    font: inherit;
+
+    &:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+}
+
+.note {
+    margin: 0;
+    font-size: 0.8125rem;
+    font-style: italic;
+    color: var(--text-secondary);
+}

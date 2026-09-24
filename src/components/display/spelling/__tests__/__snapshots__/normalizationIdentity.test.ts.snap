@@ -1,0 +1,235 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`normalization without an enabled block scheme > matches the output recorded from the pre-block code 1`] = `
+{
+  "glyphs": [
+    {
+      "id": 1,
+      "isVirtual": false,
+      "name": "glyph1",
+      "sourceIndex": 0,
+      "svg_data": "<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="glyph1"/></svg>",
+    },
+    {
+      "id": 2,
+      "isVirtual": false,
+      "name": "glyph2",
+      "sourceIndex": 1,
+      "svg_data": "<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="glyph2"/></svg>",
+    },
+  ],
+  "graphemes": [
+    {
+      "id": 11,
+      "isVirtual": false,
+      "name": "k-default",
+      "sourceIndex": 0,
+      "svg_data": "<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="k-default"/></svg>",
+    },
+    {
+      "id": 31,
+      "isVirtual": false,
+      "name": "t-default",
+      "sourceIndex": 1,
+      "svg_data": "<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="t-default"/></svg>",
+    },
+    {
+      "id": 32,
+      "isVirtual": false,
+      "name": "t-second",
+      "sourceIndex": 1,
+      "svg_data": "<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="t-second"/></svg>",
+    },
+  ],
+  "ids": [
+    {
+      "id": 11,
+      "isVirtual": false,
+      "name": "glyph11",
+      "sourceIndex": 0,
+      "svg_data": "<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="glyph11"/></svg>",
+    },
+    {
+      "id": 21,
+      "isVirtual": false,
+      "name": "glyph21",
+      "sourceIndex": 2,
+      "svg_data": "<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="glyph21"/></svg>",
+    },
+  ],
+  "spelling": [
+    {
+      "id": 11,
+      "isVirtual": false,
+      "name": "k-default",
+      "sourceIndex": 0,
+      "svg_data": "<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="k-default"/></svg>",
+    },
+    {
+      "id": 21,
+      "isVirtual": false,
+      "name": "a-default",
+      "sourceIndex": 1,
+      "svg_data": "<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="a-default"/></svg>",
+    },
+    {
+      "id": 31,
+      "isVirtual": false,
+      "name": "t-default",
+      "sourceIndex": 2,
+      "svg_data": "<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="t-default"/></svg>",
+    },
+    {
+      "id": 32,
+      "isVirtual": false,
+      "name": "t-second",
+      "sourceIndex": 2,
+      "svg_data": "<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="t-second"/></svg>",
+    },
+    {
+      "id": -177542,
+      "ipaCharacter": " ",
+      "isVirtual": true,
+      "name": " ",
+      "role": "word-separator",
+      "sourceIndex": 3,
+      "svg_data": "<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+        <text x="50" y="60" font-family="serif" font-size="48" text-anchor="middle" fill="currentColor"> </text>
+    </svg>",
+    },
+    {
+      "id": 11,
+      "isVirtual": false,
+      "name": "k-default",
+      "sourceIndex": 4,
+      "svg_data": "<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="k-default"/></svg>",
+    },
+    {
+      "id": -177548,
+      "ipaCharacter": ".",
+      "isVirtual": true,
+      "name": ".",
+      "sourceIndex": 5,
+      "svg_data": "<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+        <text x="50" y="60" font-family="serif" font-size="48" text-anchor="middle" fill="currentColor">.</text>
+    </svg>",
+    },
+    {
+      "id": 21,
+      "isVirtual": false,
+      "name": "a-default",
+      "sourceIndex": 6,
+      "svg_data": "<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="a-default"/></svg>",
+    },
+    {
+      "id": -178173,
+      "ipaCharacter": "ə",
+      "isVirtual": true,
+      "name": "ə",
+      "sourceIndex": 7,
+      "svg_data": "<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+        <text x="50" y="60" font-family="serif" font-size="48" text-anchor="middle" fill="currentColor">ə</text>
+    </svg>",
+    },
+    {
+      "id": 81,
+      "isVirtual": false,
+      "name": "n-inline",
+      "sourceIndex": 10,
+      "svg_data": "<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="n-inline"/></svg>",
+    },
+    {
+      "id": -177584,
+      "ipaCharacter": "
+",
+      "isVirtual": true,
+      "name": "
+",
+      "role": "line-break",
+      "sourceIndex": 11,
+      "svg_data": "<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+        <text x="50" y="60" font-family="serif" font-size="48" text-anchor="middle" fill="currentColor">
+</text>
+    </svg>",
+    },
+    {
+      "id": -177541,
+      "ipaCharacter": "!",
+      "isVirtual": true,
+      "name": "!",
+      "role": "punctuation",
+      "sourceIndex": 12,
+      "svg_data": "<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+        <text x="50" y="60" font-family="serif" font-size="48" text-anchor="middle" fill="currentColor">!</text>
+    </svg>",
+    },
+  ],
+  "spellingWithoutMap": [
+    {
+      "id": -177542,
+      "ipaCharacter": " ",
+      "isVirtual": true,
+      "name": " ",
+      "role": "word-separator",
+      "sourceIndex": 3,
+      "svg_data": "<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+        <text x="50" y="60" font-family="serif" font-size="48" text-anchor="middle" fill="currentColor"> </text>
+    </svg>",
+    },
+    {
+      "id": -177548,
+      "ipaCharacter": ".",
+      "isVirtual": true,
+      "name": ".",
+      "sourceIndex": 5,
+      "svg_data": "<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+        <text x="50" y="60" font-family="serif" font-size="48" text-anchor="middle" fill="currentColor">.</text>
+    </svg>",
+    },
+    {
+      "id": -178173,
+      "ipaCharacter": "ə",
+      "isVirtual": true,
+      "name": "ə",
+      "sourceIndex": 7,
+      "svg_data": "<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+        <text x="50" y="60" font-family="serif" font-size="48" text-anchor="middle" fill="currentColor">ə</text>
+    </svg>",
+    },
+    {
+      "id": 81,
+      "isVirtual": false,
+      "name": "n-inline",
+      "sourceIndex": 10,
+      "svg_data": "<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="n-inline"/></svg>",
+    },
+    {
+      "id": -177584,
+      "ipaCharacter": "
+",
+      "isVirtual": true,
+      "name": "
+",
+      "role": "line-break",
+      "sourceIndex": 11,
+      "svg_data": "<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+        <text x="50" y="60" font-family="serif" font-size="48" text-anchor="middle" fill="currentColor">
+</text>
+    </svg>",
+    },
+    {
+      "id": -177541,
+      "ipaCharacter": "!",
+      "isVirtual": true,
+      "name": "!",
+      "role": "punctuation",
+      "sourceIndex": 12,
+      "svg_data": "<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+        <text x="50" y="60" font-family="serif" font-size="48" text-anchor="middle" fill="currentColor">!</text>
+    </svg>",
+    },
+  ],
+}
+`;
+
+exports[`normalization without an enabled block scheme > matches the pre-block output as a raw JSON string (key order included — truly byte-identical) 1`] = `"{"spelling":[{"id":11,"name":"k-default","svg_data":"<svg xmlns=\\"http://www.w3.org/2000/svg\\" viewBox=\\"0 0 100 100\\"><path d=\\"k-default\\"/></svg>","isVirtual":false,"sourceIndex":0},{"id":21,"name":"a-default","svg_data":"<svg xmlns=\\"http://www.w3.org/2000/svg\\" viewBox=\\"0 0 100 100\\"><path d=\\"a-default\\"/></svg>","isVirtual":false,"sourceIndex":1},{"id":31,"name":"t-default","svg_data":"<svg xmlns=\\"http://www.w3.org/2000/svg\\" viewBox=\\"0 0 100 100\\"><path d=\\"t-default\\"/></svg>","isVirtual":false,"sourceIndex":2},{"id":32,"name":"t-second","svg_data":"<svg xmlns=\\"http://www.w3.org/2000/svg\\" viewBox=\\"0 0 100 100\\"><path d=\\"t-second\\"/></svg>","isVirtual":false,"sourceIndex":2},{"id":-177542,"name":" ","svg_data":"<svg xmlns=\\"http://www.w3.org/2000/svg\\" viewBox=\\"0 0 100 100\\">\\n        <text x=\\"50\\" y=\\"60\\" font-family=\\"serif\\" font-size=\\"48\\" text-anchor=\\"middle\\" fill=\\"currentColor\\"> </text>\\n    </svg>","isVirtual":true,"ipaCharacter":" ","sourceIndex":3,"role":"word-separator"},{"id":11,"name":"k-default","svg_data":"<svg xmlns=\\"http://www.w3.org/2000/svg\\" viewBox=\\"0 0 100 100\\"><path d=\\"k-default\\"/></svg>","isVirtual":false,"sourceIndex":4},{"id":-177548,"name":".","svg_data":"<svg xmlns=\\"http://www.w3.org/2000/svg\\" viewBox=\\"0 0 100 100\\">\\n        <text x=\\"50\\" y=\\"60\\" font-family=\\"serif\\" font-size=\\"48\\" text-anchor=\\"middle\\" fill=\\"currentColor\\">.</text>\\n    </svg>","isVirtual":true,"ipaCharacter":".","sourceIndex":5},{"id":21,"name":"a-default","svg_data":"<svg xmlns=\\"http://www.w3.org/2000/svg\\" viewBox=\\"0 0 100 100\\"><path d=\\"a-default\\"/></svg>","isVirtual":false,"sourceIndex":6},{"id":-178173,"name":"ə","svg_data":"<svg xmlns=\\"http://www.w3.org/2000/svg\\" viewBox=\\"0 0 100 100\\">\\n        <text x=\\"50\\" y=\\"60\\" font-family=\\"serif\\" font-size=\\"48\\" text-anchor=\\"middle\\" fill=\\"currentColor\\">ə</text>\\n    </svg>","isVirtual":true,"ipaCharacter":"ə","sourceIndex":7},{"id":81,"name":"n-inline","svg_data":"<svg xmlns=\\"http://www.w3.org/2000/svg\\" viewBox=\\"0 0 100 100\\"><path d=\\"n-inline\\"/></svg>","isVirtual":false,"sourceIndex":10},{"id":-177584,"name":"\\n","svg_data":"<svg xmlns=\\"http://www.w3.org/2000/svg\\" viewBox=\\"0 0 100 100\\">\\n        <text x=\\"50\\" y=\\"60\\" font-family=\\"serif\\" font-size=\\"48\\" text-anchor=\\"middle\\" fill=\\"currentColor\\">\\n</text>\\n    </svg>","isVirtual":true,"ipaCharacter":"\\n","sourceIndex":11,"role":"line-break"},{"id":-177541,"name":"!","svg_data":"<svg xmlns=\\"http://www.w3.org/2000/svg\\" viewBox=\\"0 0 100 100\\">\\n        <text x=\\"50\\" y=\\"60\\" font-family=\\"serif\\" font-size=\\"48\\" text-anchor=\\"middle\\" fill=\\"currentColor\\">!</text>\\n    </svg>","isVirtual":true,"ipaCharacter":"!","sourceIndex":12,"role":"punctuation"}],"spellingWithoutMap":[{"id":-177542,"name":" ","svg_data":"<svg xmlns=\\"http://www.w3.org/2000/svg\\" viewBox=\\"0 0 100 100\\">\\n        <text x=\\"50\\" y=\\"60\\" font-family=\\"serif\\" font-size=\\"48\\" text-anchor=\\"middle\\" fill=\\"currentColor\\"> </text>\\n    </svg>","isVirtual":true,"ipaCharacter":" ","sourceIndex":3,"role":"word-separator"},{"id":-177548,"name":".","svg_data":"<svg xmlns=\\"http://www.w3.org/2000/svg\\" viewBox=\\"0 0 100 100\\">\\n        <text x=\\"50\\" y=\\"60\\" font-family=\\"serif\\" font-size=\\"48\\" text-anchor=\\"middle\\" fill=\\"currentColor\\">.</text>\\n    </svg>","isVirtual":true,"ipaCharacter":".","sourceIndex":5},{"id":-178173,"name":"ə","svg_data":"<svg xmlns=\\"http://www.w3.org/2000/svg\\" viewBox=\\"0 0 100 100\\">\\n        <text x=\\"50\\" y=\\"60\\" font-family=\\"serif\\" font-size=\\"48\\" text-anchor=\\"middle\\" fill=\\"currentColor\\">ə</text>\\n    </svg>","isVirtual":true,"ipaCharacter":"ə","sourceIndex":7},{"id":81,"name":"n-inline","svg_data":"<svg xmlns=\\"http://www.w3.org/2000/svg\\" viewBox=\\"0 0 100 100\\"><path d=\\"n-inline\\"/></svg>","isVirtual":false,"sourceIndex":10},{"id":-177584,"name":"\\n","svg_data":"<svg xmlns=\\"http://www.w3.org/2000/svg\\" viewBox=\\"0 0 100 100\\">\\n        <text x=\\"50\\" y=\\"60\\" font-family=\\"serif\\" font-size=\\"48\\" text-anchor=\\"middle\\" fill=\\"currentColor\\">\\n</text>\\n    </svg>","isVirtual":true,"ipaCharacter":"\\n","sourceIndex":11,"role":"line-break"},{"id":-177541,"name":"!","svg_data":"<svg xmlns=\\"http://www.w3.org/2000/svg\\" viewBox=\\"0 0 100 100\\">\\n        <text x=\\"50\\" y=\\"60\\" font-family=\\"serif\\" font-size=\\"48\\" text-anchor=\\"middle\\" fill=\\"currentColor\\">!</text>\\n    </svg>","isVirtual":true,"ipaCharacter":"!","sourceIndex":12,"role":"punctuation"}],"glyphs":[{"id":1,"name":"glyph1","svg_data":"<svg xmlns=\\"http://www.w3.org/2000/svg\\" viewBox=\\"0 0 100 100\\"><path d=\\"glyph1\\"/></svg>","isVirtual":false,"sourceIndex":0},{"id":2,"name":"glyph2","svg_data":"<svg xmlns=\\"http://www.w3.org/2000/svg\\" viewBox=\\"0 0 100 100\\"><path d=\\"glyph2\\"/></svg>","isVirtual":false,"sourceIndex":1}],"graphemes":[{"id":11,"name":"k-default","svg_data":"<svg xmlns=\\"http://www.w3.org/2000/svg\\" viewBox=\\"0 0 100 100\\"><path d=\\"k-default\\"/></svg>","isVirtual":false,"sourceIndex":0},{"id":31,"name":"t-default","svg_data":"<svg xmlns=\\"http://www.w3.org/2000/svg\\" viewBox=\\"0 0 100 100\\"><path d=\\"t-default\\"/></svg>","isVirtual":false,"sourceIndex":1},{"id":32,"name":"t-second","svg_data":"<svg xmlns=\\"http://www.w3.org/2000/svg\\" viewBox=\\"0 0 100 100\\"><path d=\\"t-second\\"/></svg>","isVirtual":false,"sourceIndex":1}],"ids":[{"id":11,"name":"glyph11","svg_data":"<svg xmlns=\\"http://www.w3.org/2000/svg\\" viewBox=\\"0 0 100 100\\"><path d=\\"glyph11\\"/></svg>","isVirtual":false,"sourceIndex":0},{"id":21,"name":"glyph21","svg_data":"<svg xmlns=\\"http://www.w3.org/2000/svg\\" viewBox=\\"0 0 100 100\\"><path d=\\"glyph21\\"/></svg>","isVirtual":false,"sourceIndex":2}]}"`;

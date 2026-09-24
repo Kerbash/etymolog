@@ -10,34 +10,45 @@
  *                     strategies can find separators and line breaks without
  *                     being handed index arrays computed in the wrong space
  *
+ * BLOCK SCRIPT (`BLOCK_SCRIPT_PLAN.md` §4). When the context carries an
+ * ENABLED block scheme and a grapheme map, a `SpellingDisplayEntry[]` is first
+ * segmented by the pure engine (`src/blocks`): each run of entries matched to
+ * a template becomes ONE renderable (the composed block SVG, with a `block`
+ * report), unmatched entries render as before (honouring a pinned variant),
+ * structural entries pass through, and `.` boundaries render nothing. When
+ * the scheme sets `leftovers`, a consonant left in no block is composed with
+ * the vowel-killer mark into a block renderable of its own (drawn alone, as
+ * before, when the mark grapheme no longer exists). Layout
+ * strategies therefore see one glyph per block and need no changes.
+ *
+ * Without an enabled scheme the pre-block code path runs VERBATIM — the output
+ * is byte-identical (pinned by `__tests__/normalizationIdentity.test.ts`).
+ * Only `SpellingDisplayEntry[]` input is ever composed: `Glyph[]`,
+ * `GraphemeComplete[]`, ids and renderables never go through the engine (the
+ * Script Maker's per-variant previews rely on that).
+ *
  * @module display/spelling/utils/normalization
  */
 
 import type { Glyph, GraphemeComplete, SpellingDisplayEntry } from '../../../../db/types';
 import type { RenderableGlyph, NormalizationContext, InputType } from '../types';
 import { generateVirtualGlyphId } from '../../../../db/utils/virtualGlyph';
-
-/**
- * Generate SVG data for a virtual IPA glyph.
- * Creates a simple text display of the IPA character.
- */
-function generateVirtualSvg(ipaChar: string): string {
-    const escaped = ipaChar
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-        <text x="50" y="60" font-family="serif" font-size="48" text-anchor="middle" fill="currentColor">${escaped}</text>
-    </svg>`;
-}
+import { textSvg } from '../../../../db/utils/svgCompose';
+import {
+    blockKey,
+    composeBlock,
+    composeLoneConsonant,
+    LONE_CONSONANT_TEMPLATE_ID,
+    pickVariant,
+    segmentEntries,
+} from '../../../../blocks';
+import type { BlockScheme, ComposedBlock } from '../../../../blocks';
 
 function createVirtualGlyph(ipaChar: string, sourceIndex: number, role?: SpellingDisplayEntry['role']): RenderableGlyph {
     return {
         id: generateVirtualGlyphId(ipaChar),
         name: ipaChar,
-        svg_data: generateVirtualSvg(ipaChar),
+        svg_data: textSvg(ipaChar),
         isVirtual: true,
         ipaCharacter: ipaChar,
         sourceIndex,
@@ -100,6 +111,13 @@ function normalizeSpellingDisplay(
     entries: SpellingDisplayEntry[],
     context: NormalizationContext
 ): RenderableGlyph[] {
+    const scheme = context.blockScheme;
+    const graphemeMap = context.graphemeMap;
+    if (scheme && scheme.enabled && graphemeMap) {
+        return normalizeSpellingWithBlocks(entries, scheme, graphemeMap);
+    }
+
+    // ---- The pre-block path, verbatim (byte-identical output; see the module comment).
     const result: RenderableGlyph[] = [];
 
     entries.forEach((entry, entryIndex) => {
@@ -116,6 +134,104 @@ function normalizeSpellingDisplay(
         }
     });
 
+    return result;
+}
+
+/**
+ * The renderables of ONE entry outside any block: a grapheme expands to its
+ * glyphs — the PINNED variant's when the entry pins one (`grapheme-12@34`),
+ * else the default's — and an IPA entry becomes a virtual text glyph. Same
+ * resolution order as the pre-block path: the map first, then the entry's own
+ * complete grapheme data.
+ */
+function pushEntry(
+    result: RenderableGlyph[],
+    entry: SpellingDisplayEntry,
+    entryIndex: number,
+    graphemeMap: Map<number, GraphemeComplete>,
+): void {
+    if (entry.type === 'grapheme' && entry.grapheme) {
+        const fullGrapheme = graphemeMap.get(entry.grapheme.id) ?? (entry.grapheme as GraphemeComplete);
+        if (!Array.isArray(fullGrapheme.glyphs)) return;
+        // Variant glyph lists are `Glyph[]` (GraphemeVariantWithGlyphs); with no
+        // `variants`, pickVariant hands back `fullGrapheme.glyphs` itself (P5).
+        const glyphs = pickVariant(fullGrapheme, null, entry.variantId).glyphs as Glyph[];
+        for (const glyph of glyphs) {
+            result.push(glyphToRenderable(glyph, entryIndex, entry.role));
+        }
+    } else if (entry.type === 'ipa' && entry.ipaCharacter) {
+        result.push(createVirtualGlyph(entry.ipaCharacter, entryIndex, entry.role));
+    }
+}
+
+/**
+ * The readable name of a composed block: its template's name, or — for a lone
+ * consonant with its mark, which no template describes — the consonant's own
+ * grapheme name / IPA character.
+ */
+function blockName(composed: ComposedBlock, scheme: BlockScheme, entries: readonly SpellingDisplayEntry[]): string {
+    if (composed.templateId === LONE_CONSONANT_TEMPLATE_ID) {
+        const entry = entries[composed.entryIndices[0]];
+        return entry?.grapheme?.name ?? entry?.ipaCharacter ?? composed.templateId;
+    }
+    return scheme.templates.find((t) => t.id === composed.templateId)?.name ?? composed.templateId;
+}
+
+/** One renderable for a composed block. */
+function blockToRenderable(
+    composed: ComposedBlock,
+    scheme: BlockScheme,
+    entries: readonly SpellingDisplayEntry[],
+): RenderableGlyph {
+    const firstEntryIndex = composed.entryIndices[0];
+    return {
+        // The entry position is part of the key so two IDENTICAL blocks in one
+        // word (same template, entries and variants) still get distinct ids —
+        // renderers key on it.
+        id: generateVirtualGlyphId(`${blockKey(composed)}:${firstEntryIndex}`),
+        name: blockName(composed, scheme, entries),
+        svg_data: composed.svg,
+        // A block is a real picture even when a slot holds an IPA stand-in;
+        // `block.containsVirtual` says so for whoever needs to know.
+        isVirtual: false,
+        sourceIndex: firstEntryIndex,
+        block: {
+            templateId: composed.templateId,
+            entryIndices: composed.entryIndices,
+            slots: composed.slots,
+            containsVirtual: composed.containsVirtual,
+        },
+    };
+}
+
+/**
+ * The block path: segment, then compose each block into one renderable.
+ * `single` and `passthrough` segments render exactly one entry each, as the
+ * pre-block path would (plus pin support) — except a lone consonant under a
+ * scheme with `leftovers`, which becomes one block with the vowel-killer mark;
+ * boundaries (`.`) are consumed by the segmenter and render nothing.
+ */
+function normalizeSpellingWithBlocks(
+    entries: SpellingDisplayEntry[],
+    scheme: BlockScheme,
+    graphemeMap: Map<number, GraphemeComplete>,
+): RenderableGlyph[] {
+    const result: RenderableGlyph[] = [];
+    for (const segment of segmentEntries(entries, scheme, graphemeMap)) {
+        if (segment.kind === 'block') {
+            result.push(blockToRenderable(composeBlock(segment, entries, scheme, graphemeMap), scheme, entries));
+            continue;
+        }
+        const entryIndex = segment.entryIndices[0];
+        if (segment.kind === 'single' && segment.consonant && scheme.leftovers) {
+            const lone = composeLoneConsonant(entryIndex, entries, graphemeMap, scheme.leftovers);
+            if (lone) {
+                result.push(blockToRenderable(lone, scheme, entries));
+                continue;
+            }
+        }
+        pushEntry(result, entries[entryIndex], entryIndex, graphemeMap);
+    }
     return result;
 }
 

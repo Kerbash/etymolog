@@ -16,7 +16,8 @@ describe('jsonCodec', () => {
         const db = getDatabase();
         db.run("INSERT INTO glyphs (name, svg_data) VALUES ('g1', '<svg/>')");
         db.run("INSERT INTO graphemes (name) VALUES ('gr1')");
-        db.run("INSERT INTO grapheme_glyphs (grapheme_id, glyph_id, position) VALUES (1, 1, 0)");
+        db.run("INSERT INTO grapheme_variants (grapheme_id, name, is_default) VALUES (1, 'Default', 1)");
+        db.run("INSERT INTO grapheme_glyphs (grapheme_id, variant_id, glyph_id, position) VALUES (1, 1, 1, 0)");
         db.run("INSERT INTO phonemes (grapheme_id, phoneme) VALUES (1, 'a')");
         db.run("INSERT INTO lexicon (lemma, meaning) VALUES ('word1', 'meaning1')");
         db.run("INSERT INTO lexicon_spelling (lexicon_id, grapheme_id, position) VALUES (1, 1, 0)");

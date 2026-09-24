@@ -88,16 +88,86 @@ export interface Grapheme {
 }
 
 /**
- * Junction table entry linking a glyph to a grapheme with position.
- * Position determines the order of glyphs within the grapheme.
+ * Junction table entry linking a glyph to one VARIANT of a grapheme with
+ * position. Position determines the order of glyphs within the variant.
  */
 export interface GraphemeGlyph {
     id: number;
+    /** Always equal to the variant's `grapheme_id` (kept for per-grapheme joins). */
     grapheme_id: number;
+    /** The variant (visual form) this glyph row belongs to (schema v9). */
+    variant_id: number;
     glyph_id: number;
     position: number;
     /** Reserved for future: transformation data (rotation, scale, offset) */
     transform: string | null;
+}
+
+// =============================================================================
+// GRAPHEME VARIANT TYPES (schema v9)
+// =============================================================================
+
+/**
+ * A script-level named bucket of variants ("head", "geometric", "prefix
+ * form"…). A grapheme has at most one variant per group. Block-scheme
+ * template slots name a group to pick the variant drawn in that slot.
+ */
+export interface VariantGroup {
+    id: number;
+    name: string;
+    sort_order: number;
+    created_at: string;
+    updated_at: string;
+}
+
+/**
+ * One visual form of a grapheme: an ordered glyph list. Same sound, different
+ * look — phonemes stay on the grapheme. Exactly one variant per grapheme is
+ * the default (`is_default`), and it is what `GraphemeComplete.glyphs` shows.
+ */
+export interface GraphemeVariant {
+    id: number;
+    grapheme_id: number;
+    /** Variant group, or null when ungrouped (also after its group is deleted). */
+    group_id: number | null;
+    name: string;
+    is_default: boolean;
+    sort_order: number;
+    created_at: string;
+    updated_at: string;
+}
+
+/** A variant with its glyphs in position order. */
+export interface GraphemeVariantWithGlyphs extends GraphemeVariant {
+    glyphs: Glyph[];
+}
+
+/** Input for creating a (non-default) variant of a grapheme. */
+export interface CreateGraphemeVariantInput {
+    name: string;
+    group_id?: number | null;
+    /** Ordered glyphs; at least one is required. */
+    glyphs: CreateGraphemeGlyphInput[];
+    sort_order?: number;
+}
+
+/** Input for renaming / regrouping a variant (its glyphs have `setVariantGlyphs`). */
+export interface UpdateGraphemeVariantInput {
+    name?: string;
+    group_id?: number | null;
+    sort_order?: number;
+}
+
+/** Input for creating a variant group. */
+export interface CreateVariantGroupInput {
+    name: string;
+    sort_order?: number;
+}
+
+/** Input for renaming / reordering a variant group. */
+export interface UpdateVariantGroupInput {
+    name?: string;
+    sort_order?: number;
 }
 
 /**
@@ -116,12 +186,14 @@ export interface CreateGraphemeInput {
     name: string;
     category?: string;
     notes?: string;
-    /** Ordered array of glyph references */
+    /** Ordered array of glyph references — the DEFAULT variant's glyphs. */
     glyphs: CreateGraphemeGlyphInput[];
     /** Optional phonemes to create with the grapheme */
     phonemes?: CreatePhonemeInput[];
     /** Nesting folder id (schema v8), or null/undefined for the root level. */
     folder_id?: number | null;
+    /** Additional (non-default) variants to create with the grapheme (schema v9). */
+    variants?: CreateGraphemeVariantInput[];
 }
 
 /**
@@ -137,8 +209,14 @@ export interface UpdateGraphemeInput {
  * A grapheme with its ordered glyph composition.
  */
 export interface GraphemeWithGlyphs extends Grapheme {
-    /** Glyphs in order (sorted by position) */
+    /** The DEFAULT variant's glyphs in order (sorted by position) */
     glyphs: Glyph[];
+    /**
+     * Every variant, default first then by `sort_order` (schema v9). Optional
+     * on the TYPE so hand-built literals keep type-checking; the service
+     * always populates it. Absent ⇒ treat as "default variant only".
+     */
+    variants?: GraphemeVariantWithGlyphs[];
 }
 
 /**
@@ -153,9 +231,19 @@ export interface GraphemeWithPhonemes extends Grapheme {
  * This is the full representation for display purposes.
  */
 export interface GraphemeComplete extends Grapheme {
-    /** Glyphs in order (sorted by position) */
+    /**
+     * The DEFAULT variant's glyphs in order (sorted by position). Its meaning
+     * never changed with schema v9 — renderers and the auto-speller rely on it.
+     */
     glyphs: Glyph[];
     phonemes: Phoneme[];
+    /**
+     * Every variant, default first then by `sort_order` (schema v9). Optional
+     * on the TYPE (like `folder_id` after v8) so the many fixtures that build
+     * `GraphemeComplete` literals keep type-checking; the service always
+     * populates it. Absent ⇒ treat as "default variant only".
+     */
+    variants?: GraphemeVariantWithGlyphs[];
 }
 
 // =============================================================================
@@ -423,7 +511,7 @@ export interface CreateLexiconInput {
      * defaults to the word's display name (pronunciation or first meaning).
      * Handled entirely at the api layer; the lexicon service ignores it.
      */
-    symbol?: { name?: string; svgData: string };
+    symbol?: { name?: string; svgData?: string; glyphId?: number };
 }
 
 /**
@@ -531,6 +619,11 @@ export interface SpellingDisplayEntry {
     ipaCharacter?: string;
     /** Separator / line-break / punctuation marker (translator output only) */
     role?: SpellingRole;
+    /**
+     * Pinned variant (grapheme entries only): the spelling said
+     * `grapheme-<id>@<variantId>`. Absent = choose automatically.
+     */
+    variantId?: number;
 }
 
 /**

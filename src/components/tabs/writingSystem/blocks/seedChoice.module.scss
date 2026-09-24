@@ -1,0 +1,24 @@
+/**
+ * TemplateList — the inline "Add templates from your word shapes" choice
+ * panel. The radio cards come from `settings.module.scss` (the same cards as
+ * "Splitting words into blocks"); this sheet only frames the panel.
+ *
+ * Theme tokens only (the token ratchet in `src/styles/__tests__/tokens.test.ts`).
+ */
+
+.panel {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    min-width: 0;
+    padding: 0.75rem;
+    border: var(--border-width) solid var(--border-primary);
+    border-radius: var(--radius-control);
+}
+
+.title {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
