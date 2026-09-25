@@ -32,3 +32,52 @@
     pointer-events: none;
     user-select: none;
 }
+
+/* "Where the sign sits" — a small 3×3 grid of square toggle buttons. The
+   checked cell is filled with --interactive-base; the rest show a faint dot. */
+.pinGrid {
+    display: grid;
+    grid-template-columns: repeat(3, 1.6rem);
+    grid-template-rows: repeat(3, 1.6rem);
+    gap: 0.2rem;
+    width: max-content;
+}
+
+.pinCell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    box-sizing: border-box;
+    border: var(--border-width) solid var(--border-primary);
+    border-radius: var(--radius-control);
+    background: var(--surface-raised);
+    cursor: pointer;
+
+    &:hover {
+        border-color: var(--interactive-hover);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--interactive-base);
+        outline-offset: 2px;
+    }
+}
+
+.pinCellChecked {
+    border-color: var(--interactive-base);
+    background: var(--interactive-base);
+}
+
+/* A faint centre dot marks each unchecked cell; the checked cell hides it (the
+   whole cell is already filled). */
+.pinDot {
+    width: 0.35rem;
+    height: 0.35rem;
+    border-radius: 50%;
+    background: var(--text-secondary-muted);
+
+    .pinCellChecked & {
+        background: transparent;
+    }
+}

@@ -35,6 +35,8 @@ import styles from './blocksPage.module.scss';
 import settingsStyles from './settings.module.scss';
 
 export interface WordCheckProps {
+    /** Optional stable id for the section (used by the page's "On this page" links). */
+    id?: string;
     /** The scheme to check with — the page's draft, forced on. */
     scheme: BlockScheme;
     /** "Try it": show this word in the "Try a word" preview. */
@@ -59,7 +61,7 @@ function counted(n: number, one: string, many: string): string {
     return `${n} ${n === 1 ? one : many}`;
 }
 
-export default function WordCheck({ scheme, onTryWord }: WordCheckProps) {
+export default function WordCheck({ id, scheme, onTryWord }: WordCheckProps) {
     const { data } = useEtymolog();
     const titleId = useId();
     // Whole values read out first (P8).
@@ -82,7 +84,7 @@ export default function WordCheck({ scheme, onTryWord }: WordCheckProps) {
     const groups = result ? ROW_GROUPS.filter(({ list }) => list(result).count > 0) : [];
 
     return (
-        <section className={styles.section} aria-labelledby={titleId} data-word-check-section="">
+        <section id={id} className={styles.section} aria-labelledby={titleId} data-word-check-section="">
             <div className={styles.sectionHeader}>
                 <h3 id={titleId} className={styles.sectionTitle}>Check all my words</h3>
                 <Button

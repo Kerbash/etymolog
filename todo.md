@@ -303,6 +303,27 @@ left needs the owner, or is polish deliberately not squeezed in.
   The block outline opens its popover from its BORDER now, so taps inside a
   block reach the tiles.
 
+## From the block placement follow-up (2026-09-24, `BLOCK_PLACEMENT_PLAN.md`)
+
+Shipped on `alpha`: `65cf0fa` (Phase A — engine: slot `pin` / `fill`, `preserveAspectRatio` mapping, `estimateInkBounds` for every align × meet/slice),
+`ff638f6` (Phase B — designer: pin picker + fit/fill select in `SlotSettings.tsx`, three resize handles in `RectLayoutEditor.tsx`, `slotPlacement.ts`),
+this commit (Phase C — "On this page" contents, docs). Known limits, none blocking:
+
+- **A sign can only span a flat box by OVERFLOWING it, never by stretching.**
+  This is by design — the owner rejected stretching. Fill grows the sign until
+  it spans the box's longer side and the rest spills past the box edges.
+- **Overflow is clipped at the block edge.** The block root `<svg>` viewport
+  clips, so a sign that overflows its box is cut off at the block's own edge —
+  it never runs into the next block in a word.
+- **Overflow may overlap a neighbouring box inside the same block.** Filling one
+  box can make its sign spill over an adjacent box in the same block; the
+  designer sees this at once in the live preview and moves/resizes to taste.
+- **A multi-sign slot applies ONE pin/fill to every part.** Every sign sharing a
+  slot uses that slot's single pin and fill; there is no per-part placement.
+- **Live-checked (Chrome, alpha `localhost:5178`, the Rabomaya language, editor cancelled afterwards so nothing was saved):** the "On this page" row (7 links, click scrolls + focuses the section, URL hash stays empty); Template 2 → C2 selected → three handles (corner 16×16, right 16×30, bottom 48×16, each with a 28px hit area and the right cursor); pin `bottom` + Fill → the C2 cell reads `xMidYMax slice overflow="visible"` and the live preview draws the bottom sign wider than with Fit; the right-edge handle drag changed only the width (100% → 75%).
+- **Not live-checked:** the bottom-edge handle drag (unit-tested: height only) — the Chrome extension dropped mid-batch; a saved scheme with a filled box drawn in the Lexicon word list (unit-tested through `composeBlock` only).
+- **Flaky test:** `blocksPage.test.tsx › consonants that can carry a syllable …` failed once in a full run (3775 tests) and passed alone and on two full reruns. Timing-dependent; worth a `findBy`/`waitFor` look when it recurs.
+
 ## From the conlang-edges follow-up (2026-09-24, CONLANG_EDGES_PLAN.md)
 
 Shipped on `alpha`: `8a8e59c` (marks ride with the sign before them, `‿` joins, stress marks cut), `7b7fc4b` (syllable-sign codas, syllabic consonants),

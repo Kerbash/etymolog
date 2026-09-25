@@ -9,21 +9,23 @@
  *
  * ```
  *  ┌──────────┬──────────┐   ← faint 4×4 guide grid
- *  │ C1       │ V        │
+ *  │ C1       │ V       ▐│   ← right-edge handle (width only), selected rect
  *  │ [group▾] │ [group▾] │   ← renderRectContent (never starts a drag)
- *  │          │         ◢│   ← resize handle, selected rect only
+ *  │          │  ▂▂▂    ◢│   ← bottom-edge (height) + corner (both) handles
  *  └──────────┴──────────┘
  *  V — x 50% · y 0% · w 50% · h 100%   ← readout for the selection
  * ```
  *
  * Interaction:
- *  - **pointer**: press a rectangle's body to select + MOVE it; the
- *    bottom-right handle RESIZES it. Pointer events with `setPointerCapture`
- *    (mouse, pen and touch alike, and the drag survives leaving the canvas);
- *    the drag origin lives in a ref so a move never re-renders by itself.
- *    Every move is computed from the ORIGIN rectangle plus the total pointer
- *    delta — never incrementally — so clamping at an edge does not
- *    accumulate drift and snapping cannot "stick".
+ *  - **pointer**: press a rectangle's body to select + MOVE it. The selected
+ *    rect carries three resize handles (in DOM order): a bottom-right CORNER
+ *    (width + height), a RIGHT edge (width only) and a BOTTOM edge (height
+ *    only), each with a generous transparent hit area larger than the drawn
+ *    shape. Pointer events with `setPointerCapture` (mouse, pen and touch
+ *    alike, and the drag survives leaving the canvas); the drag origin lives in
+ *    a ref so a move never re-renders by itself. Every move is computed from the
+ *    ORIGIN rectangle plus the total pointer delta — never incrementally — so
+ *    clamping at an edge does not accumulate drift and snapping cannot "stick".
  *  - **keyboard**: each rectangle is a focusable `role="button"` with its
  *    geometry in its accessible name. Arrows move by `snap ?? 1/32`,
  *    Shift+Arrows resize, Enter/Space select. A visually-hidden polite live
@@ -86,7 +88,7 @@ export interface RectLayoutEditorProps {
     'aria-label'?: string;
 }
 
-type DragMode = 'move' | 'resize';
+type DragMode = 'move' | 'resize' | 'resize-w' | 'resize-h';
 
 /** Everything a pointer drag needs, captured at pointerdown. */
 interface DragState {
@@ -188,11 +190,21 @@ export default function RectLayoutEditor({
         if (!drag || drag.pointerId !== event.pointerId || readOnly) return;
         const dx = (event.clientX - drag.startX) / drag.scale;
         const dy = (event.clientY - drag.startY) / drag.scale;
-        commit(
-            drag.mode === 'move'
-                ? moveRect(drag.origin, dx, dy, snap)
-                : resizeRect(drag.origin, dx, dy, snap),
-        );
+        commit(resizeForMode(drag.mode, drag.origin, dx, dy));
+    }
+
+    /** The rectangle a drag of `mode` produces from its origin and pointer delta. */
+    function resizeForMode(mode: DragMode, origin: LayoutRect, dx: number, dy: number): LayoutRect {
+        switch (mode) {
+            case 'move':
+                return moveRect(origin, dx, dy, snap);
+            case 'resize-w':
+                return resizeRect(origin, dx, 0, snap);
+            case 'resize-h':
+                return resizeRect(origin, 0, dy, snap);
+            default:
+                return resizeRect(origin, dx, dy, snap);
+        }
     }
 
     function endDrag(event: ReactPointerEvent<HTMLDivElement>) {
@@ -298,12 +310,26 @@ export default function RectLayoutEditor({
                                 </div>
                             )}
                             {isSelected && !readOnly && (
-                                <span
-                                    className={styles.handle}
-                                    aria-hidden="true"
-                                    data-resize-handle=""
-                                    onPointerDown={event => beginDrag(event, rect, 'resize')}
-                                />
+                                <>
+                                    <span
+                                        className={classNames(styles.handle, styles.handleCorner)}
+                                        aria-hidden="true"
+                                        data-resize-handle="corner"
+                                        onPointerDown={event => beginDrag(event, rect, 'resize')}
+                                    />
+                                    <span
+                                        className={classNames(styles.handle, styles.handleRight)}
+                                        aria-hidden="true"
+                                        data-resize-handle="right"
+                                        onPointerDown={event => beginDrag(event, rect, 'resize-w')}
+                                    />
+                                    <span
+                                        className={classNames(styles.handle, styles.handleBottom)}
+                                        aria-hidden="true"
+                                        data-resize-handle="bottom"
+                                        onPointerDown={event => beginDrag(event, rect, 'resize-h')}
+                                    />
+                                </>
                             )}
                         </div>
                     );

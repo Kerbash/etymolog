@@ -56,6 +56,8 @@ import pageStyles from './blocksPage.module.scss';
 import styles from './settings.module.scss';
 
 export interface SplitSettingsProps {
+    /** Optional stable id for the section (used by the page's "On this page" links). */
+    id?: string;
     /** The draft scheme's `split`; absent = not chosen yet (template order). */
     split: BlockSplit | undefined;
     /** Vowel pairs found in the word shapes (`suggestDiphthongs`); offered as buttons. */
@@ -71,7 +73,7 @@ const FALLBACK_EXAMPLE = 'ai';
 /** The example shown while no consonant is listed. */
 const FALLBACK_SYLLABIC_EXAMPLE = 'r';
 
-export default function SplitSettings({ split, suggestions, syllabicSuggestions, onChange }: SplitSettingsProps) {
+export default function SplitSettings({ id, split, suggestions, syllabicSuggestions, onChange }: SplitSettingsProps) {
     const idPrefix = useId();
     const titleId = `${idPrefix}-title`;
     const radioName = `${idPrefix}-mode`;
@@ -88,7 +90,7 @@ export default function SplitSettings({ split, suggestions, syllabicSuggestions,
     const consonantExample = syllabicExample(consonantExampleEntry);
 
     return (
-        <section className={pageStyles.section} aria-labelledby={titleId} data-split-settings="">
+        <section id={id} className={pageStyles.section} aria-labelledby={titleId} data-split-settings="">
             <div className={pageStyles.sectionHeader}>
                 <h3 id={titleId} className={pageStyles.sectionTitle}>
                     Splitting words into blocks

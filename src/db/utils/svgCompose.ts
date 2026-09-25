@@ -27,6 +27,30 @@ export interface SvgRect {
     h: number;
 }
 
+/** The align half of `preserveAspectRatio` — the nine `xMinYMin`…`xMaxYMax` positions. */
+export type SvgAlign =
+    | 'xMinYMin' | 'xMidYMin' | 'xMaxYMin'
+    | 'xMinYMid' | 'xMidYMid' | 'xMaxYMid'
+    | 'xMinYMax' | 'xMidYMax' | 'xMaxYMax';
+
+/**
+ * How a nested source is placed in its cell (BLOCK_PLACEMENT_PLAN.md §2).
+ * Omitted ⇒ `xMidYMid meet` with no `overflow` — the exact bytes written before
+ * placement existed. `scale: 'slice'` also writes `overflow="visible"` so the
+ * sign spills past the cell instead of being cropped.
+ */
+export interface SvgPlacement {
+    align?: SvgAlign;
+    scale?: 'meet' | 'slice';
+}
+
+/** `preserveAspectRatio` value + the extra `overflow` attribute a placement writes. */
+export function placementAttrs(placement?: SvgPlacement): { par: string; overflow: string } {
+    const align = placement?.align ?? 'xMidYMid';
+    const scale = placement?.scale ?? 'meet';
+    return { par: `${align} ${scale}`, overflow: scale === 'slice' ? ' overflow="visible"' : '' };
+}
+
 /** The `viewBox` of an SVG string, or a 0 0 100 100 default when absent/malformed. */
 export function parseSvgViewBox(svg: string): { x: number; y: number; width: number; height: number } {
     const match = svg.match(/<svg\b[^>]*\bviewBox\s*=\s*["']\s*([-\d.eE+]+)[\s,]+([-\d.eE+]+)[\s,]+([-\d.eE+]+)[\s,]+([-\d.eE+]+)\s*["']/i);
@@ -59,13 +83,16 @@ export function extractSvgInner(svg: string): string {
  * One source SVG as a nested `<svg>` cell occupying `rect` of the parent.
  *
  * The source keeps its ORIGINAL `viewBox` and the browser rescales it into the
- * box (`xMidYMid meet`: aspect preserved, centred), so sources authored in
- * different coordinate spaces come out the same size. Numbers are written with
- * `String(n)` — callers that want tidy output round before calling.
+ * box, so sources authored in different coordinate spaces come out the same
+ * size. `placement` picks the align × meet/slice (`SvgPlacement`); omitted ⇒
+ * `xMidYMid meet` with no `overflow` — aspect preserved, centred, the exact
+ * bytes written before placement existed. Numbers are written with `String(n)`
+ * — callers that want tidy output round before calling.
  */
-export function nestSvg(svg: string, rect: SvgRect): string {
+export function nestSvg(svg: string, rect: SvgRect, placement?: SvgPlacement): string {
     const vb = parseSvgViewBox(svg);
-    return `<svg x="${rect.x}" y="${rect.y}" width="${rect.w}" height="${rect.h}" viewBox="${vb.x} ${vb.y} ${vb.width} ${vb.height}" preserveAspectRatio="xMidYMid meet">${extractSvgInner(svg)}</svg>`;
+    const { par, overflow } = placementAttrs(placement);
+    return `<svg x="${rect.x}" y="${rect.y}" width="${rect.w}" height="${rect.h}" viewBox="${vb.x} ${vb.y} ${vb.width} ${vb.height}" preserveAspectRatio="${par}"${overflow}>${extractSvgInner(svg)}</svg>`;
 }
 
 /**

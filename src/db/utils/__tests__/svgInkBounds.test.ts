@@ -155,6 +155,34 @@ describe('estimateInkBounds — multi-glyph rows (nested svg cells)', () => {
     });
 });
 
+describe('estimateInkBounds — nested cell align × {meet, slice} (BLOCK_PLACEMENT_PLAN.md §2)', () => {
+    // A square 100×100 viewBox drawn full, shown in a TALL 40×100 viewport at the
+    // origin, inside a 100×100 root document. meet → scale 0.4 (40×40 content, y
+    // free); slice → scale 1 (100×100 content overflowing x, clipped to the root).
+    const cell = (par: string) =>
+        `<svg x="0" y="0" width="40" height="100" viewBox="0 0 100 100" preserveAspectRatio="${par}"><rect x="0" y="0" width="100" height="100"></rect></svg>`;
+    const root = (par: string) => doc(cell(par), '0 0 100 100');
+
+    it('meet places the 40×40 ink by the y-alignment, x fixed', () => {
+        expectBox(estimateInkBounds(root('xMinYMin meet')), withMargin(0, 0, 40, 40));
+        expectBox(estimateInkBounds(root('xMidYMid meet')), withMargin(0, 30, 40, 40));
+        expectBox(estimateInkBounds(root('xMaxYMax meet')), withMargin(0, 60, 40, 40));
+    });
+
+    it('slice covers the viewport and overflows in x, clipped to the root viewBox', () => {
+        // xMin: content [0,100] fits the root — full width.
+        expectBox(estimateInkBounds(root('xMinYMin slice')), withMargin(0, 0, 100, 100));
+        // xMid: content shifts to [-30,70], clipped left at 0 → width 70.
+        expectBox(estimateInkBounds(root('xMidYMid slice')), withMargin(0, 0, 70, 100));
+        // xMax: content shifts to [-60,40], clipped left at 0 → width 40.
+        expectBox(estimateInkBounds(root('xMaxYMax slice')), withMargin(0, 0, 40, 100));
+    });
+
+    it('preserveAspectRatio="none" (non-uniform) stays unmeasurable', () => {
+        expect(estimateInkBounds(root('none'))).toBeNull();
+    });
+});
+
 describe('nestSvgToInk — hairline floor', () => {
     it('adds a 1-screen-pixel, non-scaling outline under each mark, in its own colour', () => {
         const svg = doc('<path d="M 40 140 L 260 140 L 260 142 Z" fill="currentColor"></path><rect x="10" y="10" width="20" height="20" fill="none" stroke="var(--red)" stroke-width="2"></rect>');

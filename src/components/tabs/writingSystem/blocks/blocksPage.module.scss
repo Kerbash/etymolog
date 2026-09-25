@@ -27,6 +27,40 @@
     border: var(--border-width) solid var(--border-secondary);
     border-radius: var(--radius-surface);
     box-shadow: var(--shadow-surface);
+    /* Leave a little room above a section jumped to from "On this page". */
+    scroll-margin-top: 1rem;
+}
+
+/* ── "On this page" contents (PageContents.tsx) ────────────────────────── */
+
+.contents {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.contentsLink {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.7rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--interactive-base);
+    text-decoration: none;
+    background: var(--surface-raised);
+    border: var(--border-width) solid var(--border-secondary);
+    border-radius: var(--radius-pill);
+
+    &:hover {
+        color: var(--interactive-hover);
+        border-color: var(--interactive-base);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--interactive-base);
+        outline-offset: 2px;
+    }
 }
 
 .sectionHeader {

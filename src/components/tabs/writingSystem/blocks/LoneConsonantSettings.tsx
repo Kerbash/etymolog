@@ -47,6 +47,8 @@ import pageStyles from './blocksPage.module.scss';
 import styles from './settings.module.scss';
 
 export interface LoneConsonantSettingsProps {
+    /** Optional stable id for the section (used by the page's "On this page" links). */
+    id?: string;
     /** The draft scheme's `leftovers`; absent = drawn on their own. */
     leftovers: BlockLeftovers | undefined;
     /** The new `leftovers`, or `null` to remove it. */
@@ -64,7 +66,7 @@ function isPlacement(value: string): value is LeftoverPlacement {
     return PLACEMENTS.some((p) => p.value === value);
 }
 
-export default function LoneConsonantSettings({ leftovers, onChange }: LoneConsonantSettingsProps) {
+export default function LoneConsonantSettings({ id, leftovers, onChange }: LoneConsonantSettingsProps) {
     const idPrefix = useId();
     const titleId = `${idPrefix}-title`;
     const radioName = `${idPrefix}-mode`;
@@ -101,7 +103,7 @@ export default function LoneConsonantSettings({ leftovers, onChange }: LoneConso
     };
 
     return (
-        <section className={pageStyles.section} aria-labelledby={titleId} data-lone-consonant-settings="">
+        <section id={id} className={pageStyles.section} aria-labelledby={titleId} data-lone-consonant-settings="">
             <div className={pageStyles.sectionHeader}>
                 <h3 id={titleId} className={pageStyles.sectionTitle}>
                     Consonants with no vowel

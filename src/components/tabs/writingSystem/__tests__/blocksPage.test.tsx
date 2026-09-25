@@ -575,3 +575,58 @@ describe('BlocksPage — split and lone-consonant sections', () => {
         expect(button('Save').disabled).toBe(true);
     });
 });
+
+describe('BlocksPage — "On this page" contents', () => {
+    /** The links expected under the header, in the page's own render order. */
+    const EXPECTED: readonly [label: string, id: string][] = [
+        ['Splitting', 'blocks-split'],
+        ['Lone consonants', 'blocks-leftovers'],
+        ['Try a word', 'blocks-try'],
+        ['Check words', 'blocks-check'],
+        ['Roles', 'blocks-roles'],
+        ['Variant groups', 'blocks-groups'],
+        ['Templates', 'blocks-templates'],
+    ];
+
+    const contentLinks = () => $$<HTMLAnchorElement>('nav[data-page-contents] a');
+
+    it('renders the contents links in page order with #id hrefs', async () => {
+        await mount();
+        const nav = $('[data-page-contents]');
+        expect(nav?.getAttribute('aria-label')).toBe('On this page');
+        expect(contentLinks().map((a) => a.textContent)).toEqual(EXPECTED.map(([label]) => label));
+        expect(contentLinks().map((a) => a.getAttribute('href'))).toEqual(EXPECTED.map(([, id]) => `#${id}`));
+    });
+
+    it('every link points at a section id that exists in the document', async () => {
+        await mount();
+        for (const [, id] of EXPECTED) {
+            const target = container!.querySelector(`#${id}`);
+            expect(target, `section #${id} missing`).not.toBeNull();
+            expect(target!.tagName.toLowerCase()).toBe('section');
+        }
+    });
+
+    it('clicking a link scrolls its section into view without changing the hash', async () => {
+        // jsdom / happy-dom have no scrollIntoView — stub it to observe the call.
+        const scrollIntoView = vi.fn();
+        (Element.prototype as unknown as { scrollIntoView: unknown }).scrollIntoView = scrollIntoView;
+        await mount();
+        const hashBefore = window.location.hash;
+
+        const templatesLink = contentLinks().find((a) => a.getAttribute('href') === '#blocks-templates')!;
+        // A real browser click is cancelable; the shared `click` helper is not,
+        // so dispatch one directly to exercise the handler's preventDefault.
+        const event = new MouseEvent('click', { bubbles: true, cancelable: true });
+        await act(async () => {
+            templatesLink.dispatchEvent(event);
+        });
+
+        const target = container!.querySelector('#blocks-templates')!;
+        expect(event.defaultPrevented).toBe(true);
+        expect(scrollIntoView).toHaveBeenCalledTimes(1);
+        expect(scrollIntoView.mock.instances[0]).toBe(target);
+        expect(scrollIntoView.mock.calls[0][0]).toEqual({ behavior: 'smooth', block: 'start' });
+        expect(window.location.hash).toBe(hashBefore);
+    });
+});

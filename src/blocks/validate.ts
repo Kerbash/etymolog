@@ -21,16 +21,18 @@
  *  - every slot lies inside the unit square with `w, h ≥ MIN_SLOT_SIZE`;
  *  - slot counts are in range: `min` ∈ {0, 1}, `max` ∈ 1..MAX_SLOT_COUNT,
  *    `arrange` ∈ {row, column};
+ *  - slot placement is valid: `pin` ∈ SLOT_PINS, `fill` ∈ SLOT_FILLS;
  *  - no template uses the reserved id `LONE_CONSONANT_TEMPLATE_ID`;
  *  - `split` / `leftovers`, when present, are complete and valid (an invalid
  *    one is dropped whole — absent always has a defined meaning).
  *
  * NORMALISED output (SYLLABLE_BLOCKS_PLAN.md pitfall N1): an optional field is
  * emitted only when it differs from its default — `min` only when 0, `max`
- * only when > 1, `arrange` only when 'column', `split.sibilantClusters` only
- * when true, `split.diphthongs` and `split.syllabicConsonants` only when
- * non-empty (in `normalizeSoundList` form — `normalizeDiphthongs` is its
- * older name). So a document written before those fields existed validates to
+ * only when > 1, `arrange` only when 'column', `pin` only when not 'center',
+ * `fill` only when 'fill', `split.sibilantClusters` only when true,
+ * `split.diphthongs` and `split.syllabicConsonants` only when non-empty (in
+ * `normalizeSoundList` form — `normalizeDiphthongs` is its older name). So a
+ * document written before those fields existed validates to
  * exactly the object it did then, and the designer's `sameDocument(draft,
  * saved)` never sees a phantom change from an explicit default.
  *
@@ -50,7 +52,19 @@ import type {
     RoleMatcher,
     SchemeIssue,
     SchemeValidation,
+    SlotFill,
+    SlotPin,
 } from './types';
+
+/** The nine slot pins, in reading order (BLOCK_PLACEMENT_PLAN.md §2). */
+export const SLOT_PINS: readonly SlotPin[] = [
+    'top-left', 'top', 'top-right',
+    'left', 'center', 'right',
+    'bottom-left', 'bottom', 'bottom-right',
+];
+
+/** The two slot fill modes. */
+export const SLOT_FILLS: readonly SlotFill[] = ['fit', 'fill'];
 
 /**
  * Template id the engine uses for a lone consonant drawn with its
@@ -137,7 +151,7 @@ export const MIN_SLOT_SIZE = 0.01;
 const SCHEME_KEYS = new Set(['version', 'enabled', 'roles', 'templates', 'split', 'leftovers']);
 const ROLE_KEYS = new Set(['id', 'label', 'colour', 'matcher']);
 const TEMPLATE_KEYS = new Set(['id', 'name', 'pattern', 'slots']);
-const SLOT_KEYS = new Set(['roleId', 'groupId', 'x', 'y', 'w', 'h', 'min', 'max', 'arrange']);
+const SLOT_KEYS = new Set(['roleId', 'groupId', 'x', 'y', 'w', 'h', 'min', 'max', 'arrange', 'pin', 'fill']);
 const SPLIT_KEYS = new Set(['mode', 'sibilantClusters', 'diphthongs', 'syllabicConsonants']);
 const LEFTOVERS_KEYS = new Set(['markGraphemeId', 'placement']);
 const MATCHER_KEYS: Record<RoleMatcher['kind'], Set<string>> = {
@@ -299,6 +313,21 @@ function validateSlotBody(
             slot.arrange = 'column';
         } else {
             issues.push({ path: `${path}.arrange`, message: "expected 'row' or 'column' (defaulted to 'row')" });
+        }
+    }
+    // Placement (BLOCK_PLACEMENT_PLAN.md §2), each written only when non-default.
+    if (raw.pin !== undefined && raw.pin !== 'center') {
+        if ((SLOT_PINS as readonly string[]).includes(raw.pin as string)) {
+            slot.pin = raw.pin as SlotPin;
+        } else {
+            issues.push({ path: `${path}.pin`, message: `expected one of ${SLOT_PINS.join(', ')} (defaulted to 'center')` });
+        }
+    }
+    if (raw.fill !== undefined && raw.fill !== 'fit') {
+        if (raw.fill === 'fill') {
+            slot.fill = 'fill';
+        } else {
+            issues.push({ path: `${path}.fill`, message: `expected one of ${SLOT_FILLS.join(', ')} (defaulted to 'fit')` });
         }
     }
     return slot;

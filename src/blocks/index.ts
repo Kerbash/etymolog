@@ -37,6 +37,8 @@ export type {
     SchemeValidation,
     Segment,
     SingleSegment,
+    SlotFill,
+    SlotPin,
 } from './types';
 export {
     cloneEmptyBlockScheme,
@@ -50,6 +52,8 @@ export {
     MIN_SLOT_SIZE,
     normalizeDiphthongs,
     normalizeSoundList,
+    SLOT_FILLS,
+    SLOT_PINS,
     validateBlockScheme,
 } from './validate';
 export {

@@ -47,6 +47,22 @@ export interface BlockRole {
     matcher: RoleMatcher;
 }
 
+/**
+ * Where the sign sits in its box — one of nine positions. Maps to the align
+ * half of `preserveAspectRatio` (BLOCK_PLACEMENT_PLAN.md §2). Absent = 'center'.
+ */
+export type SlotPin =
+    | 'top-left' | 'top' | 'top-right'
+    | 'left' | 'center' | 'right'
+    | 'bottom-left' | 'bottom' | 'bottom-right';
+
+/**
+ * How the sign fits its box. `'fit'` (absent) shrinks the sign inside the box
+ * (`meet`); `'fill'` grows it to span the box and lets the rest overflow past
+ * the box edges rather than crop or stretch (`slice` + `overflow="visible"`).
+ */
+export type SlotFill = 'fit' | 'fill';
+
 /** One rectangle of a template's layout, on the unit square (0..1). */
 export interface BlockSlot {
     roleId: string;
@@ -56,6 +72,10 @@ export interface BlockSlot {
     y: number;
     w: number;
     h: number;
+    /** Where the sign sits in the box. Absent = 'center' (N1: written only when not 'center'). */
+    pin?: SlotPin;
+    /** How the sign fits the box. Absent = 'fit' (N1: written only when 'fill'). */
+    fill?: SlotFill;
     /**
      * Fewest signs this slot takes: `0` makes it optional. Absent = 1
      * (pitfall P2 — every reader uses `slot.min ?? 1`).

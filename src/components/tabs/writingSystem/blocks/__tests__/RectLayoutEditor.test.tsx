@@ -239,11 +239,40 @@ describe('RectLayoutEditor pointer', () => {
         mount({ size: 400, selectedId: 'v' });
         const handle = container.querySelector('[data-resize-handle]');
         if (!handle) throw new Error('no handle');
+        // The corner is first in the DOM, so a bare `[data-resize-handle]`
+        // selector still finds it (existing callers rely on this).
+        expect(handle.getAttribute('data-resize-handle')).toBe('corner');
         pointer(handle, 'pointerdown', 400, 200);
         pointer(handle, 'pointermove', 300, 300); // −0.25 w, +0.25 h
         expect(last()[1]).toMatchObject({ x: 0.5, y: 0, w: 0.25, h: 0.75 });
         pointer(handle, 'pointermove', 0, 0); // shrink past the minimum
         expect(last()[1]).toMatchObject({ x: 0.5, y: 0, w: 0.05, h: 0.05 });
+    });
+
+    it('renders three handles on the selection, corner first', () => {
+        mount({ size: 400, selectedId: 'v' });
+        const handles = [...container.querySelectorAll('[data-resize-handle]')].map(h =>
+            h.getAttribute('data-resize-handle'),
+        );
+        expect(handles).toEqual(['corner', 'right', 'bottom']);
+    });
+
+    it('the right handle changes only the width', () => {
+        mount({ size: 400, selectedId: 'v' });
+        const handle = container.querySelector('[data-resize-handle="right"]');
+        if (!handle) throw new Error('no right handle');
+        pointer(handle, 'pointerdown', 400, 100);
+        pointer(handle, 'pointermove', 300, 300); // −0.25 w; the +0.5 dy is ignored
+        expect(last()[1]).toMatchObject({ x: 0.5, y: 0, w: 0.25, h: 0.5 });
+    });
+
+    it('the bottom handle changes only the height', () => {
+        mount({ size: 400, selectedId: 'v' });
+        const handle = container.querySelector('[data-resize-handle="bottom"]');
+        if (!handle) throw new Error('no bottom handle');
+        pointer(handle, 'pointerdown', 200, 200);
+        pointer(handle, 'pointermove', 400, 300); // +0.25 h; the +0.5 dx is ignored
+        expect(last()[1]).toMatchObject({ x: 0.5, y: 0, w: 0.5, h: 0.75 });
     });
 
     // Regression (found in the E2E pass): the pointerdown handler calls

@@ -48,6 +48,8 @@ import settingsStyles from './settings.module.scss';
 import seedStyles from './seedChoice.module.scss';
 
 export interface TemplateListProps {
+    /** Optional stable id for the section (used by the page's "On this page" links). */
+    id?: string;
     templates: BlockTemplate[];
     roles: BlockRole[];
     /** The template open in the editor, highlighted in the list. */
@@ -122,6 +124,7 @@ function PatternChips({ template, roles }: { template: BlockTemplate; roles: Blo
 }
 
 export default function TemplateList({
+    id,
     templates,
     roles,
     editingId,
@@ -151,7 +154,7 @@ export default function TemplateList({
     };
 
     return (
-        <section className={styles.section} aria-labelledby={titleId}>
+        <section id={id} className={styles.section} aria-labelledby={titleId}>
             <div className={styles.sectionHeader}>
                 <h3 id={titleId} className={styles.sectionTitle}>
                     Templates

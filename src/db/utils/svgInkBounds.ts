@@ -18,16 +18,20 @@
  *
  * Anything it cannot measure exactly returns `null` and the caller falls back
  * to the full `viewBox`: a `transform`, an `<image>`, `<text>`, `<use>`, an arc
- * or relative path command, a nested `<svg>` whose viewport is not a plain
- * `xMidYMid meet` box, or any element it does not know. Nested `<svg>` cells —
- * the row a multi-glyph form is combined into — ARE measured, through their
- * viewports. Falling back draws exactly what the app drew before, so
- * an unrecognised source is never made WORSE.
+ * or relative path command, a nested `<svg>` with `preserveAspectRatio="none"`
+ * (non-uniform scale) or an otherwise unparseable viewport, or any element it
+ * does not know. Nested `<svg>` cells — the row a multi-glyph form is combined
+ * into, or a placed sign — ARE measured through their viewports, at every
+ * align × {meet, slice}: `meet` fits the cell's ink inside its viewport and
+ * clips it there; `slice` covers the viewport and lets the ink overflow
+ * (`overflow="visible"`), the overflow measured up to the document's own
+ * `viewBox` (the block root clips). Falling back draws exactly what the app
+ * drew before, so an unrecognised source is never made WORSE.
  *
  * @module db/utils/svgInkBounds
  */
 
-import { extractSvgInner, nestSvg, parseSvgViewBox, type SvgRect } from './svgCompose';
+import { extractSvgInner, nestSvg, parseSvgViewBox, placementAttrs, type SvgPlacement, type SvgRect } from './svgCompose';
 
 export interface InkBounds {
     x: number;
@@ -38,6 +42,21 @@ export interface InkBounds {
 
 /** Elements that only group or describe, and paint nothing themselves. */
 const CONTAINER_TAGS = new Set(['g', 'defs', 'title', 'desc', 'metadata', 'style']);
+
+/** The nine `preserveAspectRatio` align keywords a nested cell may carry. */
+const ALIGN_KEYWORDS = new Set([
+    'xMinYMin', 'xMidYMin', 'xMaxYMin',
+    'xMinYMid', 'xMidYMid', 'xMaxYMid',
+    'xMinYMax', 'xMidYMax', 'xMaxYMax',
+]);
+
+/** A clip region in the CURRENT coordinate space — a slice cell's overflow stops here. */
+interface Clip {
+    x0: number;
+    y0: number;
+    x1: number;
+    y1: number;
+}
 
 /**
  * Margin added around the ink, as a fraction of its larger side, so a mark
@@ -191,11 +210,15 @@ function splitNestedSvgs(inner: string): { nested: NestedSvg[]; rest: string } |
 /**
  * The raw ink box of some markup in its own coordinates (no margin), or `null`
  * when it cannot be measured exactly. A nested `<svg>` viewport — the cells a
- * multi-glyph form's row is built from — is measured recursively and mapped
- * through its viewport (`x`/`y`/`width`/`height` + `viewBox`, `xMidYMid meet`,
- * clipped to the viewport as the browser clips it).
+ * multi-glyph form's row is built from, or a placed sign — is measured
+ * recursively and mapped through its viewport (`x`/`y`/`width`/`height` +
+ * `viewBox` + `preserveAspectRatio`), at every align × {meet, slice}: `meet`
+ * fits the ink inside the viewport and clips it there, `slice` covers the
+ * viewport and lets the ink overflow, clipped only to `clip` (the document's
+ * own `viewBox` — the block root). `clip` is the enclosing viewport's bounds in
+ * the CURRENT coordinate space.
  */
-function measureInk(inner: string): Box | null {
+function measureInk(inner: string, clip: Clip): Box | null {
     const split = splitNestedSvgs(inner);
     if (!split) return null;
     if (/\stransform\s*=/i.test(split.rest)) return null;
@@ -210,23 +233,49 @@ function measureInk(inner: string): Box | null {
         const hasViewBox = /\sviewBox\s*=/i.test(cell.openTag);
         const aspect = (attr(cell.openTag, 'preserveAspectRatio') ?? 'xMidYMid meet').trim();
         if (x === null || y === null || w === null || h === null || !(w > 0) || !(h > 0) || !hasViewBox) return null;
-        if (aspect !== 'xMidYMid meet' && aspect !== 'xMidYMid') return null;
         if (/\stransform\s*=/i.test(cell.openTag)) return null;
+        const [alignKeyword, scaleKeyword] = aspect.split(/\s+/);
+        // `none` (non-uniform) and any unparseable align → not measurable exactly.
+        if (!ALIGN_KEYWORDS.has(alignKeyword)) return null;
+        const slice = scaleKeyword === 'slice';
+        const fx = alignKeyword.startsWith('xMin') ? 0 : alignKeyword.startsWith('xMax') ? 1 : 0.5;
+        const fy = alignKeyword.endsWith('YMin') ? 0 : alignKeyword.endsWith('YMax') ? 1 : 0.5;
         const vb = parseSvgViewBox(cell.openTag);
-        const child = measureInk(cell.inner);
+        const cellClip: Clip = { x0: vb.x, y0: vb.y, x1: vb.x + vb.width, y1: vb.y + vb.height };
+        const child = measureInk(cell.inner, cellClip);
         if (child === null) return null;
         if (child.empty) continue;
-        // Clip to the child's viewBox (nested viewports hide overflow).
-        const minX = Math.max(child.minX, vb.x);
-        const minY = Math.max(child.minY, vb.y);
-        const maxX = Math.min(child.maxX, vb.x + vb.width);
-        const maxY = Math.min(child.maxY, vb.y + vb.height);
-        if (minX > maxX || minY > maxY) continue;
-        const scale = Math.min(w / vb.width, h / vb.height);
-        const tx = x + (w - vb.width * scale) / 2 - vb.x * scale;
-        const ty = y + (h - vb.height * scale) / 2 - vb.y * scale;
-        box.add(tx + minX * scale, ty + minY * scale);
-        box.add(tx + maxX * scale, ty + maxY * scale);
+        // `meet` fits the ink inside the viewport and letterboxes; `slice` covers
+        // the smaller side and lets the rest overflow.
+        const scale = slice ? Math.max(w / vb.width, h / vb.height) : Math.min(w / vb.width, h / vb.height);
+        const tx = x + (w - vb.width * scale) * fx - vb.x * scale;
+        const ty = y + (h - vb.height * scale) * fy - vb.y * scale;
+        let minX = child.minX;
+        let minY = child.minY;
+        let maxX = child.maxX;
+        let maxY = child.maxY;
+        if (!slice) {
+            // A `meet` viewport hides its overflow: clip the ink to the viewBox.
+            minX = Math.max(minX, vb.x);
+            minY = Math.max(minY, vb.y);
+            maxX = Math.min(maxX, vb.x + vb.width);
+            maxY = Math.min(maxY, vb.y + vb.height);
+            if (minX > maxX || minY > maxY) continue;
+        }
+        let bx0 = tx + minX * scale;
+        let by0 = ty + minY * scale;
+        let bx1 = tx + maxX * scale;
+        let by1 = ty + maxY * scale;
+        if (slice) {
+            // `overflow="visible"` spills past the viewport; the document root still clips.
+            bx0 = Math.max(bx0, clip.x0);
+            by0 = Math.max(by0, clip.y0);
+            bx1 = Math.min(bx1, clip.x1);
+            by1 = Math.min(by1, clip.y1);
+            if (bx0 > bx1 || by0 > by1) continue;
+        }
+        box.add(bx0, by0);
+        box.add(bx1, by1);
     }
 
     for (const match of split.rest.matchAll(/<([a-zA-Z][\w:-]*)\b[^>]*>/g)) {
@@ -293,7 +342,14 @@ function measureInk(inner: string): Box | null {
  * or `null` when they cannot be determined exactly (see the module comment).
  */
 export function estimateInkBounds(svg: string): InkBounds | null {
-    const box = measureInk(extractSvgInner(svg));
+    // The document's own viewBox is where a slice cell's overflow finally stops.
+    const rootVb = parseSvgViewBox(svg);
+    const box = measureInk(extractSvgInner(svg), {
+        x0: rootVb.x,
+        y0: rootVb.y,
+        x1: rootVb.x + rootVb.width,
+        y1: rootVb.y + rootVb.height,
+    });
     if (box === null) return null;
 
     if (box.empty) return null;
@@ -321,22 +377,26 @@ export function estimateInkBounds(svg: string): InkBounds | null {
 }
 
 /**
- * `nestSvg`, but the source's INK — not its canvas — is fitted into `rect`
- * (still `xMidYMid meet`: aspect preserved, centred). A source whose ink cannot
- * be measured is nested exactly as `nestSvg` nests it — into `fallbackRect`
- * when given (a whole canvas carries its own margins, bare ink does not).
+ * `nestSvg`, but the source's INK — not its canvas — is fitted into `rect`.
+ * `placement` picks the align × meet/slice (`SvgPlacement`); omitted ⇒
+ * `xMidYMid meet` with no `overflow` (aspect preserved, centred) — the exact
+ * bytes written before placement existed. A source whose ink cannot be measured
+ * is nested exactly as `nestSvg` nests it (same `placement`) — into
+ * `fallbackRect` when given (a whole canvas carries its own margins, bare ink
+ * does not).
  *
  * Used for block-script slots only: the slot rectangle IS the placement there,
  * so the empty canvas around a mark is noise. Everywhere else (a grapheme's
  * glyph row, the word strategies) the canvas position is kept, because it is
  * how a writer places a mark relative to its neighbours.
  */
-export function nestSvgToInk(svg: string, rect: SvgRect, fallbackRect: SvgRect = rect): string {
+export function nestSvgToInk(svg: string, rect: SvgRect, fallbackRect: SvgRect = rect, placement?: SvgPlacement): string {
     const ink = estimateInkBounds(svg);
-    if (!ink) return nestSvg(svg, fallbackRect);
+    if (!ink) return nestSvg(svg, fallbackRect, placement);
     const viewBox = [ink.x, ink.y, ink.width, ink.height].map(roundCoord).join(' ');
     const inner = extractSvgInner(svg);
-    return `<svg x="${rect.x}" y="${rect.y}" width="${rect.w}" height="${rect.h}" viewBox="${viewBox}" preserveAspectRatio="xMidYMid meet">${hairlineFloor(inner)}${inner}</svg>`;
+    const { par, overflow } = placementAttrs(placement);
+    return `<svg x="${rect.x}" y="${rect.y}" width="${rect.w}" height="${rect.h}" viewBox="${viewBox}" preserveAspectRatio="${par}"${overflow}>${hairlineFloor(inner)}${inner}</svg>`;
 }
 
 const DRAWABLE_RE = /<(path|rect|circle|ellipse|line|polyline|polygon)\b([^>]*?)\/?>/gi;

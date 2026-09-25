@@ -785,6 +785,23 @@ a scheme without them renders exactly as before.
   width, clamped to 0.4–2.5, with 1 for a sign whose ink cannot be measured
   such as IPA text; a lone sign keeps the exact box). One `C1(up to 3) V
   C2(up to 3)` template fits `a`, `spɛl` and `strɛŋθs`.
+- **Pin and fill (slot `pin` / `fill`, `BLOCK_PLACEMENT_PLAN.md`).** Where a
+  sign sits in its box and how big it grows. `pin` is one of the nine positions
+  (`top-left` … `center` … `bottom-right`) and maps to the nested `<svg>`'s
+  `preserveAspectRatio` align (`xMinYMin` … `xMidYMid` … `xMaxYMax`); `fill`
+  chooses the scale — `fit` (the default) is `meet`, so the sign shrinks until
+  it sits INSIDE the box, and `fill` is `slice` PLUS `overflow="visible"` on
+  that cell, so the sign grows until it spans the box's longer side and the
+  rest SPILLS past the box edges (never cropped, never stretched — the owner
+  rejected stretching). The pin decides which way it spills: pinned bottom, a
+  sign in a flat box grows upward. Overflow stops at the block's own `<svg>`
+  viewport (the block root clips — never into the next block in a word), and
+  inside a block it may overlap a neighbouring box. `estimateInkBounds`
+  measures every align × meet/slice (the content rect clipped to the block's
+  own viewBox), so a pinned box no longer makes a block unmeasurable. N1: a box
+  with no pin/fill (absent = centre + fit) composes the byte-identical output
+  it did before this feature. Every part of a multi-sign slot uses its slot's
+  one pin/fill.
 - **Diphthongs (`split.diphthongs`, `DIPHTHONG_BLOCKS_PLAN.md`).** Vowel
   sequences the language says as ONE vowel (`ai`, `iə`). By syllable, two or
   three vowel signs side by side whose sounds spell a listed entry are one
@@ -864,12 +881,19 @@ a scheme without them renders exactly as before.
   read `ta · pa → 2 blocks: CV, CV` and list only the parts that are not zero —
   `s · t → 2 consonants with a vowel-killer mark`; "No template matched" only
   when no block was made and some sign stands on its own). Template editor: select a box to set
-  "How many signs" and "Several signs sit"; counts show on chips, the pattern
-  line, inside boxes and in the template list. Roles: the matcher select
-  offers "mark (accent, tone…)", a shortcut that writes `MARK_CATEGORY` into
-  the category box (shown while the box reads exactly `mark`; the box stays
+  "How many signs" and "Several signs sit", plus "Where the sign sits" (a 3×3
+  pin picker) and "How the sign fits" (Fit inside the box / Fill the box — may
+  overflow); counts show on chips, the pattern line, inside boxes and in the
+  template list. The selected box shows three resize handles — a corner
+  (width + height), a right edge (width) and a bottom edge (height) — each with
+  a generous transparent hit area over the drawn shape. Roles: the matcher
+  select offers "mark (accent, tone…)", a shortcut that writes `MARK_CATEGORY`
+  into the category box (shown while the box reads exactly `mark`; the box stays
   editable). An older language stays on
   template order, with a visible note, until the owner picks By syllable.
+  Under the page header an "On this page" row of chip links jumps to every
+  section (`PageContents.tsx`): real `#id` anchors that smooth-scroll and focus
+  the section without letting the hash reach the router.
 
 ### Where renderers get the scheme — `BlockRenderingContext`
 

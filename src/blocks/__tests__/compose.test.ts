@@ -483,6 +483,71 @@ describe('composeBlock: shared slots split by ink shape', () => {
 });
 
 // =============================================================================
+// BLOCK_PLACEMENT_PLAN.md §2 — slot pin + fill
+// =============================================================================
+
+describe('composeBlock: slot pin + fill', () => {
+    const PIN_ALIGN = {
+        'top-left': 'xMinYMin', top: 'xMidYMin', 'top-right': 'xMaxYMin',
+        left: 'xMinYMid', center: 'xMidYMid', right: 'xMaxYMid',
+        'bottom-left': 'xMinYMax', bottom: 'xMidYMax', 'bottom-right': 'xMaxYMax',
+    } as const;
+    const base = {
+        ...template('CV', ['C1', 'V']),
+        slots: [
+            { roleId: 'C1', groupId: null, x: 0, y: 0, w: 0.5, h: 1 },
+            { roleId: 'V', groupId: null, x: 0.5, y: 0, w: 0.5, h: 1 },
+        ],
+    };
+    const segment: BlockSegment = { kind: 'block', templateId: 'CV', entryIndices: [0, 1] };
+    const composeWith = (extra: Record<string, unknown>) => {
+        const s = scheme([roles.C1, roles.V], [{ ...base, slots: [{ ...base.slots[0], ...extra }, base.slots[1]] }]);
+        return composeBlock(segment, [gEntry(1, 0), gEntry(2, 1)], s, index).svg;
+    };
+    // The C1 cell is drawn first (pattern order) — the first nested <svg> with an x attribute.
+    const c1Tag = (doc: string) => doc.match(/<svg x="[^"]*"[^>]*>/)![0];
+
+    it('a slot with no pin/fill is byte-identical to an explicit center/fit (P1)', () => {
+        expect(composeWith({})).toBe(composeWith({ pin: 'center', fill: 'fit' }));
+        expect(c1Tag(composeWith({}))).toContain('preserveAspectRatio="xMidYMid meet"');
+    });
+
+    it('each of the nine pins with fit writes its align + meet, no overflow', () => {
+        for (const [pin, align] of Object.entries(PIN_ALIGN)) {
+            const tag = c1Tag(composeWith({ pin }));
+            expect(tag).toContain(`preserveAspectRatio="${align} meet"`);
+            expect(tag).not.toContain('overflow');
+        }
+    });
+
+    it('each of the nine pins with fill writes its align + slice + overflow visible', () => {
+        for (const [pin, align] of Object.entries(PIN_ALIGN)) {
+            const tag = c1Tag(composeWith({ pin, fill: 'fill' }));
+            expect(tag).toContain(`preserveAspectRatio="${align} slice"`);
+            expect(tag).toContain('overflow="visible"');
+        }
+    });
+
+    it('fill writes overflow="visible"; fit does not', () => {
+        expect(c1Tag(composeWith({ fill: 'fill' }))).toContain('overflow="visible"');
+        expect(c1Tag(composeWith({ fill: 'fit' }))).not.toContain('overflow');
+        expect(c1Tag(composeWith({}))).not.toContain('overflow');
+    });
+
+    it('placement rides through the ink-fitted path too (measurable sign)', () => {
+        const inkSign = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect x="10" y="10" width="80" height="80"/></svg>';
+        const drawn = fakeGrapheme(1, 'k', { glyphs: [inkSign] });
+        const s = scheme([roles.C1, roles.V], [{ ...base, slots: [{ ...base.slots[0], pin: 'top-right', fill: 'fill' }, base.slots[1]] }]);
+        const composed = composeBlock(segment, [gEntry(1, 0), gEntry(2, 1)], s, indexOf(drawn, plainVowel)).svg;
+        const tag = c1Tag(composed);
+        expect(tag).toContain('preserveAspectRatio="xMaxYMin slice"');
+        expect(tag).toContain('overflow="visible"');
+        // Fitted to the ink box, not the 0 0 100 100 canvas.
+        expect(tag).not.toContain('viewBox="0 0 100 100"');
+    });
+});
+
+// =============================================================================
 // SYLLABLE_BLOCKS_PLAN.md §3.4 — lone consonant + vowel-killer mark
 // =============================================================================
 

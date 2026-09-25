@@ -8,7 +8,9 @@
  * several entries (slot counts) splits its rectangle into one part per entry,
  * side by side or stacked, each part sized by the SHAPE of its sign (a wide
  * sign in a row gets more width than a narrow one — `partWeight`); an empty
- * optional slot draws nothing.
+ * optional slot draws nothing. Each cell is placed by its slot's `pin` (one of
+ * nine positions) and `fill` (`'fit'` shrinks the sign inside the box, `'fill'`
+ * grows it to span the box and lets the rest overflow) — see `nestPart`.
  * Cells are drawn in PATTERN order, so a later role paints over an earlier
  * one where rectangles overlap (overlap is allowed — infixes).
  *
@@ -21,7 +23,7 @@
  * @module blocks/compose
  */
 
-import { combineSvgRow, textSvg } from '../db/utils/svgCompose';
+import { combineSvgRow, textSvg, type SvgAlign, type SvgPlacement } from '../db/utils/svgCompose';
 import { GLYPH_GUIDE_INSET } from '../db/utils/glyphMetrics';
 import { estimateInkBounds, nestSvgToInk } from '../db/utils/svgInkBounds';
 import { resolveEntryGrapheme } from './classify';
@@ -36,7 +38,31 @@ import type {
     ComposedBlock,
     ComposedSlot,
     LeftoverPlacement,
+    SlotFill,
+    SlotPin,
 } from './types';
+
+/**
+ * A slot's `pin` mapped to the align half of `preserveAspectRatio`
+ * (BLOCK_PLACEMENT_PLAN.md §2). `'center'` → `xMidYMid`, exactly the drawing
+ * before pins existed.
+ */
+const PIN_ALIGN: Record<SlotPin, SvgAlign> = {
+    'top-left': 'xMinYMin',
+    top: 'xMidYMin',
+    'top-right': 'xMaxYMin',
+    left: 'xMinYMid',
+    center: 'xMidYMid',
+    right: 'xMaxYMid',
+    'bottom-left': 'xMinYMax',
+    bottom: 'xMidYMax',
+    'bottom-right': 'xMaxYMax',
+};
+
+/** A slot's pin + fill mapped to an `SvgPlacement` (`'fill'` → `slice`, else `meet`). */
+function slotPlacement(pin: SlotPin, fill: SlotFill): SvgPlacement {
+    return { align: PIN_ALIGN[pin], scale: fill === 'fill' ? 'slice' : 'meet' };
+}
 
 /** The coordinate space of a composed block. */
 export const BLOCK_VIEWBOX_SIZE = 100;
@@ -119,12 +145,16 @@ function fullBoxRect(part: UnitRect): UnitRect {
 }
 
 /**
- * One drawn cell: bare ink fitted into the part's glyph-cell rect; a source
- * whose ink cannot be measured keeps its whole canvas (margins included) and
- * so the part's full-box rect.
+ * One drawn cell: bare ink placed in the part's glyph-cell rect per the slot's
+ * `pin` (align) and `fill` (`'fit'` = `meet`, shrinks inside; `'fill'` = `slice`
+ * + `overflow="visible"`, grows to span the box and spills past its edges). A
+ * source whose ink cannot be measured keeps its whole canvas (margins included)
+ * and so the part's full-box rect, placed the same way. Omitting `pin`/`fill`
+ * (the mark and lone-consonant paths) draws `center`/`fit` — byte-identical to
+ * the `xMidYMid meet` cell drawn before placement existed (pitfall P1).
  */
-function nestPart(svg: string, part: UnitRect): string {
-    return nestSvgToInk(svg, cellRect(part), fullBoxRect(part));
+function nestPart(svg: string, part: UnitRect, pin: SlotPin = 'center', fill: SlotFill = 'fit'): string {
+    return nestSvgToInk(svg, cellRect(part), fullBoxRect(part), slotPlacement(pin, fill));
 }
 
 /** The stable identity of one spelling entry, as its raw `glyph_order` value would read. */
@@ -284,7 +314,7 @@ export function composeBlock(
                 // in the middle of the box, the part neighbours do not overlap.
                 // Bare ink is fitted there; a source whose ink cannot be measured
                 // keeps its whole canvas (margins included) and so the whole box.
-                cells.push(nestPart(drawn.svg, rects[part]));
+                cells.push(nestPart(drawn.svg, rects[part], slot.pin ?? 'center', slot.fill ?? 'fit'));
             }
             slots[k] = {
                 roleId,

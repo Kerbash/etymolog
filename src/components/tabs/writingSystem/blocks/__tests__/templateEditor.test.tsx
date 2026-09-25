@@ -401,4 +401,131 @@ describe('TemplateEditor', () => {
             expect(panel().textContent).toContain('Select a box in the layout');
         });
     });
+
+    describe('Selected box (where the sign sits + how it fits)', () => {
+        const THREE: BlockTemplate = {
+            ...EMPTY,
+            pattern: ['role-1', 'role-2', 'role-3'],
+            slots: [
+                { roleId: 'role-1', groupId: null, x: 0, y: 0, w: 0.25, h: 1 },
+                { roleId: 'role-2', groupId: null, x: 0.25, y: 0, w: 0.5, h: 1 },
+                { roleId: 'role-3', groupId: null, x: 0.75, y: 0, w: 0.25, h: 1 },
+            ],
+        };
+
+        const panel = () => container!.querySelector<HTMLElement>('[data-slot-settings]')!;
+        const pinGroup = () => panel().querySelector<HTMLElement>('[data-slot-pin]');
+        const pinButton = (pin: string) => panel().querySelector<HTMLButtonElement>(`[data-slot-pin-option="${pin}"]`)!;
+        const fillSelect = () => panel().querySelector<HTMLSelectElement>('[data-slot-fill]');
+
+        async function choose(select: HTMLSelectElement, value: string) {
+            await act(async () => {
+                const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value')?.set;
+                setter?.call(select, value);
+                select.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+        }
+
+        it('offers a 3×3 pin radiogroup, centre checked by default', async () => {
+            await mount(THREE);
+            expect(pinGroup()).toBeNull(); // nothing selected yet
+            await key(rect('role-1'), 'Enter');
+
+            const group = pinGroup()!;
+            expect(group.getAttribute('role')).toBe('radiogroup');
+            const radios = [...group.querySelectorAll('[role="radio"]')];
+            expect(radios).toHaveLength(9);
+            expect(radios.map((r) => r.getAttribute('data-slot-pin-option'))).toEqual([
+                'top-left', 'top', 'top-right',
+                'left', 'center', 'right',
+                'bottom-left', 'bottom', 'bottom-right',
+            ]);
+            expect(radios.map((r) => r.getAttribute('aria-label'))).toEqual([
+                'Top left', 'Top', 'Top right',
+                'Left', 'Centre', 'Right',
+                'Bottom left', 'Bottom', 'Bottom right',
+            ]);
+            // Default is centre; no `pin` key is stored for it.
+            expect(pinButton('center').getAttribute('aria-checked')).toBe('true');
+            expect('pin' in slot('role-1')).toBe(false);
+        });
+
+        it('picking a pin writes it, picking centre deletes the key', async () => {
+            await mount(THREE);
+            await key(rect('role-1'), 'Enter');
+
+            await click(pinButton('bottom-left'));
+            expect(slot('role-1').pin).toBe('bottom-left');
+            expect(pinButton('bottom-left').getAttribute('aria-checked')).toBe('true');
+            expect(pinButton('center').getAttribute('aria-checked')).toBe('false');
+
+            await click(pinButton('center'));
+            expect('pin' in slot('role-1')).toBe(false);
+            expect(pinButton('center').getAttribute('aria-checked')).toBe('true');
+        });
+
+        it('picking Fill writes fill, picking Fit deletes the key', async () => {
+            await mount(THREE);
+            await key(rect('role-1'), 'Enter');
+
+            const select = fillSelect()!;
+            expect([...select.options].map((o) => o.textContent)).toEqual([
+                'Fit inside the box',
+                'Fill the box (may overflow)',
+            ]);
+            expect(select.value).toBe('fit');
+            expect('fill' in slot('role-1')).toBe(false);
+
+            await choose(select, 'fill');
+            expect(slot('role-1').fill).toBe('fill');
+            expect(panel().querySelector('[data-slot-fill-hint]')?.textContent).toContain('spills past the box edges');
+
+            await choose(fillSelect()!, 'fit');
+            expect('fill' in slot('role-1')).toBe(false);
+            expect(panel().querySelector('[data-slot-fill-hint]')?.textContent).toBe(
+                'The sign shrinks until it sits inside the box.',
+            );
+        });
+
+        it('a pin change flows into the live preview’s composed SVG', async () => {
+            const svg = (tag: string) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="${tag}"/></svg>`;
+            for (const phoneme of ['t', 'o']) {
+                const glyphId = etymologApi.glyph.create({ name: phoneme, svg_data: svg(phoneme) }).data!.id;
+                etymologApi.grapheme.create({
+                    name: phoneme,
+                    glyphs: [{ glyph_id: glyphId, position: 0 }],
+                    phonemes: [{ phoneme, use_in_auto_spelling: true }],
+                });
+            }
+            const cv: BlockTemplate = {
+                ...EMPTY,
+                name: 'Open syllable',
+                pattern: ['role-1', 'role-2'],
+                slots: [
+                    { roleId: 'role-1', groupId: null, x: 0, y: 0, w: 0.5, h: 1 },
+                    { roleId: 'role-2', groupId: null, x: 0.5, y: 0, w: 0.5, h: 1 },
+                ],
+            };
+            await mount(cv);
+            const ipa = byLabel<HTMLInputElement>('IPA to preview');
+            await act(async () => {
+                const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+                setter?.call(ipa, 'to');
+                ipa.dispatchEvent(new Event('input', { bubbles: true }));
+            });
+            await settle(4);
+
+            const stage = () => container!.querySelector('[data-block-preview]')!.innerHTML;
+            // Default placement composes centred, fit (xMidYMid meet).
+            expect(stage()).toContain('xMidYMid');
+            expect(stage()).not.toContain('xMinYMax');
+
+            await key(rect('role-1'), 'Enter');
+            await click(pinButton('bottom-left'));
+            await settle(4);
+            // The C1 cell is now pinned bottom-left (xMinYMax), proving the pin
+            // reaches the composer through the template state (pitfall P7).
+            expect(stage()).toContain('xMinYMax');
+        });
+    });
 });

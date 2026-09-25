@@ -44,6 +44,8 @@ import { ROLE_COLOURS } from './blockSchemeDraft';
 import styles from './blocksPage.module.scss';
 
 export interface RolesEditorProps {
+    /** Optional stable id for the section (used by the page's "On this page" links). */
+    id?: string;
     roles: BlockRole[];
     /** Role id → how many templates (including the one being edited) use it. */
     usage: ReadonlyMap<string, number>;
@@ -85,11 +87,11 @@ function matcherFromValue(value: string, previous: RoleMatcher): RoleMatcher {
     return { kind: 'any' };
 }
 
-export default function RolesEditor({ roles, usage, onAdd, onUpdate, onRemove }: RolesEditorProps) {
+export default function RolesEditor({ id, roles, usage, onAdd, onUpdate, onRemove }: RolesEditorProps) {
     const idPrefix = useId();
 
     return (
-        <section className={styles.section} aria-labelledby={`${idPrefix}-title`}>
+        <section id={id} className={styles.section} aria-labelledby={`${idPrefix}-title`}>
             <div className={styles.sectionHeader}>
                 <h3 id={`${idPrefix}-title`} className={styles.sectionTitle}>
                     Roles

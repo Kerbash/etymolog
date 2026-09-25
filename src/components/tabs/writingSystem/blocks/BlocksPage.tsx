@@ -64,6 +64,8 @@ import BlockPreview from './BlockPreview';
 import WordCheck from './WordCheck';
 import TemplateList from './TemplateList';
 import TemplateEditor from './TemplateEditor';
+import PageContents from './PageContents';
+import type { PageContentsLink } from './PageContents';
 import {
     addRole,
     applyTemplate,
@@ -97,6 +99,22 @@ interface EditingState {
 }
 
 const NEW_ROLE_MATCHER: RoleMatcher = { kind: 'class', letter: 'C' };
+
+/**
+ * "On this page" links, in the page's own render order (SplitSettings,
+ * LoneConsonantSettings, the "Try a word" section, WordCheck, RolesEditor, the
+ * "Variant groups" section, TemplateList). Each `id` is set on the matching
+ * section below.
+ */
+const PAGE_CONTENTS: readonly PageContentsLink[] = [
+    { id: 'blocks-split', label: 'Splitting' },
+    { id: 'blocks-leftovers', label: 'Lone consonants' },
+    { id: 'blocks-try', label: 'Try a word' },
+    { id: 'blocks-check', label: 'Check words' },
+    { id: 'blocks-roles', label: 'Roles' },
+    { id: 'blocks-groups', label: 'Variant groups' },
+    { id: 'blocks-templates', label: 'Templates' },
+];
 
 export default function BlocksPage() {
     const { api, data, settings } = useEtymolog();
@@ -247,6 +265,8 @@ export default function BlocksPage() {
                 description="Group the signs of a syllable into one composed block, the way Mayan glyphs or Korean hangul are written. Roles say which signs fit a slot; templates say how the slots are laid out."
             />
 
+            <PageContents links={PAGE_CONTENTS} />
+
             <section className={styles.section} aria-label="Block scheme">
                 <div className={styles.toolbar}>
                     <div className={styles.actions}>
@@ -332,6 +352,7 @@ export default function BlocksPage() {
             )}
 
             <SplitSettings
+                id="blocks-split"
                 split={draft.split}
                 suggestions={suggestDiphthongs(syllables)}
                 syllabicSuggestions={suggestSyllabicConsonants(graphemeMap.values())}
@@ -349,6 +370,7 @@ export default function BlocksPage() {
             />
 
             <LoneConsonantSettings
+                id="blocks-leftovers"
                 leftovers={draft.leftovers}
                 onChange={(leftovers) => edit((scheme) => withLeftovers(scheme, leftovers))}
             />
@@ -356,7 +378,7 @@ export default function BlocksPage() {
             {/* The two settings above change how EVERY word is cut, so their
                 effect is shown right here, on the user's own words — not only
                 inside the template editor further down. */}
-            <section ref={trySectionRef} className={styles.section} aria-labelledby="blocks-try-title">
+            <section id="blocks-try" ref={trySectionRef} className={styles.section} aria-labelledby="blocks-try-title">
                 <div className={styles.sectionHeader}>
                     <h3 id="blocks-try-title" className={styles.sectionTitle}>Try a word</h3>
                 </div>
@@ -374,9 +396,10 @@ export default function BlocksPage() {
             </section>
 
             {/* The same forced-on draft as "Try a word", over every word. */}
-            <WordCheck scheme={tryScheme} onTryWord={handleTryWord} />
+            <WordCheck id="blocks-check" scheme={tryScheme} onTryWord={handleTryWord} />
 
             <RolesEditor
+                id="blocks-roles"
                 roles={draftRoles}
                 usage={usage}
                 onAdd={() => edit((scheme) => addRole(scheme, NEW_ROLE_MATCHER))}
@@ -389,7 +412,7 @@ export default function BlocksPage() {
                 }}
             />
 
-            <section className={styles.section} aria-label="Variant groups">
+            <section id="blocks-groups" className={styles.section} aria-label="Variant groups">
                 <div className={styles.sectionHeader}>
                     <h3 className={styles.sectionTitle}>Variant groups</h3>
                     <Button type="button" onClick={() => setGroupsOpen(true)} className={buttonStyles.secondary}>
@@ -405,6 +428,7 @@ export default function BlocksPage() {
             <VariantGroupsDialog open={groupsOpen} onClose={() => setGroupsOpen(false)} />
 
             <TemplateList
+                id="blocks-templates"
                 templates={draftTemplates}
                 roles={draftRoles}
                 editingId={editing ? editing.working.id : null}

@@ -18,6 +18,8 @@ import {
     MIN_SLOT_SIZE,
     normalizeDiphthongs,
     normalizeSoundList,
+    SLOT_FILLS,
+    SLOT_PINS,
     validateBlockScheme,
 } from '../validate';
 
@@ -383,6 +385,53 @@ describe('slot counts', () => {
         const { scheme, issues } = slotOf({ arrange: 'diagonal' });
         expect(scheme.templates[0].slots[0]).not.toHaveProperty('arrange');
         expect(issues.map((i) => i.path)).toEqual(['templates[0].slots[0].arrange']);
+    });
+});
+
+describe('slot placement — pin + fill (BLOCK_PLACEMENT_PLAN.md §2)', () => {
+    const withSlot = (extra: Record<string, unknown>) => ({
+        roles: [C],
+        templates: [{ id: 't', name: 't', pattern: ['C1'], slots: [fullSlot('C1', extra)] }],
+    });
+    const slotOf = (extra: Record<string, unknown>) => validateBlockScheme(withSlot(extra));
+
+    it('SLOT_PINS is the nine positions; SLOT_FILLS is fit/fill', () => {
+        expect(SLOT_PINS).toEqual(['top-left', 'top', 'top-right', 'left', 'center', 'right', 'bottom-left', 'bottom', 'bottom-right']);
+        expect(SLOT_FILLS).toEqual(['fit', 'fill']);
+    });
+
+    it('non-default pin + fill round-trip with no issue', () => {
+        const { scheme, issues } = slotOf({ pin: 'bottom-right', fill: 'fill' });
+        expect(issues).toEqual([]);
+        expect(scheme.templates[0].slots[0]).toStrictEqual(fullSlot('C1', { pin: 'bottom-right', fill: 'fill' }));
+    });
+
+    it("explicit defaults are normalised away silently (N1): pin 'center', fill 'fit'", () => {
+        const { scheme, issues } = slotOf({ pin: 'center', fill: 'fit' });
+        expect(issues).toEqual([]);
+        expect(scheme.templates[0].slots[0]).toStrictEqual(fullSlot('C1'));
+        expect(scheme.templates[0].slots[0]).not.toHaveProperty('pin');
+        expect(scheme.templates[0].slots[0]).not.toHaveProperty('fill');
+    });
+
+    it('every one of the nine pins is accepted (center normalised away)', () => {
+        for (const pin of SLOT_PINS) {
+            const slot = slotOf({ pin }).scheme.templates[0].slots[0];
+            if (pin === 'center') expect(slot).not.toHaveProperty('pin');
+            else expect(slot.pin).toBe(pin);
+        }
+    });
+
+    it('a bad pin defaults to center with an issue', () => {
+        const { scheme, issues } = slotOf({ pin: 'middle' });
+        expect(scheme.templates[0].slots[0]).not.toHaveProperty('pin');
+        expect(issues.map((i) => i.path)).toEqual(['templates[0].slots[0].pin']);
+    });
+
+    it('a bad fill defaults to fit with an issue', () => {
+        const { scheme, issues } = slotOf({ fill: 'stretch' });
+        expect(scheme.templates[0].slots[0]).not.toHaveProperty('fill');
+        expect(issues.map((i) => i.path)).toEqual(['templates[0].slots[0].fill']);
     });
 });
 
