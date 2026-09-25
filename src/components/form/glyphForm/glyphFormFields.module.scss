@@ -21,3 +21,54 @@
     width: fit-content;
     max-width: 100%;
 }
+
+/* Block guide (BlockGuidePicker / BlockGuideOverlay). */
+.guidePicker {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    max-width: 100%;
+
+    label {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.5rem;
+        font-weight: 600;
+        color: var(--text-primary);
+    }
+
+    select {
+        max-width: 100%;
+        padding: 0.3rem 0.5rem;
+        border: 1px solid var(--border-primary);
+        border-radius: var(--radius-control);
+        background: var(--bg-secondary);
+        color: var(--text-primary);
+        font: inherit;
+        font-weight: 400;
+    }
+}
+
+.guideHint {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+/* A role's own tint arrives as an inline `--role-colour`, which wins over these defaults. */
+.guideBox {
+    --role-colour: var(--text-secondary-muted);
+    fill: none;
+    stroke: var(--role-colour);
+    stroke-width: 1;
+    stroke-dasharray: 4 3;
+    opacity: 0.6;
+}
+
+.guideBoxChosen {
+    --role-colour: var(--interactive-base);
+    fill: color-mix(in srgb, var(--role-colour) 18%, transparent);
+    stroke: var(--role-colour);
+    stroke-width: 2.5;
+}

@@ -9,11 +9,14 @@ import classNames from 'classnames';
 import type { PositionedGlyph, LayoutBounds } from './types';
 import { boundsToViewBox } from './utils/bounds';
 import { GLYPH_GUIDE_INSET } from '../../../db/utils/glyphMetrics';
+import { blockPartOutlines } from './blockOutlines';
 import styles from './GlyphSpellingDisplay.module.scss';
 export interface GlyphSpellingCoreProps {
     positions: PositionedGlyph[];
     bounds: LayoutBounds;
     showVirtualGlyphStyling?: boolean;
+    /** Debug overlay of block squares, template boxes and ink (`blockOutlines.ts`). */
+    showBlockOutlines?: boolean;
     className?: string;
     backgroundColor?: string;
     showPaperEffect?: boolean;
@@ -33,12 +36,15 @@ export const PAPER_FILL = 'var(--page-background-primary, white)';
 const GlyphItem = memo(function GlyphItem({
     positioned,
     showVirtualGlyphStyling,
+    outlines,
 }: {
     positioned: PositionedGlyph;
     showVirtualGlyphStyling: boolean;
+    outlines: boolean;
 }) {
     const { glyph, x, y, width: w, height: h, rotation } = positioned;
-    const positionedSvg = useMemo(() => {
+    const isBlock = glyph.block !== undefined;
+    const { positionedSvg, parts } = useMemo(() => {
         const cleaned = DOMPurify.sanitize(glyph.svg_data, {
             USE_PROFILES: { svg: true, svgFilters: true },
         });
@@ -57,10 +63,20 @@ const GlyphItem = memo(function GlyphItem({
         }
 
         const serialized = new XMLSerializer().serializeToString(svgEl);
-        return DOMPurify.sanitize(serialized, {
-            USE_PROFILES: { svg: true, svgFilters: true },
-        });
-    }, [glyph.svg_data, x, y, w, h]);
+        return {
+            positionedSvg: DOMPurify.sanitize(serialized, {
+                USE_PROFILES: { svg: true, svgFilters: true },
+            }),
+            parts: outlines && isBlock ? blockPartOutlines(svgEl) : [],
+        };
+    }, [glyph.svg_data, x, y, w, h, outlines, isBlock]);
+    const cell = {
+        x: x + w * GLYPH_GUIDE_INSET,
+        y: y + h * GLYPH_GUIDE_INSET,
+        width: w * (1 - 2 * GLYPH_GUIDE_INSET),
+        height: h * (1 - 2 * GLYPH_GUIDE_INSET),
+    };
+    const outlineSingle = outlines && !isBlock && !glyph.isVirtual && glyph.svg_data !== '';
     const transform = rotation
         ? `rotate(${rotation} ${x + w / 2} ${y + h / 2})`
         : undefined;
@@ -87,6 +103,31 @@ const GlyphItem = memo(function GlyphItem({
                     strokeDasharray="2,2"
                 />
             )}
+            {outlines && isBlock && (
+                // The block document's own 0..100 space, placed like the block.
+                <svg x={x} y={y} width={w} height={h} viewBox="0 0 100 100" overflow="visible" data-block-outline="">
+                    {parts.map((part, k) => (
+                        <g key={k}>
+                            <rect {...part.box} fill="none" className={styles.outlineBox} vectorEffect="non-scaling-stroke" />
+                            {part.ink && (
+                                <rect {...part.ink} fill="none" className={styles.outlineInk} vectorEffect="non-scaling-stroke" />
+                            )}
+                        </g>
+                    ))}
+                    <rect
+                        x={GLYPH_GUIDE_INSET * 100}
+                        y={GLYPH_GUIDE_INSET * 100}
+                        width={(1 - 2 * GLYPH_GUIDE_INSET) * 100}
+                        height={(1 - 2 * GLYPH_GUIDE_INSET) * 100}
+                        fill="none"
+                        className={styles.outlineBlock}
+                        vectorEffect="non-scaling-stroke"
+                    />
+                </svg>
+            )}
+            {outlineSingle && (
+                <rect {...cell} fill="none" className={styles.outlineSingle} vectorEffect="non-scaling-stroke" data-single-outline="" />
+            )}
         </g>
     );
 });
@@ -95,6 +136,7 @@ export const GlyphSpellingCore = memo(forwardRef<SVGSVGElement, GlyphSpellingCor
         positions,
         bounds,
         showVirtualGlyphStyling = true,
+        showBlockOutlines = false,
         className,
         backgroundColor,
         showPaperEffect = false,
@@ -134,6 +176,7 @@ export const GlyphSpellingCore = memo(forwardRef<SVGSVGElement, GlyphSpellingCor
                     key={`glyph-${positioned.glyph.id}-${positioned.index}`}
                     positioned={positioned}
                     showVirtualGlyphStyling={showVirtualGlyphStyling}
+                    outlines={showBlockOutlines}
                 />
             ))}
         </svg>

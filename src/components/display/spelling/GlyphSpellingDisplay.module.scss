@@ -68,6 +68,29 @@
     stroke-width: 1;
 }
 
+// Block outlines debug overlay (blockOutlines.ts)
+.outlineBlock {
+    stroke: var(--red);
+    stroke-width: 2;
+}
+
+.outlineBox {
+    stroke: var(--red);
+    stroke-width: 1;
+    stroke-dasharray: 3 2;
+}
+
+.outlineInk {
+    stroke: var(--cyan);
+    stroke-width: 1;
+}
+
+.outlineSingle {
+    stroke: var(--blue);
+    stroke-width: 2;
+    stroke-dasharray: 4 2;
+}
+
 // ========================================
 // Interactive Mode Styles
 // ========================================

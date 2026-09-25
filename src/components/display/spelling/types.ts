@@ -324,6 +324,13 @@ export interface GlyphSpellingDisplayProps {
     /** Whether to show distinct styling for virtual IPA glyphs */
     showVirtualGlyphStyling?: boolean;
 
+    /**
+     * Debug overlay: outline each block's square, its template boxes and where
+     * each sign's ink landed, plus signs drawn outside any block.
+     * @default false
+     */
+    showBlockOutlines?: boolean;
+
     /** Additional class name */
     className?: string;
 

@@ -99,6 +99,7 @@ const GlyphSpellingDisplay = forwardRef<GlyphSpellingDisplayRef, GlyphSpellingDi
             graphemeMap,
             emptyContent,
             showVirtualGlyphStyling = true,
+            showBlockOutlines = false,
             className,
             style,
             glyphEmPx,
@@ -298,6 +299,7 @@ const GlyphSpellingDisplay = forwardRef<GlyphSpellingDisplayRef, GlyphSpellingDi
                     positions={positions}
                     bounds={bounds}
                     showVirtualGlyphStyling={showVirtualGlyphStyling}
+                    showBlockOutlines={showBlockOutlines}
                     zoom={zoom}
                 />
             </div>

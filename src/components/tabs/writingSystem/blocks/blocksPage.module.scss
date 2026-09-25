@@ -467,7 +467,53 @@
 .previewControls {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 0.5rem;
+}
+
+// Key for the preview's "Outlines" overlay; swatches mirror the overlay's
+// strokes in GlyphSpellingDisplay.module.scss.
+.outlineLegend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+
+    li {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+    }
+}
+
+%outlineKey {
+    display: inline-block;
+    width: 0.9rem;
+    height: 0.9rem;
+}
+
+.keyBlock {
+    @extend %outlineKey;
+    border: 2px solid var(--red);
+}
+
+.keyBox {
+    @extend %outlineKey;
+    border: 1px dashed var(--red);
+}
+
+.keyInk {
+    @extend %outlineKey;
+    border: 1px solid var(--cyan);
+}
+
+.keySingle {
+    @extend %outlineKey;
+    border: 2px dashed var(--blue);
 }
 
 .previewStage {

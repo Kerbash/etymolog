@@ -28,6 +28,13 @@
  * and a tail drawn there lands beside the next letter. Canvas and layout read
  * the one constant, so the guide the author sees is the geometry the word uses.
  *
+ * ## Block guide
+ *
+ * Above the canvas, "Block guide" picks one box of a block template; the
+ * canvas then paints that template inside the guide square with the box
+ * highlighted, so a sign meant for that box is drawn to its shape (see
+ * `blockGuide.ts`). Guide marks are never saved into the glyph.
+ *
  * `registerField()` is called on EVERY render on purpose — that is SmartForm's
  * contract. It registers once internally and returns fresh state each render;
  * caching the result in a ref is what produces stale-value bugs.
@@ -46,6 +53,10 @@ import { flex, sizing } from "utils-styles";
 
 import type { Glyph } from "../../../db";
 import { GLYPH_GUIDE_INSET } from "../../../db/utils/glyphMetrics";
+import { useOptionalBlockScheme } from "../../../db/context/useOptionalBlockScheme";
+import { blockGuideOptions, roleColours, setBlockGuideKey, useBlockGuideKey } from "./blockGuide";
+import BlockGuideOverlay from "./BlockGuideOverlay";
+import BlockGuidePicker from "./BlockGuidePicker";
 import { GlyphImageImport, GlyphImagePreview, type GlyphImportMode } from "../glyphImport";
 import { GLYPH_INK } from "./glyphInk";
 
@@ -101,6 +112,15 @@ export default function GlyphFormFields({
     className,
 }: GlyphFormFieldsProps) {
     const sectionId = useId();
+
+    // Block guide: outline a template box on the canvas to draw a sign for it.
+    const blockScheme = useOptionalBlockScheme();
+    const guideOptions = useMemo(() => blockGuideOptions(blockScheme), [blockScheme]);
+    const guideColours = useMemo(() => roleColours(blockScheme), [blockScheme]);
+    const guideKeyChoice = useBlockGuideKey();
+    // A remembered box that no longer exists (template deleted) shows no guide.
+    const guide = guideOptions.find((option) => option.key === guideKeyChoice) ?? null;
+
     // Guards the one-shot "push the existing values into the DOM" effect below.
     const initializedRef = useRef(false);
 
@@ -248,17 +268,24 @@ export default function GlyphFormFields({
                             />
                         </>
                     ) : (
-                        <HoverToolTip
-                            className={styles.drawerField}
-                            content={mode === 'edit' ? "Edit your glyph drawing" : "Draw your glyph here"}
-                        >
-                            <SvgDrawerInput
-                                displayName="Glyph drawing"
-                                colors={GLYPH_INK}
-                                guideInset={GLYPH_GUIDE_INSET}
-                                {...glyphSvgField}
+                        <div className={classNames(flex.flexColumn, flex.flexGapS, styles.drawerField)}>
+                            <BlockGuidePicker
+                                options={guideOptions}
+                                chosen={guide}
+                                onChange={setBlockGuideKey}
                             />
-                        </HoverToolTip>
+                            <HoverToolTip
+                                content={mode === 'edit' ? "Edit your glyph drawing" : "Draw your glyph here"}
+                            >
+                                <SvgDrawerInput
+                                    displayName="Glyph drawing"
+                                    colors={GLYPH_INK}
+                                    guideInset={GLYPH_GUIDE_INSET}
+                                    guideOverlay={guide ? <BlockGuideOverlay guide={guide} colours={guideColours} /> : undefined}
+                                    {...glyphSvgField}
+                                />
+                            </HoverToolTip>
+                        </div>
                     )}
                 </div>
 

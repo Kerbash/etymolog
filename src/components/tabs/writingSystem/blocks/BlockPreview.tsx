@@ -13,6 +13,11 @@
  *  ka · ta · k → 2 blocks: CV, CV · 1 consonant with a vowel-killer mark
  * ```
  *
+ * "Outlines" overlays each block's square, template boxes and where each
+ * sign's ink landed (`display/spelling/blockOutlines.ts`) — the way to see why
+ * a sign is drawn smaller than expected. Remembered per device, shared by every
+ * preview.
+ *
  * The word choice and the typed IPA are internal state by default
  * (TemplateEditor); the Blocks page's "Try a word" CONTROLS both (`wordId`,
  * `ipa` + their change callbacks), so "Check all my words" can put a word here.
@@ -40,6 +45,7 @@ import { autoSpellToDisplayEntries } from '../../../../db/phraseService';
 import type { SpellingDisplayEntry } from '../../../../db/types';
 import type { BlockScheme } from '../../../../blocks';
 import { GlyphSpellingDisplay } from '../../../display/spelling';
+import { setBlockOutlines, useBlockOutlines } from '../../../display/spelling/blockOutlines';
 import { summarizeBlocks } from './blockSchemeDraft';
 import type { BlockUsageSummary } from './blockSchemeDraft';
 
@@ -102,6 +108,7 @@ export default function BlockPreview({
 }: BlockPreviewProps) {
     const { data } = useEtymolog();
     const idPrefix = useId();
+    const outlines = useBlockOutlines();
     // Whole values read out first (P8).
     const lexicon = data.lexiconComplete;
     const graphemeMap = data.graphemeMap;
@@ -183,6 +190,15 @@ export default function BlockPreview({
                     aria-label="IPA to preview"
                     onChange={(event) => typeIpa(event.target.value)}
                 />
+                <label className={styles.toggle} data-block-outlines-toggle="">
+                    <input
+                        type="checkbox"
+                        role="switch"
+                        checked={outlines}
+                        onChange={(event) => setBlockOutlines(event.target.checked)}
+                    />
+                    Outlines
+                </label>
             </div>
             <div className={styles.previewStage} aria-labelledby={`${idPrefix}-title`} data-block-preview="">
                 <GlyphSpellingDisplay
@@ -191,9 +207,18 @@ export default function BlockPreview({
                     graphemeMap={graphemeMap}
                     glyphEmPx={glyphSize}
                     fit="shrink"
+                    showBlockOutlines={outlines}
                     emptyContent={<span className={styles.muted}>—</span>}
                 />
             </div>
+            {outlines && (
+                <ul className={styles.outlineLegend} aria-label="Outline key" data-outline-legend="">
+                    <li><span className={styles.keyBlock} aria-hidden="true" />Block square</li>
+                    <li><span className={styles.keyBox} aria-hidden="true" />Template box</li>
+                    <li><span className={styles.keyInk} aria-hidden="true" />Where the sign landed</li>
+                    <li><span className={styles.keySingle} aria-hidden="true" />Sign on its own (no block)</li>
+                </ul>
+            )}
             <p className={styles.caption} aria-live="polite">
                 {caption}
             </p>
