@@ -12,6 +12,7 @@ import { createRoot } from 'react-dom/client';
 import type { Root } from 'react-dom/client';
 import { GlyphSpellingDisplay } from '../index';
 import type { GlyphSpellingDisplayRef, RenderableGlyph } from '../types';
+import { DEFAULT_WRITING_SYSTEM_SETTINGS } from '../../../../db/api/types';
 // Helper to render component synchronously
 function renderSync(element: React.ReactElement): { container: HTMLDivElement; root: Root } {
     const container = document.createElement('div');
@@ -191,6 +192,71 @@ describe('GlyphSpellingDisplay', () => {
             );
             const nestedSvgs = container.querySelectorAll('svg svg');
             expect(nestedSvgs.length).toBe(4);
+        });
+    });
+
+    describe('letterSpacing (SCRIPT_SPACING_PLAN Phase B)', () => {
+        // Two boxes 20px wide, cell = half the box (10px), so a letter step is
+        // 10px + spacing. The `letterSpacing` prop replaces the config `spacing`
+        // with cellWidth × fraction (cellWidth = 20 × 0.5 = 10).
+        const CONFIG = { glyphWidth: 20, glyphHeight: 20, cellFraction: 0.5, spacing: 100, padding: 0 };
+        const twoGlyphs: RenderableGlyph[] = [
+            { id: 1, name: 'A', svg_data: '<svg viewBox="0 0 100 100"><text>A</text></svg>', isVirtual: false, sourceIndex: 0 },
+            { id: 2, name: 'B', svg_data: '<svg viewBox="0 0 100 100"><text>B</text></svg>', isVirtual: false, sourceIndex: 1 },
+        ];
+
+        /** The x of each positioned inner svg, in order. */
+        function xs(letterSpacing?: 'auto' | 'none' | 'normal'): number[] {
+            const { container } = renderSync(
+                createElement(GlyphSpellingDisplay, {
+                    glyphs: twoGlyphs,
+                    strategy: 'composed-block',
+                    writingSystem: DEFAULT_WRITING_SYSTEM_SETTINGS,
+                    config: CONFIG,
+                    letterSpacing,
+                }),
+            );
+            return [...container.querySelectorAll('svg svg')].map((s) => Number(s.getAttribute('x')));
+        }
+
+        it('auto leaves the config spacing untouched (step = cell + spacing)', () => {
+            // stepX = 10 + 100 = 110.
+            expect(xs('auto')).toEqual([0, 110]);
+        });
+
+        it('none makes letters touch cell-to-cell (spacing 0)', () => {
+            // stepX = 10 + 0 = 10.
+            expect(xs('none')).toEqual([0, 10]);
+        });
+
+        it('a fraction sets spacing to cellWidth × fraction', () => {
+            // normal = 0.15 → spacing = 10 × 0.15 = 1.5 → stepX = 11.5.
+            expect(xs('normal')).toEqual([0, 11.5]);
+        });
+
+        it('undefined behaves exactly like auto (byte-identical default)', () => {
+            expect(xs(undefined)).toEqual(xs('auto'));
+        });
+    });
+
+    describe('word-break glyphs (SCRIPT_SPACING_PLAN Phase B)', () => {
+        const CONFIG = { glyphWidth: 20, glyphHeight: 20, cellFraction: 1, spacing: 4, padding: 0 };
+        const wordBreak: RenderableGlyph = { id: -9, name: '', svg_data: '', isVirtual: false, sourceIndex: 1, role: 'word-break' };
+        const a: RenderableGlyph = { id: 1, name: 'A', svg_data: '<svg viewBox="0 0 100 100"><text>A</text></svg>', isVirtual: false, sourceIndex: 0 };
+        const b: RenderableGlyph = { id: 2, name: 'B', svg_data: '<svg viewBox="0 0 100 100"><text>B</text></svg>', isVirtual: false, sourceIndex: 2 };
+
+        it('a non-composed strategy (ltr) neither draws nor reserves room for a word-break', () => {
+            const withBreak = renderSync(
+                createElement(GlyphSpellingDisplay, { glyphs: [a, wordBreak, b], strategy: 'ltr', config: CONFIG }),
+            );
+            const withoutBreak = renderSync(
+                createElement(GlyphSpellingDisplay, { glyphs: [a, b], strategy: 'ltr', config: CONFIG }),
+            );
+            const xs = (c: HTMLDivElement) => [...c.querySelectorAll('svg svg')].map((s) => Number(s.getAttribute('x')));
+            // The break drew no inner svg and shifted nothing: identical to the
+            // plain two-glyph layout.
+            expect(xs(withBreak.container)).toEqual([0, 24]);
+            expect(xs(withBreak.container)).toEqual(xs(withoutBreak.container));
         });
     });
 });

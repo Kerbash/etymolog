@@ -10,17 +10,16 @@
 import { describe, expect, it } from 'vitest';
 
 import { combineSvgRow, nestSvg, parseSvgViewBox } from '../svgCompose';
-import { INK_MARGIN_FRACTION, estimateInkBounds, nestSvgToInk } from '../svgInkBounds';
+import { estimateInkBounds, nestSvgToInk } from '../svgInkBounds';
 
 const doc = (inner: string, viewBox = '0 0 300 300') => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}">${inner}</svg>`;
 
-/** Expected bounds for a raw ink box once the margin is added. */
-function withMargin(x: number, y: number, w: number, h: number) {
-    const m = Math.max(w, h) * INK_MARGIN_FRACTION;
-    return { x: x - m, y: y - m, width: w + 2 * m, height: h + 2 * m };
+/** Expected bounds: the raw ink box, no margin (signs in a block touch). */
+function inkBox(x: number, y: number, w: number, h: number) {
+    return { x, y, width: w, height: h };
 }
 
-function expectBox(actual: ReturnType<typeof estimateInkBounds>, expected: ReturnType<typeof withMargin>) {
+function expectBox(actual: ReturnType<typeof estimateInkBounds>, expected: ReturnType<typeof inkBox>) {
     expect(actual).not.toBeNull();
     expect(actual!.x).toBeCloseTo(expected.x, 6);
     expect(actual!.y).toBeCloseTo(expected.y, 6);
@@ -31,34 +30,34 @@ function expectBox(actual: ReturnType<typeof estimateInkBounds>, expected: Retur
 describe('estimateInkBounds — what the glyph editor emits', () => {
     it('a filled pen stroke (absolute M/Q path, no stroke attr) is bounded by its points', () => {
         const pen = doc('<path d="M 40 15 Q 40 15 120 16 Q 200 17 226 16 L 226 25 Z" fill="currentColor"></path>');
-        expectBox(estimateInkBounds(pen), withMargin(40, 15, 186, 10));
+        expectBox(estimateInkBounds(pen), inkBox(40, 15, 186, 10));
     });
 
     it('a stroked rect is padded by half its stroke-width', () => {
         const box = doc('<rect x="78.5" y="73.3" width="140" height="160" fill="none" stroke="currentColor" stroke-width="2"></rect>');
-        expectBox(estimateInkBounds(box), withMargin(77.5, 72.3, 142, 162));
+        expectBox(estimateInkBounds(box), inkBox(77.5, 72.3, 142, 162));
     });
 
     it('a stroked ellipse / circle uses its radii', () => {
         const ring = doc('<ellipse cx="100" cy="100" rx="20" ry="10" stroke="currentColor" stroke-width="4"></ellipse>');
-        expectBox(estimateInkBounds(ring), withMargin(78, 88, 44, 24));
+        expectBox(estimateInkBounds(ring), inkBox(78, 88, 44, 24));
         const dot = doc('<circle cx="50" cy="60" r="5" fill="currentColor"></circle>');
-        expectBox(estimateInkBounds(dot), withMargin(45, 55, 10, 10));
+        expectBox(estimateInkBounds(dot), inkBox(45, 55, 10, 10));
     });
 
     it('stroke without a width defaults to 1; stroke="none" pads nothing', () => {
-        expectBox(estimateInkBounds(doc('<line x1="10" y1="10" x2="30" y2="50" stroke="currentColor"></line>')), withMargin(9.5, 9.5, 21, 41));
-        expectBox(estimateInkBounds(doc('<rect x="10" y="10" width="20" height="20" stroke="none" stroke-width="8"></rect>')), withMargin(10, 10, 20, 20));
+        expectBox(estimateInkBounds(doc('<line x1="10" y1="10" x2="30" y2="50" stroke="currentColor"></line>')), inkBox(9.5, 9.5, 21, 41));
+        expectBox(estimateInkBounds(doc('<rect x="10" y="10" width="20" height="20" stroke="none" stroke-width="8"></rect>')), inkBox(10, 10, 20, 20));
     });
 
     it('unions several marks, and walks through <g> containers', () => {
         const two = doc('<g><circle cx="20" cy="20" r="5"></circle></g><rect x="100" y="150" width="10" height="10"></rect>');
-        expectBox(estimateInkBounds(two), withMargin(15, 15, 95, 145));
+        expectBox(estimateInkBounds(two), inkBox(15, 15, 95, 145));
     });
 
     it('follows H / V from the current point, polylines, and lowercase close-path', () => {
-        expectBox(estimateInkBounds(doc('<path d="M 10 20 H 90 V 70 z"></path>')), withMargin(10, 20, 80, 50));
-        expectBox(estimateInkBounds(doc('<polygon points="0,0 40,10 20,30"></polygon>')), withMargin(0, 0, 40, 30));
+        expectBox(estimateInkBounds(doc('<path d="M 10 20 H 90 V 70 z"></path>')), inkBox(10, 20, 80, 50));
+        expectBox(estimateInkBounds(doc('<polygon points="0,0 40,10 20,30"></polygon>')), inkBox(0, 0, 40, 30));
     });
 
     it('a perfectly straight mark gets a minimum side instead of a zero-size box', () => {
@@ -121,7 +120,7 @@ describe('estimateInkBounds — multi-glyph rows (nested svg cells)', () => {
         // A 300×300 canvas shown in a 30×30 cell at (60, 0): scale 0.1.
         // A rect at 100..200 inside it lands at 70..80.
         const row = doc('<svg x="60" y="0" width="30" height="30" viewBox="0 0 300 300" preserveAspectRatio="xMidYMid meet"><rect x="100" y="100" width="100" height="100"></rect></svg>', '0 0 200 30');
-        expectBox(estimateInkBounds(row), withMargin(70, 10, 10, 10));
+        expectBox(estimateInkBounds(row), inkBox(70, 10, 10, 10));
     });
 
     it('centres a non-square viewBox the way meet does, and unions the cells', () => {
@@ -131,12 +130,12 @@ describe('estimateInkBounds — multi-glyph rows (nested svg cells)', () => {
             + '<svg x="40" y="0" width="20" height="20" viewBox="0 0 100 100"><circle cx="50" cy="50" r="10"></circle></svg>',
             '0 0 60 20',
         );
-        expectBox(estimateInkBounds(row), withMargin(0, 5, 52, 10));
+        expectBox(estimateInkBounds(row), inkBox(0, 5, 52, 10));
     });
 
     it('clips ink outside a cell\'s viewBox, as the browser does', () => {
         const row = doc('<svg x="0" y="0" width="10" height="10" viewBox="0 0 100 100"><rect x="50" y="50" width="500" height="500"></rect></svg>', '0 0 10 10');
-        expectBox(estimateInkBounds(row), withMargin(5, 5, 5, 5));
+        expectBox(estimateInkBounds(row), inkBox(5, 5, 5, 5));
     });
 
     it('reads combineSvgRow output (what a multi-glyph variant becomes)', () => {
@@ -164,18 +163,18 @@ describe('estimateInkBounds — nested cell align × {meet, slice} (BLOCK_PLACEM
     const root = (par: string) => doc(cell(par), '0 0 100 100');
 
     it('meet places the 40×40 ink by the y-alignment, x fixed', () => {
-        expectBox(estimateInkBounds(root('xMinYMin meet')), withMargin(0, 0, 40, 40));
-        expectBox(estimateInkBounds(root('xMidYMid meet')), withMargin(0, 30, 40, 40));
-        expectBox(estimateInkBounds(root('xMaxYMax meet')), withMargin(0, 60, 40, 40));
+        expectBox(estimateInkBounds(root('xMinYMin meet')), inkBox(0, 0, 40, 40));
+        expectBox(estimateInkBounds(root('xMidYMid meet')), inkBox(0, 30, 40, 40));
+        expectBox(estimateInkBounds(root('xMaxYMax meet')), inkBox(0, 60, 40, 40));
     });
 
     it('slice covers the viewport and overflows in x, clipped to the root viewBox', () => {
         // xMin: content [0,100] fits the root — full width.
-        expectBox(estimateInkBounds(root('xMinYMin slice')), withMargin(0, 0, 100, 100));
+        expectBox(estimateInkBounds(root('xMinYMin slice')), inkBox(0, 0, 100, 100));
         // xMid: content shifts to [-30,70], clipped left at 0 → width 70.
-        expectBox(estimateInkBounds(root('xMidYMid slice')), withMargin(0, 0, 70, 100));
+        expectBox(estimateInkBounds(root('xMidYMid slice')), inkBox(0, 0, 70, 100));
         // xMax: content shifts to [-60,40], clipped left at 0 → width 40.
-        expectBox(estimateInkBounds(root('xMaxYMax slice')), withMargin(0, 0, 40, 100));
+        expectBox(estimateInkBounds(root('xMaxYMax slice')), inkBox(0, 0, 40, 100));
     });
 
     it('preserveAspectRatio="none" (non-uniform) stays unmeasurable', () => {

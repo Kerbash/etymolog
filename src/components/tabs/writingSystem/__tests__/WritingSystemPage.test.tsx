@@ -57,13 +57,17 @@ let writingSystem: Record<string, string> = {
     lineProgression: 'ttb',
     wordWrap: 'word',
     baselineAlignment: 'center',
+    letterSpacing: 'auto',
 };
+
+// A stable punctuation object (P7: a per-call object loops the render).
+const punctuation = { wordSeparator: { graphemeId: null, useNoGlyph: false } };
 
 vi.mock('../../../../db', () => ({
     useEtymolog: () => ({
         api: { settings: { update } },
         data: { graphemesComplete: [], glyphsWithUsage: [], lexiconComplete: [] },
-        settings: { writingSystem },
+        settings: { writingSystem, punctuation },
         isReady: true,
         error: null,
     }),
@@ -97,6 +101,7 @@ beforeEach(() => {
         lineProgression: 'ttb',
         wordWrap: 'word',
         baselineAlignment: 'center',
+        letterSpacing: 'auto',
     };
 });
 
@@ -110,7 +115,10 @@ afterEach(() => {
     vi.clearAllMocks();
 });
 
-const selects = () => Array.from(container.querySelectorAll('select')) as HTMLSelectElement[];
+// Only the RULE selects — those in the category tables. The "Spacing" section
+// below the tables (letter spacing, word separation) has its own selects that
+// these tests do not concern.
+const selects = () => Array.from(container.querySelectorAll('table select')) as HTMLSelectElement[];
 
 /** The name a screen reader would announce for a control. */
 function accessibleName(control: HTMLElement): string {
@@ -214,6 +222,7 @@ describe('WritingSystemPage — saving', () => {
                 lineProgression: 'ttb',
                 wordWrap: 'word',
                 baselineAlignment: 'center',
+                letterSpacing: 'auto',
             },
         });
     });

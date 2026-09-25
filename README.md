@@ -102,6 +102,7 @@ api.settings.update({ punctuation: newPunc });
 
 How the translator uses settings
 - The Phrase Translator now reads punctuation settings so word separators and sentence endings can be rendered with assigned graphemes, virtual glyphs, or hidden entirely. The translation API accepts the punctuation settings when invoked: `api.phrase.translate(phrase, settings.punctuation)`.
+- A **hidden word separator** (`wordSeparator.useNoGlyph`) no longer disappears — that used to let the block segmenter merge the end of one word with the start of the next. It now emits an invisible `word-break` entry: words stay separate for block segmentation and the composed layout places the next word touching (one letter step), while a line can still wrap there. Hidden PUNCTUATION marks are still omitted entirely.
 
 ---
 
@@ -956,6 +957,16 @@ is the detailed reference; the essentials:
   including the one open in the editor — cannot be deleted ("Used by N templates").
 - **Variant groups**: "Manage groups…" opens the Script Maker's
   `VariantGroupsDialog`.
+- **Spacing** (`ScriptSpacingSettings`, shown here AND on the Direction page):
+  two conlang-wide controls that save immediately (not part of the scheme draft).
+  **Letter spacing** (`writingSystem.letterSpacing`: `auto | none | tight | normal
+  | wide | extra-wide`, default `auto`) sets how far apart consecutive letters /
+  blocks sit within a word, as a fraction of the glyph cell (`auto` keeps each
+  view's own preset). **Word separation** is a front-end over
+  `punctuation.wordSeparator` — Space / A glyph / Nothing. "Nothing" no longer
+  merges words: the translator emits an invisible `word-break` so the block
+  segmenter still splits words and the composed layout places the next word
+  touching (with a wrap still allowed there).
 - **Templates** (`TemplateList`): the list IS the priority order (cyber
   `ReorderableList` drag / keyboard plus ↑/↓), each row with its priority number,
   a thumbnail of its rectangles, pattern chips, Edit / Duplicate / Delete.

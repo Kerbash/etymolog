@@ -44,6 +44,7 @@ const DIRECTION_VALUES: readonly DirectionValue[] = ['ltr', 'rtl', 'ttb', 'btt']
 const LEGACY_DIRECTION_ALIASES: Record<string, DirectionValue> = { btu: 'btt' };
 const WORD_WRAP_VALUES = ['word', 'glyph', 'none'] as const;
 const BASELINE_VALUES = ['top', 'center', 'bottom'] as const;
+const LETTER_SPACING_VALUES = ['auto', 'none', 'tight', 'normal', 'wide', 'extra-wide'] as const;
 const GALLERY_VIEW_VALUES = ['compact', 'detailed', 'expanded'] as const;
 
 export const PUNCTUATION_KEYS: readonly (keyof PunctuationSettings)[] = [
@@ -167,6 +168,7 @@ function validateWritingSystem(raw: unknown, issues: SettingsIssue[]): WritingSy
         lineProgression: validateDirection(source.lineProgression, 'writingSystem.lineProgression', issues, d.lineProgression),
         wordWrap: validateEnum(source.wordWrap, WORD_WRAP_VALUES, 'writingSystem.wordWrap', issues, d.wordWrap),
         baselineAlignment: validateEnum(source.baselineAlignment, BASELINE_VALUES, 'writingSystem.baselineAlignment', issues, d.baselineAlignment),
+        letterSpacing: validateEnum(source.letterSpacing, LETTER_SPACING_VALUES, 'writingSystem.letterSpacing', issues, d.letterSpacing),
     };
 }
 

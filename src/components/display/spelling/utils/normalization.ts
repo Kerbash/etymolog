@@ -44,6 +44,24 @@ import {
 } from '../../../../blocks';
 import type { BlockScheme, ComposedBlock } from '../../../../blocks';
 
+/**
+ * An invisible `word-break` renderable: a zero-size word boundary carried
+ * through normalization so the composed strategy can split words at a hidden
+ * separator. It has NO svg (draws nothing) and is not virtual (no dashed-box
+ * styling); every non-composed strategy removes it before layout, so it never
+ * reaches a renderer.
+ */
+function createWordBreakGlyph(sourceIndex: number): RenderableGlyph {
+    return {
+        id: generateVirtualGlyphId('​'),
+        name: '',
+        svg_data: '',
+        isVirtual: false,
+        sourceIndex,
+        role: 'word-break',
+    };
+}
+
 function createVirtualGlyph(ipaChar: string, sourceIndex: number, role?: SpellingDisplayEntry['role']): RenderableGlyph {
     return {
         id: generateVirtualGlyphId(ipaChar),
@@ -121,7 +139,10 @@ function normalizeSpellingDisplay(
     const result: RenderableGlyph[] = [];
 
     entries.forEach((entry, entryIndex) => {
-        if (entry.type === 'grapheme' && entry.grapheme) {
+        if (entry.role === 'word-break') {
+            // Zero-size boundary: carried through even with no ipaCharacter.
+            result.push(createWordBreakGlyph(entryIndex));
+        } else if (entry.type === 'grapheme' && entry.grapheme) {
             const fullGrapheme = context.graphemeMap?.get(entry.grapheme.id);
             const glyphs = fullGrapheme?.glyphs ?? (entry.grapheme as GraphemeComplete).glyphs;
             if (glyphs && glyphs.length > 0) {
@@ -150,6 +171,10 @@ function pushEntry(
     entryIndex: number,
     graphemeMap: Map<number, GraphemeComplete>,
 ): void {
+    if (entry.role === 'word-break') {
+        result.push(createWordBreakGlyph(entryIndex));
+        return;
+    }
     if (entry.type === 'grapheme' && entry.grapheme) {
         const fullGrapheme = graphemeMap.get(entry.grapheme.id) ?? (entry.grapheme as GraphemeComplete);
         if (!Array.isArray(fullGrapheme.glyphs)) return;

@@ -242,13 +242,20 @@ function configuredEntry(
 }
 
 /**
- * The word-separator entry (a virtual space, or the configured grapheme), or
- * `null` when separators are hidden.
+ * The word-separator entry (a virtual space, or the configured grapheme). When
+ * separators are HIDDEN (`useNoGlyph`) this returns an invisible `word-break`
+ * entry rather than `null`: the boundary must survive so the block segmenter
+ * still closes the run there (words never merge into one block) and the composed
+ * layout places the next word touching. It is never drawn or measured as a
+ * glyph — unlike `createPunctuationEntry`, whose hidden marks stay `null`.
  */
 export function createSpaceSeparator(
     config?: PunctuationConfig,
     grapheme?: GraphemeComplete | null
 ): SpellingDisplayEntry | null {
+    if (config?.useNoGlyph) {
+        return { type: 'ipa', position: 0, ipaCharacter: '', role: 'word-break' };
+    }
     return configuredEntry(' ', 'word-separator', config, grapheme);
 }
 

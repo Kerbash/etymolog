@@ -96,6 +96,19 @@ describe('segmentEntries', () => {
         ]);
     });
 
+    it('a word-break is structural too: it breaks the run so a block never spans it', () => {
+        // SCRIPT_SPACING_PLAN Phase B: a hidden separator emits an invisible
+        // `word-break`. It must still close the run — `ka` + break + `ti` never
+        // greedily forms one block across the word boundary.
+        const s = scheme([roles.C1, roles.V, roles.C2], [CVC, CV]);
+        const entries = [gEntry(K, 0), gEntry(A, 1), roleEntry('word-break', '', 2), gEntry(T, 3), gEntry(I, 4)];
+        expect(segmentEntries(entries, s, index)).toEqual([
+            { kind: 'block', templateId: 'CV', entryIndices: [0, 1] },
+            { kind: 'passthrough', entryIndices: [2] },
+            { kind: 'block', templateId: 'CV', entryIndices: [3, 4] },
+        ]);
+    });
+
     it('unmatched entries become singles, and matching resumes after them', () => {
         const s = scheme([roles.C1, roles.V], [CV]);
         expect(segmentEntries(word(A, K, A, M), s, index)).toEqual([

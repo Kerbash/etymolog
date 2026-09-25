@@ -478,7 +478,7 @@ describe('BlocksPage — split and lone-consonant sections', () => {
     it('both sections, then Try a word and Check all my words, render between the toolbar and Roles', async () => {
         await mount();
         const titles = $$('section h3').map((h) => h.textContent);
-        expect(titles.slice(0, 5)).toEqual(['Splitting words into blocks', 'Consonants with no vowel', 'Try a word', 'Check all my words', 'Roles']);
+        expect(titles.slice(0, 5)).toEqual(['Splitting words into blocks', 'Spacing', 'Consonants with no vowel', 'Try a word', 'Check all my words']);
         // Unset split: the note is visible, nothing was switched silently.
         expect($('[data-split-unset-note]')).not.toBeNull();
         expect(button('Save').disabled).toBe(true);
@@ -580,6 +580,7 @@ describe('BlocksPage — "On this page" contents', () => {
     /** The links expected under the header, in the page's own render order. */
     const EXPECTED: readonly [label: string, id: string][] = [
         ['Splitting', 'blocks-split'],
+        ['Spacing', 'blocks-spacing'],
         ['Lone consonants', 'blocks-leftovers'],
         ['Try a word', 'blocks-try'],
         ['Check words', 'blocks-check'],

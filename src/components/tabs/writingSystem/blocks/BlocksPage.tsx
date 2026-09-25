@@ -66,6 +66,7 @@ import TemplateList from './TemplateList';
 import TemplateEditor from './TemplateEditor';
 import PageContents from './PageContents';
 import type { PageContentsLink } from './PageContents';
+import ScriptSpacingSettings from '../ScriptSpacingSettings';
 import {
     addRole,
     applyTemplate,
@@ -101,13 +102,14 @@ interface EditingState {
 const NEW_ROLE_MATCHER: RoleMatcher = { kind: 'class', letter: 'C' };
 
 /**
- * "On this page" links, in the page's own render order (SplitSettings,
- * LoneConsonantSettings, the "Try a word" section, WordCheck, RolesEditor, the
- * "Variant groups" section, TemplateList). Each `id` is set on the matching
- * section below.
+ * "On this page" links, in the page's own render order (SplitSettings, the
+ * "Spacing" section, LoneConsonantSettings, the "Try a word" section, WordCheck,
+ * RolesEditor, the "Variant groups" section, TemplateList). Each `id` is set on
+ * the matching section below.
  */
 const PAGE_CONTENTS: readonly PageContentsLink[] = [
     { id: 'blocks-split', label: 'Splitting' },
+    { id: 'blocks-spacing', label: 'Spacing' },
     { id: 'blocks-leftovers', label: 'Lone consonants' },
     { id: 'blocks-try', label: 'Try a word' },
     { id: 'blocks-check', label: 'Check words' },
@@ -368,6 +370,17 @@ export default function BlocksPage() {
                     )
                 }
             />
+
+            <section id="blocks-spacing" className={styles.section} aria-labelledby="blocks-spacing-title">
+                <div className={styles.sectionHeader}>
+                    <h3 id="blocks-spacing-title" className={styles.sectionTitle}>Spacing</h3>
+                </div>
+                <p className={styles.hint}>
+                    Letter spacing and word separation apply to the whole script and save immediately —
+                    unlike the block scheme above, which waits for Save.
+                </p>
+                <ScriptSpacingSettings />
+            </section>
 
             <LoneConsonantSettings
                 id="blocks-leftovers"

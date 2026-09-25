@@ -12,9 +12,15 @@
 |---|---|
 | `WritingSystemMain.tsx` | The area's `<Routes>`, mounted by `App.tsx` at `writing-system/*`. Unknown sub-paths redirect to `/writing-system`. |
 | `WritingSystemNav.tsx` | Layout route: cyber `TabContainer` with `urlSync={false}` + `controlledActiveSection` (active tab derived from the pathname) + `onSectionChange` → `guardedNavigate`, so leaving a dirty Blocks draft asks first. Same contract as the Script Maker's `ScriptMakerNav`. |
-| `WritingSystemPage.tsx` | The **Direction** page: one table per rule category, each `<select>` writes `settings.writingSystem` (the whole object, the update is strict). Shows `validateWritingSystem(settings, savedBlockScheme)` warnings inline. |
+| `WritingSystemPage.tsx` | The **Direction** page: one table per rule category, each `<select>` writes `settings.writingSystem` (the whole object, the update is strict). Shows `validateWritingSystem(settings, savedBlockScheme)` warnings inline. Ends with a **Spacing** section (`ScriptSpacingSettings`). |
+| `ScriptSpacingSettings.tsx` | The two conlang-wide spacing controls, shown on BOTH this page and the Blocks page (SCRIPT_SPACING_PLAN §5). A **letter spacing** select (`data-letter-spacing`, writes the whole `settings.writingSystem`) + `WordSeparationSetting`. Both save immediately. |
+| `WordSeparationSetting.tsx` | Front-end over the existing `settings.punctuation.wordSeparator` (NO new stored field): a Space / A glyph / Nothing select (`data-word-separation`), and for "A glyph" a grapheme picker (`data-word-separator-grapheme`). Derives the mode with `wordSeparationModeOf` and writes the whole `punctuation` back. "Nothing" stores `useNoGlyph` — the translator then emits an invisible `word-break` so words never merge into one block. |
+| `scriptSpacingOptions.ts` | Component-free bits for the two controls: `LETTER_SPACING_OPTIONS`, `wordSeparationModeOf`, `WORD_SEPARATION_HINTS`. |
+| `scriptSpacing.module.scss` | Stylesheet for the two controls (theme tokens only). |
 | `inlineBanner.ts` | `INLINE_BANNER_PARTS` — turns a `NotificationBanner` toast into an inline warning. Shared by both pages. |
 | `blocks/` | The Block Designer (below). |
+
+**Letter spacing transport.** `writingSystem.letterSpacing` (`auto | none | tight | normal | wide | extra-wide`, default `auto`) rides the narrow `BlockRenderingContext` (`useOptionalLetterSpacing`, `null` outside a provider = auto). `GlyphSpellingDisplay` reads it (a `letterSpacing` prop overrides the context) and, when not `auto`, sets `spacing = cellWidth × LETTER_SPACING_FRACTIONS[value]`. `auto` leaves each view's preset untouched (byte-identical). In the composed strategy a hidden separator's `word-break` places the next word touching (one letter step) while still allowing a wrap there.
 
 Routes live in `src/url_mapping.ts`: `ROUTES.writingSystem`, `ROUTES.writingSystemBlocks`.
 Both sit under the existing `writing-system` primary tab, so `TAB_ROUTES` is unchanged.
@@ -37,7 +43,7 @@ consume it; this page only edits it.
 
 | File | Role |
 |---|---|
-| `BlocksPage.tsx` | Owns the DRAFT scheme and the template editor's working copy. Toolbar (enable switch, status line, Save / Discard), warnings, then the sections. Also owns the "Try a word" preview's word + IPA (`tryWordId` / `tryIpa`, the preview is CONTROLLED there) and mounts `WordCheck` right under it with the same forced-on draft (`tryScheme`); "Try it" sets the word, clears the IPA and scrolls the try section into view. |
+| `BlocksPage.tsx` | Owns the DRAFT scheme and the template editor's working copy. Toolbar (enable switch, status line, Save / Discard), warnings, then the sections. A **Spacing** section (`id="blocks-spacing"`, `ScriptSpacingSettings`) sits right after Splitting — these two settings apply to the whole script and save immediately, unlike the scheme draft. Also owns the "Try a word" preview's word + IPA (`tryWordId` / `tryIpa`, the preview is CONTROLLED there) and mounts `WordCheck` right under it with the same forced-on draft (`tryScheme`); "Try it" sets the word, clears the IPA and scrolls the try section into view. |
 | `RolesEditor.tsx` | Roles table: label, matcher select (every class letter via `CLASS_LABELS`, *syllable sign*, *category…* + its text box, *mark (accent, tone…)* — a shortcut that writes `MARK_CATEGORY` into that always-shown box and is selected while the box reads exactly `mark`, *anything*), colour swatches, guarded delete. |
 | `TemplateList.tsx` | Templates in PRIORITY order: cyber `ReorderableList` (drag / keyboard) plus ↑/↓ buttons; each row has its priority number, a thumbnail of its rectangles, pattern chips, Edit / Duplicate / Delete. Also hosts "Add templates from my word shapes" and its report. |
 | `TemplateEditor.tsx` | Controlled editor for one template: name, pattern built from role chips, the layout canvas, the live preview. Apply / Cancel. |

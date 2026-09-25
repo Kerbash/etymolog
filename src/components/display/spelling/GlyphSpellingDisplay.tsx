@@ -17,6 +17,7 @@ import type {
     LayoutStrategyConfig,
 } from './types';
 import { LAYOUT_PRESETS } from './types';
+import { DEFAULT_LAYOUT_CONFIG } from './types';
 import { useNormalizedGlyphs } from './hooks/useNormalizedGlyphs';
 import { useGlyphPositions } from './hooks/useGlyphPositions';
 import { createComposedBlockStrategy } from './strategies';
@@ -24,7 +25,8 @@ import { GlyphSpellingCore } from './GlyphSpellingCore';
 import { InteractiveGlyphDisplay } from './InteractiveGlyphDisplay';
 // Imported from the hook module directly (not the `db` barrel) so tests that
 // `vi.mock` the barrel need not know about it; outside a provider it is null.
-import { useOptionalBlockScheme, useOptionalGraphemeMap } from '../../../db/context/useOptionalBlockScheme';
+import { useOptionalBlockScheme, useOptionalGraphemeMap, useOptionalLetterSpacing } from '../../../db/context/useOptionalBlockScheme';
+import { LETTER_SPACING_FRACTIONS } from '../../../db/api/types';
 import styles from './GlyphSpellingDisplay.module.scss';
 
 /**
@@ -102,6 +104,7 @@ const GlyphSpellingDisplay = forwardRef<GlyphSpellingDisplayRef, GlyphSpellingDi
             glyphEmPx,
             zoom = 1,
             writingSystem,
+            letterSpacing,
             fit = 'natural',
             blockScheme,
         },
@@ -118,6 +121,10 @@ const GlyphSpellingDisplay = forwardRef<GlyphSpellingDisplayRef, GlyphSpellingDi
         // prop only an override).
         const contextBlockScheme = useOptionalBlockScheme();
         const contextGraphemeMap = useOptionalGraphemeMap();
+        // Letter spacing: the prop wins, else the provider's script setting,
+        // else `'auto'` (no provider). Read out as a whole value (P5).
+        const contextLetterSpacing = useOptionalLetterSpacing();
+        const effectiveLetterSpacing = letterSpacing ?? contextLetterSpacing ?? 'auto';
         const effectiveBlockScheme = blockScheme === undefined ? contextBlockScheme : blockScheme;
         const blocksOn = effectiveBlockScheme !== null && effectiveBlockScheme.enabled;
         // Composition needs graphemes WITH variants. A caller's own map wins;
@@ -166,8 +173,19 @@ const GlyphSpellingDisplay = forwardRef<GlyphSpellingDisplayRef, GlyphSpellingDi
                 merged.glyphHeight = glyphEmPx;
             }
 
+            // Letter spacing (conlang-wide): a non-`auto` value sets `spacing`
+            // to a fraction of the CELL, replacing the view preset's spacing.
+            // `auto` leaves `merged` untouched, so the output is byte-identical
+            // to before this setting existed (P1). Computed AFTER `glyphEmPx` so
+            // the cell reflects the overridden box size.
+            if (effectiveLetterSpacing !== 'auto') {
+                const boxWidth = merged.glyphWidth ?? DEFAULT_LAYOUT_CONFIG.glyphWidth;
+                const cellFraction = merged.cellFraction ?? DEFAULT_LAYOUT_CONFIG.cellFraction;
+                merged.spacing = boxWidth * cellFraction * LETTER_SPACING_FRACTIONS[effectiveLetterSpacing];
+            }
+
             return merged;
-        }, [config, canvasWidth, canvasHeight, strategy, glyphEmPx]);
+        }, [config, canvasWidth, canvasHeight, strategy, glyphEmPx, effectiveLetterSpacing]);
 
         // Use block strategy by default if canvas width is set for wrapping
         const effectiveStrategy = useMemo(() => {

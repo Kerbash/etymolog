@@ -354,6 +354,16 @@ export interface GlyphSpellingDisplayProps {
     writingSystem?: import('../../../db/api/types').WritingSystemSettings;
 
     /**
+     * Conlang-wide letter spacing override. When set and not `'auto'`, the
+     * layout `spacing` becomes `cellWidth × fraction`
+     * ({@link import('../../../db/api/types').LETTER_SPACING_FRACTIONS}); `'auto'`
+     * keeps the view preset. Omitted, the value falls back to the provider's
+     * `writingSystem.letterSpacing` (`'auto'` outside a provider), so a display
+     * inside the app follows the script without the caller wiring it up.
+     */
+    letterSpacing?: import('../../../db/api/types').LetterSpacingValue;
+
+    /**
      * Block-script scheme override.
      *
      * - `undefined` (default): the script's scheme from `EtymologProvider`

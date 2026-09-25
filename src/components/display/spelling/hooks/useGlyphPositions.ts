@@ -38,6 +38,15 @@ export function useGlyphPositions(
         const layoutStrategy = typeof strategy === 'string'
             ? getStrategy(strategy)
             : strategy;
-        return layoutStrategy.calculate(glyphs, resolvedConfig);
+        // `word-break` glyphs are invisible word boundaries. Only the composed
+        // strategy reads them (to place the next word touching); every other
+        // strategy must not draw or measure them, so they are removed here — the
+        // single place all strategies pass through. The `.some` guard keeps the
+        // array identity (and byte-identical output) when there are none.
+        const layoutGlyphs =
+            layoutStrategy.name !== 'composed-block' && glyphs.some((g) => g.role === 'word-break')
+                ? glyphs.filter((g) => g.role !== 'word-break')
+                : glyphs;
+        return layoutStrategy.calculate(layoutGlyphs, resolvedConfig);
     }, [glyphs, strategy, config]);
 }

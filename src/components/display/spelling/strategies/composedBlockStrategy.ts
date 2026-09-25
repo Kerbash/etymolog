@@ -7,8 +7,10 @@
  *   3. lines within the block (lineProgression)
  *
  * Word and line boundaries come from the glyphs themselves — `role` on a
- * `RenderableGlyph` is `'word-separator'`, `'line-break'` or `'punctuation'`
- * — not from index arrays supplied by the caller. The translator used to pass
+ * `RenderableGlyph` is `'word-separator'`, `'line-break'`, `'punctuation'` or
+ * the invisible `'word-break'` (a hidden separator: it splits words but is not
+ * drawn, and the word after it is placed touching) — not from index arrays
+ * supplied by the caller. The translator used to pass
  * indices computed over spelling ENTRIES while this strategy indexed GLYPHS
  * (a grapheme expands to several), so every break after a multi-glyph
  * grapheme landed in the wrong place.
@@ -40,30 +42,47 @@ function isReversed(dir: string): boolean {
 interface WordGroup {
     glyphs: RenderableGlyph[];
     isLineBreak: boolean;
+    /**
+     * This word abuts the word before it with only a letter step, no separator
+     * gap — a hidden word separator (`word-break`) sat between them. Always
+     * false for line breaks and for the separator/punctuation single-glyph
+     * groups.
+     */
+    touchesPrev: boolean;
 }
 
 /**
  * Group glyphs into words. Separators and punctuation become their own
  * single-glyph groups so they participate in wrapping; line breaks become
- * markers that flush the current line and are not positioned.
+ * markers that flush the current line and are not positioned; an invisible
+ * `word-break` flushes the current word, is NOT positioned, and marks the next
+ * word as touching (`touchesPrev`).
  */
 export function splitIntoWords(glyphs: RenderableGlyph[]): WordGroup[] {
     const groups: WordGroup[] = [];
     let current: RenderableGlyph[] = [];
+    // Applies to the word being accumulated; set true by a preceding word-break.
+    let touchesPrev = false;
     const flush = () => {
         if (current.length > 0) {
-            groups.push({ glyphs: current, isLineBreak: false });
+            groups.push({ glyphs: current, isLineBreak: false, touchesPrev });
             current = [];
         }
+        touchesPrev = false;
     };
 
     for (const glyph of glyphs) {
         if (glyph.role === 'line-break') {
             flush();
-            groups.push({ glyphs: [glyph], isLineBreak: true });
+            groups.push({ glyphs: [glyph], isLineBreak: true, touchesPrev: false });
+        } else if (glyph.role === 'word-break') {
+            // Close the word before it; the NEXT accumulated word touches. Not
+            // positioned — it draws nothing.
+            flush();
+            touchesPrev = true;
         } else if (glyph.role === 'word-separator' || glyph.role === 'punctuation') {
             flush();
-            groups.push({ glyphs: [glyph], isLineBreak: false });
+            groups.push({ glyphs: [glyph], isLineBreak: false, touchesPrev: false });
         } else {
             current.push(glyph);
         }
@@ -137,15 +156,27 @@ export function createComposedBlockStrategy(writingSystem: WritingSystemSettings
                 ? (glyphFlowHorizontal ? cell.fitInRow(maxPrimaryExtent) : cell.fitInColumn(maxPrimaryExtent))
                 : Infinity;
 
+            // A `word-break` word abuts its predecessor with only a letter step
+            // instead of the separator `spacing`: the next word's first box
+            // starts one step after the previous word's last box. Along the
+            // word-flow axis that advance past the word's own extent is
+            // `step - box` (negative when boxes overlap by their margins) rather
+            // than `spacing`.
+            const stepAlongFlow = wordFlowHorizontal ? cell.stepX : cell.stepY;
+            const boxAlongFlow = wordFlowHorizontal ? glyphWidth : glyphHeight;
+            const touchGap = stepAlongFlow - boxAlongFlow;
+
             // Group into lines, breaking on explicit line breaks and overflow.
-            type Line = { words: RenderableGlyph[][]; sizes: { width: number; height: number }[] };
+            // `gaps[i]` is the gap that precedes word `i` on its line (0 for the
+            // first word), so positioning and wrapping share one source of truth.
+            type Line = { words: RenderableGlyph[][]; sizes: { width: number; height: number }[]; gaps: number[] };
             const lines: Line[] = [];
-            let currentLine: Line = { words: [], sizes: [] };
+            let currentLine: Line = { words: [], sizes: [], gaps: [] };
             let currentLineExtent = 0;
 
             const startNewLine = () => {
                 if (currentLine.words.length > 0) lines.push(currentLine);
-                currentLine = { words: [], sizes: [] };
+                currentLine = { words: [], sizes: [], gaps: [] };
                 currentLineExtent = 0;
             };
 
@@ -155,19 +186,25 @@ export function createComposedBlockStrategy(writingSystem: WritingSystemSettings
                     continue;
                 }
 
-                for (const piece of chunkWord(group.glyphs, maxGlyphsPerLine)) {
+                chunkWord(group.glyphs, maxGlyphsPerLine).forEach((piece, pieceIndex) => {
                     const wordSize = measureWord(piece.length, glyphDirection, glyphWidth, glyphHeight, cell);
                     const wordExtent = wordFlowHorizontal ? wordSize.width : wordSize.height;
-                    const gap = currentLine.words.length > 0 ? spacing : 0;
+                    // Only the FIRST piece of a wrapped word inherits `touchesPrev`;
+                    // later pieces start a fresh line anyway.
+                    const wordGap = group.touchesPrev && pieceIndex === 0 ? touchGap : spacing;
+                    const gap = currentLine.words.length > 0 ? wordGap : 0;
 
                     if (currentLine.words.length > 0 && currentLineExtent + gap + wordExtent > maxPrimaryExtent) {
                         startNewLine();
                     }
 
+                    // Recomputed: after a wrap this piece is now first on its line.
+                    const gapBefore = currentLine.words.length > 0 ? wordGap : 0;
                     currentLine.words.push(piece);
                     currentLine.sizes.push(wordSize);
-                    currentLineExtent += (currentLine.words.length > 1 ? spacing : 0) + wordExtent;
-                }
+                    currentLine.gaps.push(gapBefore);
+                    currentLineExtent += gapBefore + wordExtent;
+                });
             }
             startNewLine();
 
@@ -190,7 +227,13 @@ export function createComposedBlockStrategy(writingSystem: WritingSystemSettings
                     ? line.words.map((_, i) => line.words.length - 1 - i)
                     : line.words.map((_, i) => i);
 
-                for (const wi of wordIndices) {
+                for (let j = 0; j < wordIndices.length; j += 1) {
+                    const wi = wordIndices[j];
+                    // The gap before this word visually. Two words visually
+                    // adjacent are reading-order adjacent (indices differ by 1);
+                    // the gap between them is stored on the higher index — which
+                    // holds in both flow directions.
+                    if (j > 0) wordOffset += line.gaps[Math.max(wordIndices[j - 1], wi)];
                     const word = line.words[wi];
                     const wordSize = line.sizes[wi];
                     const glyphIndices = isReversed(glyphDirection)
@@ -223,7 +266,9 @@ export function createComposedBlockStrategy(writingSystem: WritingSystemSettings
                         glyphOffset += glyphFlowHorizontal ? cell.stepX : cell.stepY;
                     }
 
-                    wordOffset += (wordFlowHorizontal ? wordSize.width : wordSize.height) + spacing;
+                    // Advance past this word only; the gap before the NEXT word
+                    // is added at the top of the loop from `line.gaps`.
+                    wordOffset += wordFlowHorizontal ? wordSize.width : wordSize.height;
                 }
 
                 lineOffset += lineCrossSize + spacing;

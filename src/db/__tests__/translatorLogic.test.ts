@@ -113,14 +113,20 @@ describe('translatePhrase', () => {
         expect(separator.role).toBe('word-separator');
     });
 
-    it('omits hidden separators and punctuation', () => {
+    it('omits hidden punctuation, but a hidden word separator becomes an invisible word-break', () => {
+        // SCRIPT_SPACING_PLAN Phase B: a hidden word separator no longer
+        // vanishes (which let the block segmenter merge words) — it emits a
+        // zero-size `word-break`. Hidden PUNCTUATION (the sentence separator)
+        // is still omitted entirely.
         const settings: PunctuationSettings = {
             ...DEFAULT_PUNCTUATION_SETTINGS,
             wordSeparator: { graphemeId: null, useNoGlyph: true },
             sentenceSeparator: { graphemeId: null, useNoGlyph: true },
         };
         const result = translatePhrase('a b.', [], { punctuationSettings: settings });
-        expect(result.combinedSpelling.map(e => e.ipaCharacter)).toEqual(['a', 'b']);
+        // a, word-break (''), b — the hidden '.' produced nothing.
+        expect(result.combinedSpelling.map(e => e.ipaCharacter)).toEqual(['a', '', 'b']);
+        expect(result.combinedSpelling.map(e => e.role)).toEqual([undefined, 'word-break', undefined]);
     });
 
     it('places no separator between an opening quote and its word', () => {

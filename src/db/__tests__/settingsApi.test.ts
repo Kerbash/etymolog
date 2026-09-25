@@ -57,6 +57,24 @@ describe('validateSettings', () => {
         expect(issues.map(i => i.path)).toEqual(['defaultGalleryView', 'writingSystem.wordWrap']);
     });
 
+    it('accepts a valid letterSpacing and defaults to auto when absent', () => {
+        const set = validateSettings({ writingSystem: { letterSpacing: 'wide' } });
+        expect(set.settings.writingSystem.letterSpacing).toBe('wide');
+        expect(set.issues).toEqual([]);
+
+        // Absent → 'auto', with NO issue (an older stored object must not make a
+        // strict update fail).
+        const absent = validateSettings({ writingSystem: { glyphDirection: 'ltr' } });
+        expect(absent.settings.writingSystem.letterSpacing).toBe('auto');
+        expect(absent.issues).toEqual([]);
+    });
+
+    it('rejects an invalid letterSpacing, falling back to auto', () => {
+        const { settings, issues } = validateSettings({ writingSystem: { letterSpacing: 'huge' } });
+        expect(settings.writingSystem.letterSpacing).toBe('auto');
+        expect(issues.map((i) => i.path)).toEqual(['writingSystem.letterSpacing']);
+    });
+
     it('validates custom charts and skips malformed / duplicate entries', () => {
         const { settings, issues } = validateSettings({
             customCharts: [

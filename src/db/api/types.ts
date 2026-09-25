@@ -240,6 +240,28 @@ export interface EtymologSettings {
 export type DirectionValue = 'ltr' | 'rtl' | 'ttb' | 'btt';
 
 /**
+ * Conlang-wide letter spacing: how far apart consecutive letters / abugida
+ * blocks sit within a word. `auto` keeps each view's own preset `spacing`
+ * (the look before this setting existed); every other value overrides it with
+ * a fraction of the glyph CELL (see {@link LETTER_SPACING_FRACTIONS}).
+ */
+export type LetterSpacingValue = 'auto' | 'none' | 'tight' | 'normal' | 'wide' | 'extra-wide';
+
+/**
+ * Letter spacing as a fraction of the glyph CELL width/height. THE single place
+ * these numbers live — components read `spacing = cellWidth × fraction` from
+ * here. `auto` is absent on purpose: it means "leave the preset alone", not a
+ * number.
+ */
+export const LETTER_SPACING_FRACTIONS: Readonly<Record<Exclude<LetterSpacingValue, 'auto'>, number>> = {
+    none: 0,
+    tight: 0.05,
+    normal: 0.15,
+    wide: 0.3,
+    'extra-wide': 0.5,
+};
+
+/**
  * Writing system settings that define how the script flows directionally.
  * Controls glyph arrangement within words, word ordering, and line wrapping.
  */
@@ -254,6 +276,8 @@ export interface WritingSystemSettings {
     wordWrap: 'word' | 'glyph' | 'none';
     /** Glyph alignment within a line */
     baselineAlignment: 'top' | 'center' | 'bottom';
+    /** How far apart consecutive letters / blocks sit within a word. */
+    letterSpacing: LetterSpacingValue;
 }
 
 /**
@@ -265,6 +289,7 @@ export const DEFAULT_WRITING_SYSTEM_SETTINGS: WritingSystemSettings = {
     lineProgression: 'ttb',
     wordWrap: 'word',
     baselineAlignment: 'bottom',
+    letterSpacing: 'auto',
 };
 
 /**

@@ -437,9 +437,8 @@ describe('composeBlock: shared slots split by ink shape', () => {
 
     it('inside the clamp, widths follow the ink aspect exactly', () => {
         const [mid, square] = cells(compose(['C1', 'C1', 'V'], MD, SQ1, E).svg);
-        // 60 × 40 ink padded by 6 % of its larger side on every edge.
-        const pad = 60 * 0.06 * 2;
-        const weight = (60 + pad) / (40 + pad);
+        // 60 × 40 ink, no padding: the weight is its bare aspect.
+        const weight = 60 / 40;
         expect(mid[2]).toBe(round(C1_WIDTH * weight / (weight + 1)));
         expect(square[2]).toBe(round(C1_WIDTH / (weight + 1)));
     });

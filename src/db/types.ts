@@ -605,8 +605,14 @@ export interface LexiconDescendantEntry {
 /**
  * Structural role of a synthesised spelling entry. Absent on ordinary letters.
  * The layout engine splits words/lines on these instead of on index arrays.
+ *
+ * `word-break` is an INVISIBLE, zero-size word boundary: it is emitted in place
+ * of a hidden word separator (`punctuation.wordSeparator.useNoGlyph`), so the
+ * block segmenter still closes the run there (words never merge into one block)
+ * and the composed layout places the next word touching. It draws nothing and,
+ * outside the composed strategy, is removed before layout so it takes no room.
  */
-export type SpellingRole = 'word-separator' | 'line-break' | 'punctuation';
+export type SpellingRole = 'word-separator' | 'line-break' | 'punctuation' | 'word-break';
 
 export interface SpellingDisplayEntry {
     /** Type of entry */

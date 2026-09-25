@@ -44,6 +44,9 @@ export default function PunctuationCell({
 }: PunctuationCellProps) {
     const hasGrapheme = Boolean(grapheme && grapheme.glyphs.length > 0);
     const isNoGlyph = config.useNoGlyph;
+    // Read out first (P5): a member expression as a memo dependency defeats the
+    // React compiler.
+    const markKey = mark.key;
 
     // Determine display state
     const displayState = useMemo(() => {
@@ -79,13 +82,18 @@ export default function PunctuationCell({
     const statusDescription = useMemo(() => {
         switch (displayState) {
             case 'hidden':
-                return 'Hidden - will not be rendered';
+                // The word separator is special: hidden, words run on with no
+                // gap — but they no longer merge (a word-break keeps them apart
+                // for block segmentation and layout).
+                return markKey === 'wordSeparator'
+                    ? 'Hidden - words run on with no gap'
+                    : 'Hidden - will not be rendered';
             case 'assigned':
                 return `Using grapheme: ${grapheme!.name}`;
             case 'virtual':
                 return 'Using virtual glyph (dashed box)';
         }
-    }, [displayState, grapheme]);
+    }, [displayState, grapheme, markKey]);
 
     return (
         <tr className={classNames(styles.cell, styles[displayState], className)}>

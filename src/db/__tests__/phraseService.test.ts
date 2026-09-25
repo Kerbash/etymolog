@@ -14,6 +14,7 @@ import {
     createSpaceSeparator,
 } from '../phraseService';
 import { initDatabase, clearDatabase } from '../index';
+import { DEFAULT_PUNCTUATION_SETTINGS } from '../api/types';
 import type { LexiconComplete, PhraseWord } from '../types';
 
 // Mock lexicon entry helper. `meanings` are the English glosses, in order.
@@ -281,9 +282,16 @@ describe('phraseService', () => {
             expect(result.position).toBe(0);
         });
 
-        it('should return null when useNoGlyph is true', () => {
+        it('should return an invisible word-break entry when useNoGlyph is true', () => {
+            // Changed by SCRIPT_SPACING_PLAN Phase B: a hidden separator no
+            // longer disappears (which let the block segmenter merge words) — it
+            // becomes a zero-size `word-break` boundary instead.
             const result = createSpaceSeparator({ graphemeId: null, useNoGlyph: true });
-            expect(result).toBeNull();
+            expect(result).not.toBeNull();
+            if (result === null) throw new Error('result should not be null');
+            expect(result.role).toBe('word-break');
+            expect(result.type).toBe('ipa');
+            expect(result.ipaCharacter).toBe('');
         });
 
         it('should return virtual glyph when useNoGlyph is false and no grapheme', () => {
@@ -368,6 +376,23 @@ describe('phraseService', () => {
                 entry => entry.type === 'ipa' && entry.ipaCharacter === ' '
             ).length;
             expect(spaceCount).toBe(0);
+        });
+
+        it('emits invisible word-break entries between words when the separator is hidden', () => {
+            // Hidden word separator: instead of a space (or nothing), the
+            // translator must emit a `word-break` so words stay apart for block
+            // segmentation and touching layout (SCRIPT_SPACING_PLAN Phase B).
+            const hidden = {
+                ...DEFAULT_PUNCTUATION_SETTINGS,
+                wordSeparator: { graphemeId: null, useNoGlyph: true },
+            };
+            const result = translatePhrase('a b c', mockLexicon, { punctuationSettings: hidden });
+
+            const breaks = result.combinedSpelling.filter((e) => e.role === 'word-break');
+            expect(breaks).toHaveLength(2);
+            // No visible space separators were emitted.
+            const spaces = result.combinedSpelling.filter((e) => e.role === 'word-separator');
+            expect(spaces).toHaveLength(0);
         });
     });
 });

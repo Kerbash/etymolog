@@ -44,6 +44,7 @@ import { getRuleCategories, getRulesByCategory, validateWritingSystem } from '..
 import { PageHeader, useApiAction } from '../../shared';
 
 import { INLINE_BANNER_PARTS } from './inlineBanner';
+import ScriptSpacingSettings from './ScriptSpacingSettings';
 import styles from './writingSystem.module.scss';
 
 export default function WritingSystemPage() {
@@ -156,6 +157,16 @@ export default function WritingSystemPage() {
                     );
                 })}
             </div>
+
+            <section className={styles.spacingSection} aria-labelledby={`${idPrefix}-spacing`}>
+                <h2 id={`${idPrefix}-spacing`} className={styles.spacingTitle}>
+                    Spacing
+                </h2>
+                <p className={styles.spacingIntro}>
+                    These apply to the whole script and save immediately.
+                </p>
+                <ScriptSpacingSettings />
+            </section>
         </>
     );
 }

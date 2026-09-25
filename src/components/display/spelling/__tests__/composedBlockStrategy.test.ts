@@ -50,6 +50,13 @@ describe('splitIntoWords', () => {
     it('returns one word when nothing carries a role', () => {
         expect(splitIntoWords([glyph('a'), glyph('b')])).toHaveLength(1);
     });
+
+    it('closes the word at a word-break without positioning it, and marks the next word touching', () => {
+        const groups = splitIntoWords([glyph('a'), glyph('b'), glyph('', 'word-break'), glyph('c')]);
+        // The word-break itself is not a group; the two words survive.
+        expect(groups.map((g) => g.glyphs.map((x) => x.name).join(''))).toEqual(['ab', 'c']);
+        expect(groups.map((g) => g.touchesPrev)).toEqual([false, true]);
+    });
 });
 
 describe('createComposedBlockStrategy', () => {
@@ -127,6 +134,34 @@ describe('createComposedBlockStrategy', () => {
         const c = (r: typeof bottom) => r.positions.find(p => p.glyph.name === 'c')!;
         expect(c(top).y).toBe(0);
         expect(c(bottom).y).toBe(12); // tallest word is 22 high; single glyph sits 12 lower
+    });
+
+    // cellFraction 0.5, spacing 0: a letter step (5) is SHORTER than the box
+    // (10), so a touching word visibly overlaps its predecessor's box — proving
+    // the reduced gap. cellFraction 1 would hide the difference.
+    const TOUCH_CONFIG: LayoutStrategyConfig = { glyphWidth: 10, glyphHeight: 10, cellFraction: 0.5, spacing: 0, padding: 0 };
+
+    it('places the word after a word-break touching — one letter step, not a separator gap', () => {
+        const glyphs = [glyph('a'), glyph('b'), glyph('', 'word-break'), glyph('c')];
+        const { positions } = createComposedBlockStrategy(ws()).calculate(glyphs, TOUCH_CONFIG);
+        // a=0, b=5 (stepX = cell 5 + spacing 0); the word-break is not drawn;
+        // c starts one step after b's box origin (5 + 5 = 10), overlapping b's
+        // box — the touching look. A separator word would have put c at 25.
+        expect(positions.map((p) => [p.glyph.name, p.x])).toEqual([['a', 0], ['b', 5], ['c', 10]]);
+        expect(positions.every((p) => p.y === 0)).toBe(true);
+    });
+
+    it('still wraps at a word-break (it is a wrap opportunity for wordWrap: word)', () => {
+        const glyphs = [glyph('a'), glyph('b'), glyph('', 'word-break'), glyph('c'), glyph('d')];
+        // "ab" (15) then touch gap (-5) then "cd" (15) = 25 > 20: cd wraps.
+        const { positions } = createComposedBlockStrategy(ws()).calculate(glyphs, { ...TOUCH_CONFIG, maxWidth: 20 });
+        const rows = new Map<number, string[]>();
+        for (const p of positions) {
+            if (!rows.has(p.y)) rows.set(p.y, []);
+            rows.get(p.y)!.push(p.glyph.name);
+        }
+        const lines = [...rows.entries()].sort((a, b) => a[0] - b[0]).map(([, names]) => names.join(''));
+        expect(lines).toEqual(['ab', 'cd']);
     });
 
     it('is what getStrategy returns for composed-block without explicit settings', () => {

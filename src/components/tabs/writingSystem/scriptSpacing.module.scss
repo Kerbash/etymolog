@@ -1,0 +1,71 @@
+/**
+ * ScriptSpacingSettings / WordSeparationSetting — the two conlang-wide spacing
+ * controls shown on both the Writing System page and the Blocks page.
+ *
+ * Theme tokens only (the token ratchet in `src/styles/__tests__/tokens.test.ts`).
+ */
+
+.group {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    min-width: 0;
+}
+
+/* One labelled control: a name, one sentence, the select, and a mode hint. */
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    min-width: 0;
+}
+
+.label {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--text-primary);
+}
+
+.description {
+    font-size: 0.8rem;
+    color: var(--text-primary-muted);
+}
+
+.controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.select {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.9rem;
+    font-family: inherit;
+    color: var(--text-primary);
+    /* A token, not `white`: the UA paints an undeclared control with its own
+       chrome, which does not follow `[data-theme]`. */
+    background: var(--surface-raised);
+    border: var(--border-width) solid var(--border-primary);
+    border-radius: var(--radius-control);
+    cursor: pointer;
+    min-width: 10rem;
+    max-width: 100%;
+
+    &:focus-visible {
+        outline: 2px solid var(--interactive-base);
+        outline-offset: 2px;
+    }
+}
+
+/** A value the user has moved away from the default. */
+.modified {
+    border-color: var(--interactive-base);
+    background-color: color-mix(in srgb, var(--interactive-base) 8%, transparent);
+}
+
+.hint {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}

@@ -58,13 +58,6 @@ interface Clip {
     y1: number;
 }
 
-/**
- * Margin added around the ink, as a fraction of its larger side, so a mark
- * fitted into a slot does not touch the slot's edge (a neighbouring slot's
- * mark would otherwise butt straight into it).
- */
-export const INK_MARGIN_FRACTION = 0.06;
-
 /** The smallest side an ink box may have, as a fraction of its larger side. */
 const MIN_SIDE_FRACTION = 0.02;
 
@@ -338,8 +331,9 @@ function measureInk(inner: string, clip: Clip): Box | null {
 }
 
 /**
- * The ink bounds of `svg` in its own `viewBox` coordinates, margin included,
- * or `null` when they cannot be determined exactly (see the module comment).
+ * The ink bounds of `svg` in its own `viewBox` coordinates, with no margin: a
+ * sign fitted into a block box touches the box edge, so neighbouring signs
+ * touch each other. `null` when they cannot be determined exactly (see the module comment).
  */
 export function estimateInkBounds(svg: string): InkBounds | null {
     // The document's own viewBox is where a slice cell's overflow finally stops.
@@ -372,8 +366,7 @@ export function estimateInkBounds(svg: string): InkBounds | null {
         height = minSide;
     }
 
-    const margin = larger * INK_MARGIN_FRACTION;
-    return { x: x - margin, y: y - margin, width: width + margin * 2, height: height + margin * 2 };
+    return { x, y, width, height };
 }
 
 /**

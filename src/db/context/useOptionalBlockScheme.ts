@@ -28,12 +28,15 @@ import { createContext, useContext } from 'react';
 
 import type { BlockScheme } from '../../blocks/types';
 import type { GraphemeComplete } from '../types';
+import type { LetterSpacingValue } from '../api/types';
 
 export interface BlockRenderingValue {
     /** The script's block scheme (validated; `enabled: false` when none is saved). */
     blockScheme: BlockScheme;
     /** Every grapheme by id, variants included — the same data as `graphemesComplete`. */
     graphemeMap: Map<number, GraphemeComplete>;
+    /** The script's letter spacing (`writingSystem.letterSpacing`); `'auto'` keeps each view's preset. */
+    letterSpacing: LetterSpacingValue;
 }
 
 /** Filled by `EtymologProvider`; `null` outside it. */
@@ -53,4 +56,13 @@ export function useOptionalBlockScheme(): BlockScheme | null {
  */
 export function useOptionalGraphemeMap(): Map<number, GraphemeComplete> | null {
     return useContext(BlockRenderingContext)?.graphemeMap ?? null;
+}
+
+/**
+ * The script's letter spacing inside an `EtymologProvider`, `null` outside one.
+ * `null` means "no override" — the display keeps its view preset, exactly as
+ * `'auto'` does. Never throws.
+ */
+export function useOptionalLetterSpacing(): LetterSpacingValue | null {
+    return useContext(BlockRenderingContext)?.letterSpacing ?? null;
 }

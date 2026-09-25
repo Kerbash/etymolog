@@ -496,7 +496,8 @@ export function EtymologProvider({ children }: EtymologProviderProps) {
     // defeat the React compiler (pitfall P8).
     const blockScheme = data.blockScheme;
     const graphemeMap = data.graphemeMap;
-    const blockRenderingValue = useMemo((): BlockRenderingValue => ({ blockScheme, graphemeMap }), [blockScheme, graphemeMap]);
+    const letterSpacing = settings.writingSystem.letterSpacing;
+    const blockRenderingValue = useMemo((): BlockRenderingValue => ({ blockScheme, graphemeMap, letterSpacing }), [blockScheme, graphemeMap, letterSpacing]);
 
     return (
         <EtymologContext.Provider value={contextValue}>
