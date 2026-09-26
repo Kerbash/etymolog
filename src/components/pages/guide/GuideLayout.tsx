@@ -18,7 +18,7 @@ import Button, { buttonStyles } from 'cyber-components/interactable/buttons/butt
 
 import { ROUTES } from '../../../url_mapping';
 import { AppBackground } from '../../shell';
-import { GUIDE_SECTIONS, GUIDE_FALLBACK_ROUTE, guideSectionPath } from './guideContent';
+import { GUIDE_GROUPS, GUIDE_FALLBACK_ROUTE, guideSectionsInGroup, guideSectionPath } from './guideContent';
 import styles from './GuidePage.module.scss';
 
 export default function GuideLayout() {
@@ -69,15 +69,23 @@ export default function GuideLayout() {
                         data-guide-menu=""
                         onClick={() => setMenuOpen(false)}
                     >
-                        <p className={styles.menuHeading}>Guide</p>
                         <NavLink to={ROUTES.guide} end className={menuLinkClass}>
                             Overview
                         </NavLink>
-                        {GUIDE_SECTIONS.map((section) => (
-                            <NavLink key={section.slug} to={guideSectionPath(section.slug)} className={menuLinkClass}>
-                                {section.title}
-                            </NavLink>
-                        ))}
+                        {GUIDE_GROUPS.map((group) => {
+                            const sections = guideSectionsInGroup(group.id);
+                            if (sections.length === 0) return null;
+                            return (
+                                <div key={group.id} className={styles.menuGroup}>
+                                    <p className={styles.menuHeading}>{group.label}</p>
+                                    {sections.map((section) => (
+                                        <NavLink key={section.slug} to={guideSectionPath(section.slug)} className={menuLinkClass}>
+                                            {section.title}
+                                        </NavLink>
+                                    ))}
+                                </div>
+                            );
+                        })}
                     </nav>
                 </aside>
             </div>

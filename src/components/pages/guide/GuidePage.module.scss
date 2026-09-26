@@ -148,6 +148,23 @@
     font-weight: 600;
 }
 
+/* Grouped overview + menu. */
+.indexGroup {
+    margin-bottom: 1.75rem;
+}
+
+.indexGroupTitle {
+    margin: 0 0 0.75rem;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+}
+
+.menuGroup {
+    margin-bottom: 0.75rem;
+}
+
 /* Walk-through steps + screenshots. */
 .steps {
     counter-reset: step;
@@ -155,6 +172,21 @@
 
 .steps > li {
     margin-bottom: 1.5rem;
+}
+
+.bullets {
+    margin: 0 0 0.75rem;
+    padding-left: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    line-height: 1.6;
+}
+
+.subhead {
+    margin: 1.25rem 0 0.5rem;
+    font-size: 1.05rem;
+    color: var(--text-primary);
 }
 
 .pipeline {

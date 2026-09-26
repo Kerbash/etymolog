@@ -11,7 +11,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 
 import { GuideLayout, GuideIndex, GuideSectionPage } from '..';
-import { GUIDE_SECTIONS } from '../guideContent';
+import { GUIDE_SECTIONS, GUIDE_GROUPS } from '../guideContent';
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -52,14 +52,24 @@ afterEach(() => {
 });
 
 describe('Guide', () => {
-    it('overview lists a card and a menu link for every family (alphabet/abugida/logogram)', () => {
+    it('overview lists a card and a menu link for every section, grouped', () => {
         mount('/guide');
-        // Cards carry each title; assert by text rather than the hashed class.
-        const cardText = container.querySelector('[class*="cardGrid"]')?.textContent ?? '';
-        for (const section of GUIDE_SECTIONS) expect(cardText).toContain(section.title);
+        // Every section has a card and a menu link.
+        const overviewText = container.querySelector('main')?.textContent ?? '';
+        for (const section of GUIDE_SECTIONS) expect(overviewText, section.slug).toContain(section.title);
 
         const menuLinks = [...container.querySelectorAll('[data-guide-menu] a')].map((a) => a.textContent);
-        expect(menuLinks).toEqual(['Overview', ...GUIDE_SECTIONS.map((s) => s.title)]);
+        expect(menuLinks[0]).toBe('Overview');
+        for (const section of GUIDE_SECTIONS) expect(menuLinks, section.slug).toContain(section.title);
+        // Group headings appear in both the overview and the menu.
+        for (const group of GUIDE_GROUPS) expect(overviewText, group.id).toContain(group.label);
+    });
+
+    it('renders a comprehensive reference page with its screenshot', () => {
+        mount('/guide/blocks-templates');
+        expect(container.querySelector('#guide-section-title')?.textContent).toBe('Blocks: templates & layout');
+        expect(container.querySelector('figure img')).not.toBeNull();
+        expect(container.textContent).toContain('layout editor');
     });
 
     it('opens a section page directly and shows its walk-through', () => {
