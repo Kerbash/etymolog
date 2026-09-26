@@ -130,6 +130,32 @@ export default function ToolsBody({ slug }: { slug: string }) {
                         when your work is saved, and updates apply on the next reload without disturbing
                         anything you&apos;re editing.
                     </p>
+                    <h3 className={styles.subhead}>Install it as an app</h3>
+                    <p>
+                        Installing puts Etymolog in its own window (no browser bar), adds it to your
+                        launcher or home screen, and lets it open even when you&apos;re offline. Your
+                        conlang lives in that browser&apos;s storage either way — installing doesn&apos;t
+                        move it, so keep exporting backups.
+                    </p>
+                    <ul className={styles.bullets}>
+                        <li>
+                            <strong>Desktop (Chrome / Edge)</strong> — click the install icon at the right
+                            of the address bar (a small screen with a down-arrow), or open the browser menu
+                            and choose <em>Install Etymolog…</em> / <em>Apps → Install this site as an app</em>.
+                        </li>
+                        <li>
+                            <strong>Android (Chrome)</strong> — open the <em>⋮</em> menu and tap
+                            {' '}<em>Install app</em> (or <em>Add to Home screen</em>).
+                        </li>
+                        <li>
+                            <strong>iPhone / iPad (Safari)</strong> — tap the <em>Share</em> button, then
+                            {' '}<em>Add to Home Screen</em>. On iOS this must be done from Safari.
+                        </li>
+                    </ul>
+                    <p>
+                        Once installed it launches like any other app and keeps working without a
+                        connection.
+                    </p>
                 </>
             );
         default:
