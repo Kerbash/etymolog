@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import classNames from 'classnames';
 import { flex } from 'utils-styles';
 
 import BasicHeader from 'cyber-components/layout/basic/header/header';
 import IconButton from 'cyber-components/interactable/buttons/iconButton/iconButton';
+import HoverToolTip from 'cyber-components/interactable/information/hoverToolTip/hoverToolTip';
 import DarkmodeSwitch from 'cyber-components/interactable/settings/darkmodeSwitch';
 
 import { useEtymolog } from '../../db';
@@ -31,6 +32,7 @@ import styles from './AppHeader.module.scss';
 export default function AppHeader() {
     const { api, settings } = useEtymolog();
     const navigate = useNavigate();
+    const location = useLocation();
     const confirm = useConfirm();
     const notify = useNotify();
     const { confirmDiscard } = useUnsavedChanges();
@@ -93,6 +95,13 @@ export default function AppHeader() {
                 </div>
 
                 <div className={classNames(styles.actions, flex.flexRow, flex.alignItemsCenter, flex.flexGapS)}>
+                    <HoverToolTip content="How to build an alphabet, abugida or logogram">
+                        <IconButton
+                            iconName="book"
+                            aria-label="Open the guide"
+                            onClick={() => navigate(ROUTES.guide, { state: { from: `${location.pathname}${location.search}` } })}
+                        />
+                    </HoverToolTip>
                     <ExportButton />
                     <ImportButton />
                     <IconButton

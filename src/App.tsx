@@ -5,6 +5,7 @@ import { ProcessingLockModalProvider } from 'cyber-components/graphics/loading/p
 
 import NewConlangPage from './components/pages/new-conlang/NewConlangPage.tsx';
 import ConlangGuard from './components/pages/new-conlang/ConlangGuard.tsx';
+import { GuideLayout, GuideIndex, GuideSectionPage } from './components/pages/guide';
 import { AppShell } from './components/shell';
 import LexiconMain from './components/tabs/lexicon/main.tsx';
 import GraphemeMain from './components/tabs/grapheme/main.tsx';
@@ -27,6 +28,10 @@ function App() {
                     <ConfirmDialogProvider>
                         <Routes>
                             <Route path={ROUTES.new} element={<NewConlangPage />} />
+                            <Route path="/guide" element={<GuideLayout />}>
+                                <Route index element={<GuideIndex />} />
+                                <Route path=":slug" element={<GuideSectionPage />} />
+                            </Route>
 
                             {/* LAYOUT route: the shell renders once and the tab
                                 pages swap through its <Outlet/>. The tabs used

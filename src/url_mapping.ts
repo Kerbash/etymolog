@@ -48,6 +48,11 @@ export const ROUTES = {
 
     // Translator
     translator: '/translator',
+
+    // Guide (standalone page, outside the tab strip)
+    guide: '/guide',
+    /** One writing-system walk-through: alphabet | abugida | logogram. */
+    guideSection: '/guide/:slug',
 } as const;
 
 /**
